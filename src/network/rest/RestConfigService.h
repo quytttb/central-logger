@@ -36,7 +36,8 @@ public slots:
     /// coalesced — only the first wins until the reply lands.
     void fetchConfig(qint64 loggerId);
 
-    /// Issues `POST /config` with `{ "expected_revision": N, "config": ... }`.
+    /// Issues `POST /config` with `{ "api_version", "request_id",
+    /// "expected_revision", "config" }` per edge OpenAPI ConfigRequest.
     void applyConfig(qint64 loggerId, int expectedRevision, const QJsonObject &configPatch);
 
     /// Issues `GET /readings` for the debug dialog. NEVER call from polling

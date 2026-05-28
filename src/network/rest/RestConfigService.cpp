@@ -6,6 +6,7 @@
 
 #include <QFile>
 #include <QJsonDocument>
+#include <QUuid>
 #include <QNetworkAccessManager>
 #include <QNetworkReply>
 #include <QNetworkRequest>
@@ -154,6 +155,10 @@ void RestConfigService::applyConfig(qint64 loggerId,
     }
 
     QJsonObject envelope;
+    envelope.insert(QStringLiteral("api_version"), 1);
+    envelope.insert(QStringLiteral("request_id"),
+                    QStringLiteral("central-%1")
+                        .arg(QUuid::createUuid().toString(QUuid::WithoutBraces)));
     envelope.insert(QStringLiteral("expected_revision"), expectedRevision);
     envelope.insert(QStringLiteral("config"), configPatch);
     const QByteArray payload = QJsonDocument(envelope).toJson(QJsonDocument::Compact);

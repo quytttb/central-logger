@@ -982,7 +982,7 @@ void DashboardController::saveLoggerFromForm(bool isAdd,
             conn.rollback();
             m_formSaveInProgress = false;
             setError(applyErr);
-            logEvent(savedId, QStringLiteral("Warning"),
+            logEvent(0, QStringLiteral("Warning"),
                      QStringLiteral("Failed to push config to logger #%1: %2")
                          .arg(savedId).arg(applyErr));
             m_recentEvents.reload();

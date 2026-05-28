@@ -56,10 +56,19 @@ Response **phải** đủ để Central cập nhật `logger_sensor`: `sensor_id
 
 ```json
 {
+  "api_version": 1,
+  "request_id": "central-<uuid>",
   "expected_revision": <int>,
   "config": { ... }
 }
 ```
+
+| Field | Bắt buộc | Ghi chú |
+|-------|----------|---------|
+| `api_version` | Có | Phải `1` (khớp `/api/v1`) |
+| `request_id` | Có | Trace id từ Central (string, max 128) |
+| `expected_revision` | Có | Optimistic lock |
+| `config` | Có | Patch partial (root keys) hoặc `sensors[]` replace full |
 
 | Kết quả | HTTP | Central |
 |---------|------|---------|

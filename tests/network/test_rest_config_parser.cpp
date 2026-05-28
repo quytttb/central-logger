@@ -21,6 +21,8 @@ private slots:
     void formatRestErrorMaps401TokenMismatch();
     void formatRestErrorMaps409Revision();
     void formatRestErrorMaps422Revision();
+    void formatRestErrorMaps422MissingFieldsNotRevision();
+    void formatRestErrorMaps422MissingApiVersion();
     void formatRestErrorMaps404();
     void formatRestErrorTransportFallback();
     void prettyJsonRoundTrip();
@@ -153,6 +155,31 @@ void TestRestConfigParser::formatRestErrorMaps422Revision()
     const QString msg = RestConfigParser::formatRestError(
         422, R"({"detail":"revision mismatch"})");
     QCOMPARE(msg, QStringLiteral("Configuration changed on device. Connect again, then save."));
+}
+
+void TestRestConfigParser::formatRestErrorMaps422MissingFieldsNotRevision()
+{
+    const QByteArray body = R"({
+        "detail": [
+            {"type": "missing", "loc": ["body", "api_version"], "msg": "Field required",
+             "input": {"config": {"station_code": "TRAM-1"}, "expected_revision": 1}},
+            {"type": "missing", "loc": ["body", "request_id"], "msg": "Field required",
+             "input": {"config": {"station_code": "TRAM-1"}, "expected_revision": 1}}
+        ]
+    })";
+    const QString msg = RestConfigParser::formatRestError(422, body);
+    QVERIFY(!msg.contains(QStringLiteral("Configuration changed on device")));
+    QCOMPARE(msg, QStringLiteral(
+        "Device rejected config request (missing fields). Update Central Logger."));
+}
+
+void TestRestConfigParser::formatRestErrorMaps422MissingApiVersion()
+{
+    const QByteArray body = R"({
+        "detail": [{"type": "missing", "loc": ["body", "api_version"], "msg": "Field required"}]
+    })";
+    const QString msg = RestConfigParser::formatRestError(422, body);
+    QVERIFY(msg.contains(QStringLiteral("missing fields")));
 }
 
 void TestRestConfigParser::formatRestErrorMaps404()

@@ -11,3 +11,4 @@ Các report audit cũ cùng ngày đã gỡ; nội dung gộp vào deep audit.
 | File | Mục đích |
 |------|----------|
 | [`2026-05-27_m3_ui_migration_walkthrough.md`](2026-05-27_m3_ui_migration_walkthrough.md) | **M3 UI Migration full execution report** (plan .cursor/plans/m3_ui_migration_4dd5f989.plan.md) — phases 0-3 delivered, GraphsTheme reactive, semantic colors, components (StatCard/DataTableChrome), builds, AC checklist, adherence notes. |
+| [`2026-05-28_config-push-windows-walkthrough.md`](2026-05-28_config-push-windows-walkthrough.md) | **POST /config envelope fix** — `api_version` + `request_id` on Save; Windows verify checklist, false-positive 422 message, build/test steps. |

@@ -100,6 +100,72 @@ inline QVector<Data::LoggerSensor> readSensors(qint64 loggerId, const QJsonArray
     return out;
 }
 
+inline bool isRevisionConflict422(const QByteArray &body, const QString &lower)
+{
+    if (lower.contains(QLatin1String("revision mismatch"))) {
+        return true;
+    }
+    if (lower.contains(QLatin1String("revision")) && lower.contains(QLatin1String("conflict"))) {
+        return true;
+    }
+    const auto doc = QJsonDocument::fromJson(body);
+    if (!doc.isObject()) {
+        return false;
+    }
+    const auto detailVal = doc.object().value(QLatin1String("detail"));
+    if (detailVal.isString()) {
+        const QString s = detailVal.toString().toLower();
+        return s.contains(QLatin1String("revision mismatch"))
+            || (s.contains(QLatin1String("revision")) && s.contains(QLatin1String("conflict")));
+    }
+    if (!detailVal.isArray()) {
+        return false;
+    }
+    for (const auto &item : detailVal.toArray()) {
+        if (!item.isObject()) {
+            continue;
+        }
+        const auto obj  = item.toObject();
+        const QString msg = obj.value(QLatin1String("msg")).toString().toLower();
+        if (msg.contains(QLatin1String("revision mismatch"))
+            || msg.contains(QLatin1String("revision conflict"))) {
+            return true;
+        }
+    }
+    return false;
+}
+
+inline bool isMissingConfigFields422(const QByteArray &body)
+{
+    const auto doc = QJsonDocument::fromJson(body);
+    if (!doc.isObject()) {
+        return false;
+    }
+    const auto detailVal = doc.object().value(QLatin1String("detail"));
+    if (!detailVal.isArray()) {
+        return false;
+    }
+    for (const auto &item : detailVal.toArray()) {
+        if (!item.isObject()) {
+            continue;
+        }
+        if (item.toObject().value(QLatin1String("type")).toString() != QLatin1String("missing")) {
+            continue;
+        }
+        const auto loc = item.toObject().value(QLatin1String("loc"));
+        if (!loc.isArray()) {
+            continue;
+        }
+        for (const auto &locPart : loc.toArray()) {
+            const QString part = locPart.toString();
+            if (part == QLatin1String("api_version") || part == QLatin1String("request_id")) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
 } // namespace detail
 
 /// Parses the response body of `GET /config`. Accepts the edge spec where
@@ -175,10 +241,14 @@ inline QString formatRestError(int httpStatus, const QByteArray &body, const QSt
         return QStringLiteral("Logger API not available. Update data-logger firmware.");
     }
     if (httpStatus == 409
-     || (httpStatus == 422 && lower.contains(QLatin1String("revision")))) {
+     || (httpStatus == 422 && detail::isRevisionConflict422(body, lower))) {
         return QStringLiteral("Configuration changed on device. Connect again, then save.");
     }
     if (httpStatus == 422) {
+        if (detail::isMissingConfigFields422(body)) {
+            return QStringLiteral(
+                "Device rejected config request (missing fields). Update Central Logger.");
+        }
         return QStringLiteral("Edge rejected payload (422). Check forbidden fields.");
     }
 
