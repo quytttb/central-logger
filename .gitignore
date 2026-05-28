@@ -1,0 +1,23 @@
+# Build directories
+build/
+build-*/
+cmake-build-*/
+out/
+
+# IDE and Editor files
+.cursor/
+.qtcreator/
+.vscode/
+*.user
+*.user.*
+.idea/
+.DS_Store
+
+# Qt/C++ temporary files
+*.o
+*.a
+*.so
+*.dylib
+*.dll
+*.exe
+*.log
