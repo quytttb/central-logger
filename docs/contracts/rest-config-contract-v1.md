@@ -39,7 +39,7 @@ Base URL: `http://<host>:<api_port>/api/v1`
 
 | REST key | Device form (Edit, online) |
 |----------|----------------------------|
-| `station_code` | Station code |
+| `station_code` | Station code **on the edge device** (read-only hint in Central Add form; **not** overwritten on Add Save) |
 | `station_name` | Station name |
 | `poll_interval` | Device poll interval (**seconds**) |
 | `modbus_tcp_bind` | Modbus TCP bind |

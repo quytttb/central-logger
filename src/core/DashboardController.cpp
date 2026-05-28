@@ -720,6 +720,15 @@ QString DashboardController::probedStationName() const
     return {};
 }
 
+QString DashboardController::probedStationCode() const
+{
+    const auto v = m_probedConfigObject.value(QLatin1String("station_code"));
+    if (v.isString()) {
+        return v.toString().trimmed();
+    }
+    return {};
+}
+
 void DashboardController::loadConfigForForm(qint64 loggerId)
 {
     if (!m_restConfig) {
@@ -895,12 +904,10 @@ void DashboardController::saveLoggerFromForm(bool isAdd,
     const QVariantMap originalMap = m_probedConfigObject.toVariantMap();
     QVariantMap       editedMap   = originalMap;
     editedMap.insert(QStringLiteral("station_name"), nm);
-    if (isAdd) {
-        editedMap.insert(QStringLiteral("station_code"), code);
-    }
     const int pollS = pollIntervalS > 0 ? pollIntervalS : 2;
     editedMap.insert(QStringLiteral("poll_interval"), pollS);
-    const QVariantMap patchMap = buildEditPatch(originalMap, editedMap);
+    const QVariantMap patchMap =
+        buildDeviceConfigPatch(isAdd, originalMap, editedMap);
     const QJsonObject patchJson = QJsonObject::fromVariantMap(patchMap);
     const bool        needsPost = !patchJson.isEmpty();
 
@@ -1077,6 +1084,21 @@ QVariantMap DashboardController::buildEditPatch(const QVariantMap &original,
             patch.insert(it.key(), it.value());
         }
     }
+    return patch;
+}
+
+QVariantMap DashboardController::buildDeviceConfigPatch(bool isAdd,
+                                                        const QVariantMap &probedConfig,
+                                                        const QVariantMap &editedConfig)
+{
+    // Add: probe is for catalog + validation only — never push to edge (legacy
+    // LoggerFormLogic: config patch only when mode === "edit").
+    if (isAdd) {
+        return {};
+    }
+    QVariantMap patch = buildEditPatch(probedConfig, editedConfig);
+    // `logger_info.station_code` is Central catalog id; edge keeps its own code.
+    patch.remove(QStringLiteral("station_code"));
     return patch;
 }
 

@@ -448,6 +448,16 @@ Dialog {
         }
 
         Label {
+            text: qsTr("Edge station code (on device): %1")
+                    .arg(DashboardController.probedStationCode())
+            visible: root.configLoaded && DashboardController.probedStationCode().length > 0
+            color: AppColors.outline
+            wrapMode: Text.WordWrap
+            Layout.fillWidth: true
+            font: AppTypography.labelMedium
+        }
+
+        Label {
             text: root.probeMessage
             visible: root.probeMessage.length > 0
             color: root.probeStatus === "success"

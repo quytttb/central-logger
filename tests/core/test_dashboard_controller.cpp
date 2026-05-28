@@ -38,6 +38,8 @@ private slots:
     void getLoggerFormDataMatchesInsert();
     void findAllWithSensorCountsCountsRows();
     void buildEditPatchDiffsCorrectly();
+    void buildDeviceConfigPatchEmptyOnAdd();
+    void buildDeviceConfigPatchStripsStationCodeOnEdit();
 };
 
 void TestDashboardController::addLoggerInsertsAndUpdatesModel()
@@ -250,6 +252,38 @@ void TestDashboardController::buildEditPatchDiffsCorrectly()
     patch = DashboardController::buildEditPatch(original, edited);
     QCOMPARE(patch.size(), 2);
     QCOMPARE(patch.value(QStringLiteral("poll_interval")).toInt(), 10);
+}
+
+void TestDashboardController::buildDeviceConfigPatchEmptyOnAdd()
+{
+    QVariantMap probed;
+    probed.insert(QStringLiteral("station_code"), QStringLiteral("EDGE-DEVICE-001"));
+    probed.insert(QStringLiteral("station_name"), QStringLiteral("Edge Name"));
+    probed.insert(QStringLiteral("poll_interval"), 5);
+
+    QVariantMap edited = probed;
+    edited.insert(QStringLiteral("station_name"), QStringLiteral("Central Display"));
+    edited.insert(QStringLiteral("poll_interval"), 2);
+
+    const QVariantMap patch =
+        DashboardController::buildDeviceConfigPatch(true, probed, edited);
+    QVERIFY(patch.isEmpty());
+}
+
+void TestDashboardController::buildDeviceConfigPatchStripsStationCodeOnEdit()
+{
+    QVariantMap probed;
+    probed.insert(QStringLiteral("station_code"), QStringLiteral("EDGE-DEVICE-001"));
+    probed.insert(QStringLiteral("station_name"), QStringLiteral("Old"));
+
+    QVariantMap edited = probed;
+    edited.insert(QStringLiteral("station_code"), QStringLiteral("CENTRAL-CATALOG"));
+    edited.insert(QStringLiteral("station_name"), QStringLiteral("New"));
+
+    const QVariantMap patch =
+        DashboardController::buildDeviceConfigPatch(false, probed, edited);
+    QVERIFY(!patch.contains(QStringLiteral("station_code")));
+    QCOMPARE(patch.value(QStringLiteral("station_name")).toString(), QStringLiteral("New"));
 }
 
 QTEST_MAIN(TestDashboardController)

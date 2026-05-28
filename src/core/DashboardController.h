@@ -149,6 +149,9 @@ public slots:
     /// `station_name` from last GET/probe snapshot (may be empty).
     Q_INVOKABLE QString probedStationName() const;
 
+    /// `station_code` on the edge device from last GET/probe (read-only hint; not Central catalog id).
+    Q_INVOKABLE QString probedStationCode() const;
+
     /// True when a config snapshot is loaded in RAM (Connect or Edit auto-fetch).
     Q_INVOKABLE bool hasProbedConfig() const { return m_probedRevision >= 0; }
 
@@ -188,6 +191,12 @@ public slots:
     /// Returns a QVariantMap with keys that changed (for POST /config body).
     Q_INVOKABLE static QVariantMap buildEditPatch(const QVariantMap &original,
                                                    const QVariantMap &edited);
+
+    /// Device config diff for `POST /config`. **Add:** empty (register Central only;
+    /// do not overwrite edge identity). **Edit:** `buildEditPatch` minus Central-only keys.
+    static QVariantMap buildDeviceConfigPatch(bool isAdd,
+                                              const QVariantMap &probedConfig,
+                                              const QVariantMap &editedConfig);
 
     /// Pushes loggers with `logger_info.enabled` to the Modbus worker and starts polling.
     /// Idempotent; safe to call again after CRUD.

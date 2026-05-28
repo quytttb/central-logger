@@ -131,6 +131,16 @@ Or run `test_rest_config_parser` directly. New cases:
 
 ---
 
+## Add Logger: no POST to edge (2026-05-28 follow-up)
+
+**Problem:** On **Add**, Save pushed `station_code` (Central catalog id) to the device and overwrote the edge station code — monitoring/FTP could stop.
+
+**Fix:** `buildDeviceConfigPatch` returns an **empty** patch on Add (register Central + upsert sensor catalog from probe only). `POST /config` runs on **Edit** when device fields (name, poll interval, …) actually changed. `station_code` is never included in the device patch (`logger_info.station_code` is Central-only).
+
+After **Connect**, the form shows **Edge station code (on device): …** when the device returns one.
+
+---
+
 ## If Save still fails after this fix
 
 | HTTP | Check |
