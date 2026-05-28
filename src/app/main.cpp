@@ -12,6 +12,7 @@
 #include <QFontDatabase>
 #include <QGuiApplication>
 #include <QIcon>
+#include <QLoggingCategory>
 #include <QMetaType>
 #include <QQmlApplicationEngine>
 #include "ThemeSetup.h"
@@ -33,9 +34,12 @@ using CentralLogger::Network::RestConfigService;
 int main(int argc, char *argv[])
 {
 #ifdef Q_OS_WIN
-    // Force Direct3D 11 as the default RHI backend on Windows if none is specified.
-    // This avoids the "Qt was built without Direct3D 12 support" warning on systems
-    // where Qt was built without modern Direct3D 12 SDK headers (e.g. MinGW builds).
+    // Disable the loud warning: "Qt was built without Direct3D 12 support"
+    // which MinGW builds of Qt emit because they lack modern Windows SDK headers.
+    // This is clean and keeps the console output uncluttered.
+    QLoggingCategory::setFilterRules(QStringLiteral("qt.rhi.general.warning=false"));
+
+    // Default to Direct3D 11 for stable DirectX performance on Windows
     if (qgetenv("QSG_RHI_BACKEND").isEmpty()) {
         qputenv("QSG_RHI_BACKEND", "d3d11");
     }
