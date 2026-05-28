@@ -1,0 +1,124 @@
+## Context
+Repo: Central Logger — Qt 6.11 / C++ / QML / CMake (desktop).
+Đọc trước khi code:
+1. AGENTS.md
+2. HANDOFF.md
+3. docs/thiet_ke_db.md (schema SQLite + RAM — spec duy nhất cho DB)
+4. docs/adr/0001-db.md (QSqlDatabase + QSQLITE / Qt6::Sql — đã chốt)
+5. docs/contracts/ (REST, Modbus FC03/02/01, QR — frozen, không đổi API edge)
+
+Khảo sát tuỳ chọn (không SoT): docs/THAM_KHAO_REPO_CU/phase1/ — MVP repo = FE-001..FE-016 (FE-017/tray dropped; FE-014 out).
+
+## Quy tắc bắt buộc
+- MVVM: logic trong C++ (Repository / Service / ViewModel), QML chỉ UI + binding
+- Không dùng .js logic nghiệp vụ (.pragma library)
+- Schema DB đúng docs/thiet_ke_db.md (5 bảng: logger_info, logger_sensor, sensor_reading, system_event, app_settings)
+- Persistence: QSqlDatabase + driver QSQLITE (Qt6::Sql); QSqlQuery trong repositories — docs/adr/0001-db.md
+- Không có api_base_url — REST: http://{host}:{api_port}/api/v1
+- station_code UNIQUE trên logger_info
+- sensor_reading.sensor_id → logger_sensor.id; auto-create logger_sensor khi Modbus gặp edge_sensor_id mới (sensor_type=UNKNOWN)
+- Live sensor values: Modbus FC03 (analog) + FC02 (DI) + FC01 (DO) — không merge GET /readings vào bảng
+- GET /readings: chỉ debug thủ công (1 lần bấm, raw JSON) — rest-config-contract-v1.md §D4–D7
+- Qt Test mới cho repo này; không port code/tests từ repo khác
+- Conventional Commits; không commit trừ khi tôi yêu cầu
+
+## Trạng thái hiện tại
+- CMake skeleton + Main.qml placeholder
+- Chưa có src/data, Modbus, REST đầy đủ
+
+## Task
+(Chỉ giữ MỘT task dưới đây mỗi session — xóa các task khác trước khi gửi agent.)
+
+
+### Task 1: Database + cấu trúc thư mục
+
+Implement:
+
+1. Cấu trúc CMake
+   - src/data/db/ (Database, schema)
+   - src/data/repositories/
+   - src/data/models/ (struct C++ cho từng bảng)
+   - Giữ build chạy được trên Linux
+
+2. 001_initial.sql theo docs/thiet_ke_db.md
+   - 5 bảng + index + UNIQUE constraints
+   - Seed app_settings id=1
+
+3. class Database
+   - QSqlDatabase + QSQLITE
+   - Path mặc định ~/.central-logger/central-logger.db
+   - init(): tạo thư mục nếu cần, chạy 001_initial.sql khi DB mới
+
+4. Repositories (CRUD cơ bản + unit test)
+   - LoggerRepository (logger_info, gồm station_code UNIQUE)
+   - SensorCatalogRepository (logger_sensor, upsert theo logger_id + edge_sensor_id)
+   - SensorReadingRepository (insert batch, purge theo retention days)
+   - EventRepository (system_event)
+   - SettingsRepository (app_settings id=1)
+
+5. Qt Test
+   - Test init DB in-memory (:memory:)
+   - Test insert logger + unique station_code fail
+   - Test auto-create logger_sensor + insert sensor_reading FK
+
+Không implement Modbus/REST/QML UI đầy đủ trong task này.
+Không BaseViewModel abstract hay DI framework.
+Báo cáo: file đã tạo, lệnh build/test. ADR DB: docs/adr/0001-db.md (đã chốt).
+
+
+### Task 2: App shell + QML module CentralLogger.Core
+
+Phụ thuộc: Database đã init được.
+
+1. qt_add_qml_module URI CentralLogger.Core (document trong CMake)
+2. AppState QML_SINGLETON: totalLoggers, onlineLoggers, alarmCount, statusText
+3. Main.qml: ApplicationWindow, sidebar 4 view placeholder (dashboard, loggers, logger-detail, settings), crossfade
+4. SettingsController: đọc/ghi app_settings (theme, timezone, retention, maintenance) qua SettingsRepository
+5. Wire Database::init() trong main.cpp trước load QML
+
+Vertical slice: đổi theme trong Settings → lưu DB → mở lại app vẫn đúng.
+Không Modbus/REST trong task này.
+
+
+### Task 3: Logger CRUD + LoggerListModel
+
+Theo docs/thiet_ke_db.md + docs/contracts/provision-qr-v1.md (QR Nice-to-have sau).
+
+1. LoggerListModel (QAbstractListModel): roles name, host, modbus_port, status, sensorCount, ...
+2. LoggerRepository: add/update/delete logger_info (cascade logger_sensor, sensor_reading, system_event)
+3. DashboardController hoặc facade mỏng: addLogger, removeLogger, getLoggerFormData
+4. QML LoggersView placeholder: list + dialog Add (station_code, name, host, modbus_port, api_token, api_port)
+
+Validation: station_code required + UNIQUE.
+Chưa Modbus poll.
+
+
+### Task 4: Modbus poll + auto-create catalog
+
+Theo docs/contracts/modbus-map-v1.md và docs/thiet_ke_db.md.
+
+1. ModbusMapParser (header-only): header HR0–HR6 (Na, Ndi, Ndo); analog blocks ABCD; unpack FC02/FC01 bit arrays
+2. ModbusService: QThread worker, QModbusTcpClient hỗ trợ FC 01, 02, 03 (ADR ngắn nếu chọn QTcpSocket thay thế)
+3. ModbusBridge mỗi chu kỳ: FC03 header + analog chunks (multi-PDU nếu Na>14) → FC02 (Ndi) → FC01 (Ndo)
+   - upsert logger_sensor (UNKNOWN nếu mới)
+   - insert sensor_reading (DI/DO lưu 0.0/1.0)
+   - update logger_info.status, last_seen
+   - QueuedConnection về UI thread
+4. Cập nhật LoggerListModel: online/offline, sensorCount
+
+Không REST trong task này.
+Qt Test: ModbusMapParser (pure C++), planReads(Na) chunking.
+
+
+### Task 5: REST config fetch/apply + readings debug
+
+Theo docs/contracts/rest-config-contract-v1.md.
+
+1. RestConfigService (QNetworkAccessManager): GET/POST /api/v1/config, Bearer token
+2. LoggerDetailViewModel: rawConfig, currentRevision chỉ RAM; không persist raw JSON
+3. fetchConfig / applyConfig với last_revision; human-readable 401/409
+4. Sau fetch/apply: upsert logger_sensor metadata từ GET /config (không từ /readings)
+5. fetchReadingsDebug(loggerId): nút debug → hiện raw JSON một lần; không merge vào SensorMerger / bảng live
+
+QML: nút fetch config + nút "Fetch readings (debug)" trên Logger Detail placeholder.
+Không poll /readings định kỳ.
