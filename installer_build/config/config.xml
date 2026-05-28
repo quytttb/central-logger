@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Installer>
+    <Name>Central Logger</Name>
+    <Version>1.0.0</Version>
+    <Title>Central Logger Setup</Title>
+    <Publisher>4M Technologies</Publisher>
+    <StartMenuDir>Central Logger</StartMenuDir>
+    <TargetDir>@RootDir@/CentralLogger</TargetDir>
+    <StyleSheet>style.qss</StyleSheet>
+    <WizardStyle>Modern</WizardStyle>
+    <WizardDefaultWidth>850</WizardDefaultWidth>
+    <WizardDefaultHeight>500</WizardDefaultHeight>
+    <InstallerApplicationIcon>app_icon</InstallerApplicationIcon>
+    <InstallerWindowIcon>window_icon.png</InstallerWindowIcon>
+    <Logo>logo.png</Logo>
+</Installer>

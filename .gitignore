@@ -91,3 +91,8 @@ $RECYCLE.BIN/
 *.swp
 *.swo
 .cache/
+
+# --- Installer / Packaging ---
+installer_build/packages/*/data/
+installer_build/CentralLoggerSetup.exe
+convert_tool/build/

@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Package>
+    <DisplayName>Central Logger Application</DisplayName>
+    <Description>Desktop application for centralizing and managing Data Loggers over Modbus TCP and REST API.</Description>
+    <Version>1.0.0</Version>
+    <ReleaseDate>2026-05-28</ReleaseDate>
+    <Default>true</Default>
+    <Script>installscript.qs</Script>
+</Package>
