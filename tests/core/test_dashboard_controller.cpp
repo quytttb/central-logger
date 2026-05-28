@@ -39,6 +39,7 @@ private slots:
     void findAllWithSensorCountsCountsRows();
     void buildEditPatchDiffsCorrectly();
     void buildEditPatchOmitsUnchangedStationCode();
+    void buildEditPatchNeverPostsStationCode();
 };
 
 void TestDashboardController::addLoggerInsertsAndUpdatesModel()
@@ -267,6 +268,21 @@ void TestDashboardController::buildEditPatchOmitsUnchangedStationCode()
     const QVariantMap patch = DashboardController::buildEditPatch(original, edited);
     QVERIFY(!patch.contains(QStringLiteral("station_code")));
     QVERIFY(patch.isEmpty());
+}
+
+void TestDashboardController::buildEditPatchNeverPostsStationCode()
+{
+    QVariantMap original;
+    original.insert(QStringLiteral("station_code"), QStringLiteral("EDGE-01"));
+    original.insert(QStringLiteral("station_name"), QStringLiteral("Plant A"));
+
+    QVariantMap edited = original;
+    edited.insert(QStringLiteral("station_code"), QStringLiteral("EDGE-02"));
+    edited.insert(QStringLiteral("station_name"), QStringLiteral("Plant B"));
+
+    const QVariantMap patch = DashboardController::buildEditPatch(original, edited);
+    QVERIFY(!patch.contains(QStringLiteral("station_code")));
+    QCOMPARE(patch.value(QStringLiteral("station_name")).toString(), QStringLiteral("Plant B"));
 }
 
 QTEST_MAIN(TestDashboardController)

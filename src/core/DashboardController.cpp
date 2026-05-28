@@ -894,6 +894,19 @@ void DashboardController::saveLoggerFromForm(bool isAdd,
     const QString nm  = name.trimmed();
     const QString hst = host.trimmed();
 
+    Data::LoggerRepository repoEarly(m_db->connection());
+    QString                lookupErr;
+    std::optional<Data::LoggerInfo> existingRow;
+    if (!isAdd) {
+        existingRow = repoEarly.findById(loggerId, &lookupErr);
+        if (!existingRow) {
+            setError(lookupErr.isEmpty() ? QStringLiteral("Logger không tồn tại")
+                                         : lookupErr);
+            emit formSaveFinished(false, loggerId, m_lastError);
+            return;
+        }
+    }
+
     QString code;
     if (isAdd) {
         code = probedStationCode().trimmed();
@@ -904,16 +917,7 @@ void DashboardController::saveLoggerFromForm(bool isAdd,
             return;
         }
     } else {
-        Data::LoggerRepository lookup(m_db->connection());
-        QString                lookupErr;
-        const auto             existing = lookup.findById(loggerId, &lookupErr);
-        if (!existing) {
-            setError(lookupErr.isEmpty() ? QStringLiteral("Logger không tồn tại")
-                                         : lookupErr);
-            emit formSaveFinished(false, loggerId, m_lastError);
-            return;
-        }
-        code = existing->stationCode;
+        code = existingRow->stationCode;
     }
 
     if (!validateCommon(code, nm, hst, modbusPort, apiPort)) {
@@ -969,23 +973,14 @@ void DashboardController::saveLoggerFromForm(bool isAdd,
         }
         savedId = info.id;
     } else {
-        const auto existing = repo.findById(loggerId, &err);
-        if (!existing) {
-            conn.rollback();
-            m_formSaveInProgress = false;
-            setError(err.isEmpty() ? QStringLiteral("Logger không tồn tại") : err);
-            emit formSaveFinished(false, loggerId, m_lastError);
-            return;
-        }
-
-        Data::LoggerInfo info = *existing;
+        Data::LoggerInfo info = *existingRow;
         info.stationCode          = code;
         info.name                 = nm;
         info.host                 = hst;
         info.modbusPort           = modbusPort;
-        info.modbusUnitId         = modbusUnitId > 0 ? modbusUnitId : existing->modbusUnitId;
+        info.modbusUnitId         = modbusUnitId > 0 ? modbusUnitId : existingRow->modbusUnitId;
         info.centralPollIntervalS = pollS;
-        info.timeoutS             = timeoutS > 0 ? static_cast<double>(timeoutS) : existing->timeoutS;
+        info.timeoutS             = timeoutS > 0 ? static_cast<double>(timeoutS) : existingRow->timeoutS;
         info.enabled              = true;
         info.apiPort              = apiPort;
         info.apiToken             = apiToken;
@@ -1097,6 +1092,10 @@ QVariantMap DashboardController::buildEditPatch(const QVariantMap &original,
     // actually differs from `original`. This avoids sending unchanged fields
     // to POST /config (optimistic lock payload should be minimal).
     for (auto it = edited.constBegin(); it != edited.constEnd(); ++it) {
+        // station_code is Central DB / probe only — never POST to edge.
+        if (it.key() == QLatin1String("station_code")) {
+            continue;
+        }
         const auto origVal = original.value(it.key());
         if (origVal != it.value()) {
             patch.insert(it.key(), it.value());

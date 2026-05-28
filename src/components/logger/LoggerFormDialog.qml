@@ -22,9 +22,6 @@ Dialog {
     property string probeStatus: ""
     property string probeMessage: ""
 
-    property string _baselineHost: ""
-    property int    _baselineApiPort: 0
-    property string _baselineApiToken: ""
     property bool   _suppressInvalidate: false
 
     signal saved(int loggerId)
@@ -71,18 +68,11 @@ Dialog {
         root.probeMessage = "";
     }
 
-    function setConnectionBaseline() {
-        root._baselineHost = hostField.text.trim();
-        root._baselineApiPort = apiPortSpin.value;
-        root._baselineApiToken = apiTokenField.text.trim();
-    }
-
     function onConfigLoadSuccess() {
         root.configLoaded = true;
         root.configLoadError = "";
         root.probeStatus = "success";
         root.probeMessage = qsTr("Device config loaded.");
-        root.setConnectionBaseline();
         root.applyLoadedConfigToFields();
     }
 
@@ -105,7 +95,6 @@ Dialog {
         root.saveInProgress = false;
         root.probeStatus = "";
         root.probeMessage = "";
-        root.setConnectionBaseline();
         DashboardController.clearProbedConfig();
         DashboardController.clearLastError();
         visible = true;

@@ -144,7 +144,6 @@ Item {
                             required property int  row
                             required property int  column
                             required property var  loggerId
-                            required property var  stationCode
                             required property var  name
                             required property var  host
                             required property var  modbusPort

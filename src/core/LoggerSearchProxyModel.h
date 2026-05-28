@@ -6,7 +6,7 @@
 namespace CentralLogger::Core {
 
 /// Search proxy over LoggerListModel (DashboardController.loggers).
-/// Filters on name and host columns.  FE-004.
+/// Filters on stationCode, name, and host roles.  FE-004.
 ///
 /// Exposed to QML as `LoggerSearchProxyModel`; the QML side sets
 /// `filterText` and binds `sourceModel` to `DashboardController.loggers`.

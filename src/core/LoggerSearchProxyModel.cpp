@@ -24,10 +24,12 @@ bool LoggerSearchProxyModel::filterAcceptsRow(int sourceRow,
     if (m_filterText.isEmpty()) return true;
 
     const QModelIndex idx = sourceModel()->index(sourceRow, 0, sourceParent);
+    const QString code = idx.data(LoggerListModel::StationCodeRole).toString();
     const QString name = idx.data(LoggerListModel::NameRole).toString();
     const QString host = idx.data(LoggerListModel::HostRole).toString();
 
-    return name.contains(m_filterText, Qt::CaseInsensitive)
+    return code.contains(m_filterText, Qt::CaseInsensitive)
+        || name.contains(m_filterText, Qt::CaseInsensitive)
         || host.contains(m_filterText, Qt::CaseInsensitive);
 }
 
