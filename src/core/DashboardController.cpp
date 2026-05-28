@@ -724,7 +724,7 @@ QString DashboardController::probedStationCode() const
 {
     const auto v = m_probedConfigObject.value(QLatin1String("station_code"));
     if (v.isString()) {
-        return v.toString().trimmed();
+        return v.toString();
     }
     return {};
 }
@@ -867,13 +867,11 @@ bool DashboardController::waitForConfigApply(qint64 loggerId, int expectedRevisi
 
 void DashboardController::saveLoggerFromForm(bool isAdd,
                                            qint64 loggerId,
-                                           const QString &stationCode,
                                            const QString &name,
                                            const QString &host,
                                            int modbusPort,
                                            int apiPort,
                                            const QString &apiToken,
-                                           const QString &note,
                                            int modbusUnitId,
                                            int pollIntervalS,
                                            int timeoutS)
@@ -893,9 +891,31 @@ void DashboardController::saveLoggerFromForm(bool isAdd,
         return;
     }
 
-    const QString code = stationCode.trimmed();
-    const QString nm   = name.trimmed();
-    const QString hst  = host.trimmed();
+    const QString nm  = name.trimmed();
+    const QString hst = host.trimmed();
+
+    QString code;
+    if (isAdd) {
+        code = probedStationCode().trimmed();
+        if (code.isEmpty()) {
+            setError(QStringLiteral(
+                "Device config has no station code. Connect again, then save."));
+            emit formSaveFinished(false, loggerId, m_lastError);
+            return;
+        }
+    } else {
+        Data::LoggerRepository lookup(m_db->connection());
+        QString                lookupErr;
+        const auto             existing = lookup.findById(loggerId, &lookupErr);
+        if (!existing) {
+            setError(lookupErr.isEmpty() ? QStringLiteral("Logger không tồn tại")
+                                         : lookupErr);
+            emit formSaveFinished(false, loggerId, m_lastError);
+            return;
+        }
+        code = existing->stationCode;
+    }
+
     if (!validateCommon(code, nm, hst, modbusPort, apiPort)) {
         emit formSaveFinished(false, loggerId, m_lastError);
         return;
@@ -906,8 +926,8 @@ void DashboardController::saveLoggerFromForm(bool isAdd,
     editedMap.insert(QStringLiteral("station_name"), nm);
     const int pollS = pollIntervalS > 0 ? pollIntervalS : 2;
     editedMap.insert(QStringLiteral("poll_interval"), pollS);
-    const QVariantMap patchMap =
-        buildDeviceConfigPatch(isAdd, originalMap, editedMap);
+    // station_code: Central DB only (from probe on add); never in edge POST patch.
+    const QVariantMap patchMap = buildEditPatch(originalMap, editedMap);
     const QJsonObject patchJson = QJsonObject::fromVariantMap(patchMap);
     const bool        needsPost = !patchJson.isEmpty();
 
@@ -938,7 +958,6 @@ void DashboardController::saveLoggerFromForm(bool isAdd,
         info.enabled              = true;
         info.apiPort              = apiPort;
         info.apiToken             = apiToken;
-        info.note                 = note;
         info.lastRevision         = m_probedRevision;
 
         if (!repo.insert(info, &err)) {
@@ -970,7 +989,6 @@ void DashboardController::saveLoggerFromForm(bool isAdd,
         info.enabled              = true;
         info.apiPort              = apiPort;
         info.apiToken             = apiToken;
-        info.note                 = note;
         info.lastRevision         = m_probedRevision;
 
         if (!repo.update(info, &err)) {
@@ -1084,21 +1102,6 @@ QVariantMap DashboardController::buildEditPatch(const QVariantMap &original,
             patch.insert(it.key(), it.value());
         }
     }
-    return patch;
-}
-
-QVariantMap DashboardController::buildDeviceConfigPatch(bool isAdd,
-                                                        const QVariantMap &probedConfig,
-                                                        const QVariantMap &editedConfig)
-{
-    // Add: probe is for catalog + validation only — never push to edge (legacy
-    // LoggerFormLogic: config patch only when mode === "edit").
-    if (isAdd) {
-        return {};
-    }
-    QVariantMap patch = buildEditPatch(probedConfig, editedConfig);
-    // `logger_info.station_code` is Central catalog id; edge keeps its own code.
-    patch.remove(QStringLiteral("station_code"));
     return patch;
 }
 

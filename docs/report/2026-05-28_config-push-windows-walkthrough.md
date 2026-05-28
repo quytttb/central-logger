@@ -131,13 +131,17 @@ Or run `test_rest_config_parser` directly. New cases:
 
 ---
 
-## Add Logger: no POST to edge (2026-05-28 follow-up)
+## Station code — hidden from UI (follow-up)
 
-**Problem:** On **Add**, Save pushed `station_code` (Central catalog id) to the device and overwrote the edge station code — monitoring/FTP could stop.
+**Symptom:** Manual station code on Add could POST to edge and break monitoring.
 
-**Fix:** `buildDeviceConfigPatch` returns an **empty** patch on Add (register Central + upsert sensor catalog from probe only). `POST /config` runs on **Edit** when device fields (name, poll interval, …) actually changed. `station_code` is never included in the device patch (`logger_info.station_code` is Central-only).
+**Fix:**
 
-After **Connect**, the form shows **Edge station code (on device): …** when the device returns one.
+- **No Station code field** in Add/Edit dialog.
+- On **Add**, `logger_info.station_code` is taken from device `GET /config` snapshot only (`probedStationCode()`).
+- On **Edit**, station code in DB is unchanged (not editable).
+- **Never** include `station_code` in `POST /config` patch; POST only when `buildEditPatch` finds real changes (`station_name`, `poll_interval`, …).
+- Loggers table column **Station** removed; list shows Name, Host, …
 
 ---
 

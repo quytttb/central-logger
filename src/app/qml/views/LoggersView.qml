@@ -108,7 +108,7 @@ Item {
                                 cornerRadius: AppTheme.cardRadius
                                 roundTopLeft: column === 0
                                 roundTopRight: column === loggerTable.colWidths.length - 1
-                                alignRight: column === 3 || column === 4
+                                alignRight: column === 2 || column === 3
                             }
                         }
 
@@ -120,8 +120,8 @@ Item {
                             model: searchProxy
                             clip: true
 
-                            readonly property var colWeights:  [0, 1, 1, 0, 0, 0, 0]
-                            readonly property var colMinimums: [100, 96, 96, 76, 76, 96, 92]
+                            readonly property var colWeights:  [1, 1, 0, 0, 0, 0]
+                            readonly property var colMinimums: [96, 96, 76, 76, 96, 92]
                             property var colWidths: []
 
                             function recomputeColumns() {
@@ -158,7 +158,7 @@ Item {
                             hoverEnabled: true
 
                             onClicked: {
-                                if (loggerCell.column !== 6)
+                                if (loggerCell.column !== 5)
                                     root.selectLogger(loggerCell.loggerId)
                             }
 
@@ -170,24 +170,22 @@ Item {
                             contentItem: Item {
                                 Label {
                                     anchors { fill: parent; leftMargin: 8; rightMargin: 8 }
-                                    visible: loggerCell.column < 5
+                                    visible: loggerCell.column < 4
                                     verticalAlignment: Text.AlignVCenter
                                     text: {
                                         switch (loggerCell.column) {
-                                        case 0: return loggerCell.stationCode || ""
-                                        case 1: return loggerCell.name || ""
-                                        case 2: return loggerCell.host || ""
-                                        case 3: return loggerCell.modbusPort !== undefined
+                                        case 0: return loggerCell.name || ""
+                                        case 1: return loggerCell.host || ""
+                                        case 2: return loggerCell.modbusPort !== undefined
                                                        ? String(loggerCell.modbusPort) : ""
-                                        case 4: return loggerCell.sensorCount !== undefined
+                                        case 3: return loggerCell.sensorCount !== undefined
                                                        ? String(loggerCell.sensorCount) : ""
                                         default: return ""
                                         }
                                     }
-                                    font.family: loggerCell.column === 0 ? "monospace" : ""
-                                    horizontalAlignment: loggerCell.column >= 3
+                                    horizontalAlignment: loggerCell.column >= 2
                                                          ? Text.AlignRight : Text.AlignLeft
-                                    color: loggerCell.column >= 2 && loggerCell.column <= 4
+                                    color: loggerCell.column >= 1 && loggerCell.column <= 3
                                            ? AppColors.tableCellMuted
                                            : AppColors.primaryText
                                     elide: Text.ElideRight
@@ -195,7 +193,7 @@ Item {
 
                                 RowLayout {
                                     anchors { fill: parent; leftMargin: 8; rightMargin: 8 }
-                                    visible: loggerCell.column === 5
+                                    visible: loggerCell.column === 4
                                     spacing: 4
 
                                     Label {
@@ -229,7 +227,7 @@ Item {
 
                                 RowLayout {
                                     anchors { fill: parent; leftMargin: 4; rightMargin: 4 }
-                                    visible: loggerCell.column === 6
+                                    visible: loggerCell.column === 5
                                     spacing: 4
 
                                     ToolButton {
@@ -255,7 +253,7 @@ Item {
                                         ToolTip.visible: hovered
                                         onClicked: {
                                             confirmDelete.targetId   = loggerCell.loggerId
-                                            confirmDelete.targetCode = loggerCell.stationCode
+                                            confirmDelete.targetCode = loggerCell.name
                                             confirmDelete.open()
                                         }
                                         contentItem: UiIcon {

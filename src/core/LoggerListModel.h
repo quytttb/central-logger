@@ -14,8 +14,8 @@ class Database;
 namespace CentralLogger::Core {
 
 /// Read model that mirrors `logger_info` joined with a denormalized sensor
-/// count. Owns 7 display columns (Station, Name, Host, Modbus port, Sensor
-/// count, Status, Actions placeholder) so `HorizontalHeaderView` and
+/// count. Owns 6 display columns (Name, Host, Modbus port, Sensor count,
+/// Status, Actions placeholder) so `HorizontalHeaderView` and
 /// multi-column `TableView` work without any proxy wrapper. Owned by
 /// `DashboardController`; exposed to QML as the `loggers` property of that
 /// controller (no `QML_ELEMENT` here on purpose).
@@ -27,8 +27,7 @@ class LoggerListModel : public QAbstractTableModel
 public:
     // Display columns — matches QML columnWidthProvider indices.
     enum Column {
-        StationCodeColumn = 0,
-        NameColumn,
+        NameColumn = 0,
         HostColumn,
         ModbusPortColumn,
         SensorCountColumn,

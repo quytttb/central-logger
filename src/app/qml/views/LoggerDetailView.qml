@@ -350,7 +350,7 @@ Item {
 
             Label {
                 text: root.formData.name
-                      ? root.formData.name + "  \u00B7  " + root.formData.stationCode
+                      ? root.formData.name
                       : qsTr("Logger #%1").arg(root.loggerId >= 0 ? root.loggerId : "\u2014")
                 font: AppTypography.titleMedium
                 elide: Text.ElideRight

@@ -1,23 +1,93 @@
-# Build directories
+# --- Build / CMake ---
 build/
 build-*/
 cmake-build-*/
 out/
+_build/
 
-# IDE and Editor files
-.cursor/
-.qtcreator/
-.vscode/
-*.user
-*.user.*
-.idea/
-.DS_Store
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+install_manifest.txt
+CTestTestfile.cmake
+Testing/
+compile_commands.json
 
-# Qt/C++ temporary files
+# --- Qt / C++ generated ---
+*_autogen/
+moc_*.cpp
+ui_*.h
+qrc_*.cpp
+*.qmlc
+*.jsc
+*.autosave
+
+# --- Binaries & link artifacts ---
 *.o
+*.obj
 *.a
+*.lib
 *.so
+*.so.*
 *.dylib
 *.dll
 *.exe
+*.exp
+*.ilk
+*.pdb
+*.pch
+*.iobj
+*.ipdb
+
+# --- Logs & local databases ---
 *.log
+*.db
+*.sqlite
+*.sqlite3
+
+# --- Test / coverage ---
+*.gcda
+*.gcno
+coverage/
+
+# --- IDE: Qt Creator ---
+.qtcreator/
+*.user
+*.user.*
+*.pro.user
+*.pro.user.*
+
+# --- IDE: Visual Studio / VS Code / JetBrains ---
+.vs/
+.vscode/
+.idea/
+*.suo
+*.ncb
+*.opensdf
+*.sdf
+*.VC.db
+*.VC.VC.opendb
+
+# --- IDE: Cursor (local only; do not commit debug logs / plans) ---
+.cursor/
+
+# --- OS: Windows ---
+Thumbs.db
+Thumbs.db:encryptable
+ehthumbs.db
+ehthumbs_vista.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# --- OS: macOS ---
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+
+# --- OS: Linux / editors ---
+*~
+.directory
+*.swp
+*.swo
+.cache/

@@ -30,7 +30,6 @@ QVariant LoggerListModel::data(const QModelIndex &index, int role) const
     // Column-specific display value for TableView cells and HorizontalHeaderView.
     if (role == Qt::DisplayRole || role == Qt::EditRole) {
         switch (index.column()) {
-        case StationCodeColumn: return row.info.stationCode;
         case NameColumn:        return row.info.name;
         case HostColumn:        return row.info.host;
         case ModbusPortColumn:  return row.info.modbusPort;
@@ -70,7 +69,6 @@ QVariant LoggerListModel::headerData(int section, Qt::Orientation orientation, i
         return {};
     }
     switch (section) {
-    case StationCodeColumn: return tr("Station");
     case NameColumn:        return tr("Name");
     case HostColumn:        return tr("Host");
     case ModbusPortColumn:  return tr("Modbus");
