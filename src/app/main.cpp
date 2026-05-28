@@ -11,6 +11,7 @@
 #include <QCoreApplication>
 #include <QFontDatabase>
 #include <QGuiApplication>
+#include <QIcon>
 #include <QMetaType>
 #include <QQmlApplicationEngine>
 #include "ThemeSetup.h"
@@ -31,9 +32,19 @@ using CentralLogger::Network::RestConfigService;
 
 int main(int argc, char *argv[])
 {
+#ifdef Q_OS_WIN
+    // Force Direct3D 11 as the default RHI backend on Windows if none is specified.
+    // This avoids the "Qt was built without Direct3D 12 support" warning on systems
+    // where Qt was built without modern Direct3D 12 SDK headers (e.g. MinGW builds).
+    if (qgetenv("QSG_RHI_BACKEND").isEmpty()) {
+        qputenv("QSG_RHI_BACKEND", "d3d11");
+    }
+#endif
+
     CentralLogger::Theme::applyQuickControlsStyle();
 
     QGuiApplication app(argc, argv);
+    app.setWindowIcon(QIcon(QStringLiteral(":/qt/qml/CentralLogger/Components/resources/icons/brand_4m_technologies_blue.svg")));
     QCoreApplication::setOrganizationName(QStringLiteral("4M Technologies"));
     QCoreApplication::setOrganizationDomain(QStringLiteral("4mtech.vn"));
     QCoreApplication::setApplicationName(QStringLiteral("Central Logger"));

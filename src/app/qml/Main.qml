@@ -12,6 +12,7 @@ ApplicationWindow {
     width: 1280
     height: 800
     visible: true
+    visibility: Window.Maximized
     title: qsTr("Central Logger")
 
     Material.theme:   AppTheme.materialTheme

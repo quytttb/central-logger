@@ -11,6 +11,7 @@
 #include <QNetworkRequest>
 #include <QSet>
 #include <QUrl>
+#include <QtDebug>
 
 namespace CentralLogger::Network {
 
@@ -173,11 +174,13 @@ void RestConfigService::applyConfig(qint64 loggerId,
         const QByteArray body = reply->readAll();
         const bool ok = (reply->error() == QNetworkReply::NoError && status >= 200 && status < 300);
         const QString pretty = RestConfigParser::prettyJson(body);
+
         if (ok) {
             emit configApplied(loggerId, true, status, pretty, QString{});
         } else {
-            emit configApplied(loggerId, false, status, pretty,
-                               RestConfigParser::formatRestError(status, body, reply->errorString()));
+            const QString formatted = RestConfigParser::formatRestError(status, body, reply->errorString());
+            qWarning() << "[RestConfig] Apply config failed. Status:" << status << "Error:" << formatted << "Body:" << body;
+            emit configApplied(loggerId, false, status, pretty, formatted);
         }
     });
 }

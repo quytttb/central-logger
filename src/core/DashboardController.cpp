@@ -982,6 +982,7 @@ void DashboardController::saveLoggerFromForm(bool isAdd,
             conn.rollback();
             m_formSaveInProgress = false;
             setError(applyErr);
+            qWarning() << "[Dashboard] Failed to push config to logger #" << savedId << ":" << applyErr;
             logEvent(savedId, QStringLiteral("Warning"),
                      QStringLiteral("Failed to push config to logger #%1: %2")
                          .arg(savedId).arg(applyErr));
