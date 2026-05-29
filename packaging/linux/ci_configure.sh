@@ -34,9 +34,13 @@ discover_qt_prefix() {
 }
 
 if ! qt_prefix="$(discover_qt_prefix)"; then
-  echo "::error::Qt 6.11 prefix not found. Set QT_ROOT_DIR or run install_qt_aqt.sh" >&2
+  echo "::error::Qt 6.11 prefix not found (QT_ROOT_DIR=${QT_ROOT_DIR:-unset})" >&2
   ls -la "${GITHUB_WORKSPACE:-.}/../Qt/6.11.1" 2>/dev/null >&2 || true
   exit 1
+fi
+
+if [[ -n "${GITHUB_WORKSPACE:-}" ]]; then
+  echo "${qt_prefix}" > "${GITHUB_WORKSPACE}/.ci_qt_root"
 fi
 
 qmake="${qt_prefix}/bin/qmake6"
