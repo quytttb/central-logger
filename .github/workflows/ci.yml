@@ -42,6 +42,7 @@ jobs:
           arch: linux_gcc_64
           modules: ${{ env.QT_MODULES }}
           install-deps: false
+          setup-python: false
           cache: true
           cache-key-prefix: qt611-full-v4
 
