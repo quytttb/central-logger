@@ -98,6 +98,12 @@ jobs:
         with:
           python-version: "3.12"
 
+      - name: Setup CMake and Ninja
+        uses: lukka/get-cmake@latest
+        with:
+          cmakeVersion: "~3.28.0"
+          ninjaVersion: latest
+
       - name: Read version
         id: meta
         shell: bash
@@ -116,14 +122,20 @@ jobs:
           cache: false
 
       - name: Install Qt
-        uses: jurplel/install-qt-action@v4
-        with:
-          version: ${{ env.QT_VERSION }}
-          host: windows
-          target: desktop
-          arch: win64_mingw1310_64
-          modules: ${{ env.QT_MODULES }}
-          cache: false
+        shell: pwsh
+        env:
+          QT_MODULES: ${{ env.QT_MODULES }}
+        run: |
+          python -m pip install "aqtinstall>=3.3.0"
+          $mods = $env:QT_MODULES -split '\s+'
+          python -m aqt --base https://download.qt.io install-qt windows desktop 6.11.1 win64_mingw1310_64 `
+            -m @mods -O "${{ github.workspace }}/Qt"
+          $qt = "${{ github.workspace }}\Qt\6.11.1\win64_mingw1310_64"
+          if (-not (Test-Path "$qt\lib\cmake\Qt6\Qt6Config.cmake")) {
+            throw "Qt not found at $qt"
+          }
+          echo "QT_ROOT_DIR=$qt" >> $env:GITHUB_ENV
+          Add-Content -Path $env:GITHUB_PATH -Value "$qt\bin"
 
       - name: Install Qt Installer Framework
         shell: pwsh
