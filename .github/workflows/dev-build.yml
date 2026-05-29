@@ -126,11 +126,15 @@ jobs:
         shell: pwsh
         run: |
           $qt = "${{ env.QT_ROOT_DIR }}"
-          if (-not $qt) { $qt = "$env:GITHUB_WORKSPACE\Qt\6.11.1\win64_mingw1310_64" }
-          $env:Path = "$qt\bin;$env:Path"
+          if (-not $qt -and (Test-Path ".ci_qt_root")) { $qt = Get-Content ".ci_qt_root" -Raw }
+          if (-not $qt) { throw "QT_ROOT_DIR not set after aqt install" }
+          $env:Path = "$(Join-Path $qt 'bin');$env:Path"
+          cmake --version
+          & qmake6 -query QT_VERSION
           cmake -S . -B build-dev-win -G Ninja `
             -DCMAKE_BUILD_TYPE=Release `
-            -DCMAKE_PREFIX_PATH="$qt"
+            -DCMAKE_PREFIX_PATH="$qt" `
+            -DQt6_DIR="$(Join-Path $qt 'lib\cmake\Qt6')"
           cmake --build build-dev-win -j
 
       - name: Build QTIFW installer

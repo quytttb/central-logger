@@ -19,18 +19,17 @@ cmake_args=(
   -DCMAKE_INSTALL_PREFIX=/usr
   -DCMAKE_INSTALL_LIBDIR=lib
 )
-if [[ -f "${ROOT}/.ci_qt_root" ]]; then
-  QT_ROOT_DIR="$(cat "${ROOT}/.ci_qt_root")"
-fi
-if [[ -n "${QT_ROOT_DIR:-}" ]]; then
-  cmake_args+=(-DCMAKE_PREFIX_PATH="${QT_ROOT_DIR}" -DQt6_DIR="${QT_ROOT_DIR}/lib/cmake/Qt6")
-elif [[ -x "${ROOT}/packaging/linux/resolve_qt_prefix.sh" ]]; then
-  if QT_PREFIX="$("${ROOT}/packaging/linux/resolve_qt_prefix.sh" 2>/dev/null)"; then
-    cmake_args+=(-DCMAKE_PREFIX_PATH="${QT_PREFIX}" -DQt6_DIR="${QT_PREFIX}/lib/cmake/Qt6")
+if [[ -x "${ROOT}/packaging/linux/ci_configure.sh" ]] && command -v qmake6 >/dev/null 2>&1; then
+  CMAKE_BUILD_TYPE=Release bash "${ROOT}/packaging/linux/ci_configure.sh" "$BUILD"
+else
+  if [[ -f "${ROOT}/.ci_qt_root" ]]; then
+    QT_ROOT_DIR="$(cat "${ROOT}/.ci_qt_root")"
   fi
+  if [[ -n "${QT_ROOT_DIR:-}" ]]; then
+    cmake_args+=(-DCMAKE_PREFIX_PATH="${QT_ROOT_DIR}" -DQt6_DIR="${QT_ROOT_DIR}/lib/cmake/Qt6")
+  fi
+  cmake -S "$ROOT" -B "$BUILD" "${cmake_args[@]}"
 fi
-
-cmake -S "$ROOT" -B "$BUILD" "${cmake_args[@]}"
 
 cmake --build "$BUILD" -j"$(nproc)"
 
