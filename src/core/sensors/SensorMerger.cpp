@@ -1,6 +1,6 @@
 #include "core/sensors/SensorMerger.h"
 
-#include "core/sensors/SensorStatusHelper.h"
+#include "utils/sensors/AttachDiTypeHelper.h"
 
 #include <QHash>
 #include <QSet>
@@ -64,28 +64,65 @@ QString computeAlarmType(double value,
         return QStringLiteral("max");
     }
     if (alarmBit) {
-        return {};
+        return QStringLiteral("device");
     }
     return {};
 }
 
-/// Edge modbus_worker priority: 02 > 03 > 01 > custom > 00.
-QString resolveAttachDiCode(const QVector<Data::LoggerSensor> &catalog,
-                            int parentEdgeSensorId,
-                            const QVector<bool> &diBits)
+bool diLinksToAnalog(const Data::LoggerSensor &child, int parentEdgeSensorId)
 {
-    QString bestCustom;
-    bool has01 = false;
-    bool has03 = false;
+    if (!child.allParentIds.isEmpty()) {
+        return child.allParentIds.contains(parentEdgeSensorId);
+    }
+    return child.parentEdgeSensorId.has_value()
+        && *child.parentEdgeSensorId == parentEdgeSensorId;
+}
+
+QString catalogNameForAttachCode(const QVector<Data::LoggerSensor> &catalog,
+                                 int parentEdgeSensorId,
+                                 const QString &code)
+{
+    for (const auto &child : catalog) {
+        if (child.sensorType != QLatin1String(kDi) || !child.active) {
+            continue;
+        }
+        if (!diLinksToAnalog(child, parentEdgeSensorId)) {
+            continue;
+        }
+        const QString childCode = AttachDiTypeHelper::normalizeCode(
+            child.diType.isEmpty() ? QStringLiteral("00") : child.diType);
+        if (childCode == code) {
+            return child.name;
+        }
+    }
+    return {};
+}
+
+QStringList resolveAttachDiLabels(const QVector<Data::LoggerSensor> &catalog,
+                                  int parentEdgeSensorId,
+                                  const QStringList &codes)
+{
+    QStringList labels;
+    labels.reserve(codes.size());
+    for (const QString &code : codes) {
+        labels.append(AttachDiTypeHelper::displayLabel(
+            code, catalogNameForAttachCode(catalog, parentEdgeSensorId, code)));
+    }
+    return labels;
+}
+
+QStringList resolveAttachDiCodes(const QVector<Data::LoggerSensor> &catalog,
+                                 int parentEdgeSensorId,
+                                 const QVector<bool> &diBits)
+{
+    QSet<QString> seen;
+    QStringList codes;
 
     for (const auto &child : catalog) {
         if (child.sensorType != QLatin1String(kDi)) {
             continue;
         }
-        if (!child.active || !child.parentEdgeSensorId.has_value()) {
-            continue;
-        }
-        if (*child.parentEdgeSensorId != parentEdgeSensorId) {
+        if (!child.active || !diLinksToAnalog(child, parentEdgeSensorId)) {
             continue;
         }
         if (child.edgeSensorId < 0 || child.edgeSensorId >= diBits.size()) {
@@ -95,32 +132,25 @@ QString resolveAttachDiCode(const QVector<Data::LoggerSensor> &catalog,
             continue;
         }
 
-        const QString code = SensorStatusHelper::normalizeDiCode(
+        const QString code = AttachDiTypeHelper::normalizeCode(
             child.diType.isEmpty() ? QStringLiteral("00") : child.diType);
-        if (code == QStringLiteral("02")) {
-            return code;
+        if (!AttachDiTypeHelper::isAttachActiveCode(code) || seen.contains(code)) {
+            continue;
         }
-        if (code == QStringLiteral("03")) {
-            has03 = true;
-        } else if (code == QStringLiteral("01")) {
-            has01 = true;
-        } else if (code != QStringLiteral("00")) {
-            if (bestCustom.isEmpty()) {
-                bestCustom = code;
-            }
-        }
+        seen.insert(code);
+        codes.append(code);
     }
 
-    if (has03) {
-        return QStringLiteral("03");
-    }
-    if (has01) {
-        return QStringLiteral("01");
-    }
-    if (!bestCustom.isEmpty()) {
-        return bestCustom;
-    }
-    return QStringLiteral("00");
+    std::stable_sort(codes.begin(), codes.end(),
+                     [](const QString &a, const QString &b) {
+                         const int ra = AttachDiTypeHelper::sortRank(a);
+                         const int rb = AttachDiTypeHelper::sortRank(b);
+                         if (ra != rb) {
+                             return ra < rb;
+                         }
+                         return a < b;
+                     });
+    return codes;
 }
 
 void applyAnalogStatus(SensorLiveRow &row,
@@ -133,11 +163,12 @@ void applyAnalogStatus(SensorLiveRow &row,
                        double value,
                        const std::optional<double> &minThreshold,
                        const std::optional<double> &maxThreshold,
-                       const QString &attachDiCode)
+                       const QStringList &attachDiCodes,
+                       const QStringList &attachDiLabels)
 {
-    row.diStatusCode.clear();
+    row.attachDiTypeCodes  = attachDiCodes;
+    row.attachDiTypeLabels = attachDiLabels;
     row.alarmType.clear();
-    row.showAlarmBadge = false;
 
     if (!active) {
         row.displayStatus = QStringLiteral("WAIT");
@@ -157,18 +188,6 @@ void applyAnalogStatus(SensorLiveRow &row,
     const bool alarm = alarmBit || isOutOfRange(value, minThreshold, maxThreshold);
     if (alarm) {
         row.alarmType = computeAlarmType(value, alarmBit, minThreshold, maxThreshold);
-    }
-
-    if (SensorStatusHelper::isActiveDiCode(attachDiCode)) {
-        row.diStatusCode = attachDiCode;
-        row.displayStatus = SensorStatusHelper::labelForDiCode(attachDiCode);
-        if (alarm) {
-            row.showAlarmBadge = true;
-        }
-        return;
-    }
-
-    if (alarm) {
         row.displayStatus = QStringLiteral("ALARM");
         return;
     }
@@ -227,8 +246,8 @@ QVector<SensorLiveRow> SensorMerger::buildRows(
         row.timestamp    = timestamp;
 
         const bool active = cat ? cat->active : true;
-        const QString attachCode = resolveAttachDiCode(catalog, sample.edgeSensorId,
-                                                       snapshot.diBits);
+        const QStringList attachCodes = resolveAttachDiCodes(catalog, sample.edgeSensorId,
+                                                             snapshot.diBits);
         applyAnalogStatus(row,
                           active,
                           rtuConnected,
@@ -239,7 +258,8 @@ QVector<SensorLiveRow> SensorMerger::buildRows(
                           static_cast<double>(sample.value),
                           cat ? cat->minThreshold : std::nullopt,
                           cat ? cat->maxThreshold : std::nullopt,
-                          attachCode);
+                          attachCodes,
+                          resolveAttachDiLabels(catalog, sample.edgeSensorId, attachCodes));
 
         rows.append(row);
     }
@@ -301,16 +321,23 @@ QVector<SensorLiveRow> SensorMerger::buildRows(
         rows.append(row);
     };
 
+    QSet<int> seenDiBitIds;
+    QSet<int> seenDoBitIds;
     for (const auto &sensor : catalog) {
         if (sensor.loggerId != loggerId) {
             continue;
         }
-        if (sensor.parentEdgeSensorId.has_value()) {
-            continue;
-        }
         if (sensor.sensorType == QLatin1String(kDi)) {
+            if (seenDiBitIds.contains(sensor.edgeSensorId)) {
+                continue;
+            }
+            seenDiBitIds.insert(sensor.edgeSensorId);
             appendBitRow(sensor, snapshot.diBits);
         } else if (sensor.sensorType == QLatin1String(kDo)) {
+            if (seenDoBitIds.contains(sensor.edgeSensorId)) {
+                continue;
+            }
+            seenDoBitIds.insert(sensor.edgeSensorId);
             appendBitRow(sensor, snapshot.doBits);
         }
     }
@@ -345,17 +372,27 @@ QVector<SensorLiveRow> SensorMerger::buildCatalogPlaceholders(
     const QVector<Data::LoggerSensor> &catalog)
 {
     QVector<SensorLiveRow> rows;
+    QSet<int> seenDiIds;
+    QSet<int> seenDoIds;
     for (const auto &cat : catalog) {
         if (cat.loggerId != loggerId) {
-            continue;
-        }
-        if (cat.parentEdgeSensorId.has_value()) {
             continue;
         }
         if (cat.sensorType != QLatin1String(kAnalog)
             && cat.sensorType != QLatin1String(kDi)
             && cat.sensorType != QLatin1String(kDo)) {
             continue;
+        }
+        if (cat.sensorType == QLatin1String(kDi)) {
+            if (seenDiIds.contains(cat.edgeSensorId)) {
+                continue;
+            }
+            seenDiIds.insert(cat.edgeSensorId);
+        } else if (cat.sensorType == QLatin1String(kDo)) {
+            if (seenDoIds.contains(cat.edgeSensorId)) {
+                continue;
+            }
+            seenDoIds.insert(cat.edgeSensorId);
         }
 
         SensorLiveRow row;

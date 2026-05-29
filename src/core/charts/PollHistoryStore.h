@@ -1,6 +1,6 @@
 #pragma once
 
-#include "ChartDisplayLimits.h"
+#include "utils/charts/ChartDisplayLimits.h"
 #include "network/modbus/ModbusTypes.h"
 
 #include <QDateTime>

@@ -39,7 +39,17 @@ Item {
 
     Connections {
         target: SettingsController
-        function onSaved() { root.syncFromController() }
+        function onSaved() {
+            root.syncFromController()
+            AppNotifier.show(qsTr("Settings saved successfully."), "success")
+        }
+        function onError(message) {
+            AppNotifier.show(
+                qsTr("Failed to save settings"),
+                "error",
+                { detailText: message, detailTitle: qsTr("Settings save error") }
+            )
+        }
     }
 
     ColumnLayout {

@@ -164,6 +164,8 @@ Item {
 
                             delegate: RecentEventListItem {
                                 onActivated: loggerId => root.selectLogger(loggerId)
+                                onDetailRequested: (title, body, loggerId) =>
+                                    AppNotifier.openDetail(title, body, loggerId)
                             }
                         }
                     }

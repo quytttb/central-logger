@@ -2,6 +2,7 @@ import QtQuick
 import QtQuick.Controls.Material
 import QtQuick.Layouts
 
+import CentralLogger.Components
 import CentralLogger.Core
 import CentralLogger.Theme
 
@@ -18,6 +19,36 @@ Pane {
     required property var createdAt
 
     signal activated(int loggerId)
+    signal detailRequested(string title, string body, int loggerId)
+
+    readonly property string _reportSavedPrefix: DesktopService.reportSavedMessagePrefix()
+
+    readonly property bool _isReportSaved: {
+        const m = message || ""
+        return m.length > _reportSavedPrefix.length
+               && m.indexOf(_reportSavedPrefix) === 0
+    }
+
+    readonly property string _reportSavedPath: {
+        if (!_isReportSaved)
+            return ""
+        return (message || "").substring(_reportSavedPrefix.length).trim()
+    }
+
+    /// List shows basename only; click still copies full path from `_reportSavedPath`.
+    readonly property string displayMessage: {
+        if (!_isReportSaved)
+            return message || ""
+        const base = DesktopService.fileBaseName(_reportSavedPath)
+        return _reportSavedPrefix + (base.length > 0 ? base : _reportSavedPath)
+    }
+
+    readonly property bool _isAudit: {
+        if (_isReportSaved)
+            return false
+        const t = (eventType || "").toLowerCase()
+        return t === "online" || t === "offline" || t === "info"
+    }
 
     readonly property color levelColor: AppColors.severityColor(displayLevel)
 
@@ -35,10 +66,25 @@ Pane {
     HoverHandler { id: hoverHandler }
 
     TapHandler {
-        enabled: loggerId !== undefined && loggerId !== null
         onTapped: {
-            if (loggerId !== undefined && loggerId !== null)
-                root.activated(loggerId)
+            if (root._isReportSaved) {
+                if (DesktopService.copyToClipboard(root._reportSavedPath)) {
+                    AppNotifier.show(qsTr("Path copied to clipboard"), "success", { durationMs: 2500 })
+                }
+                return
+            }
+            if (root._isAudit) {
+                if (loggerId !== undefined && loggerId !== null && loggerId > 0)
+                    root.activated(loggerId)
+                else
+                    root.detailRequested(eventType || "", message || "", -1)
+            } else {
+                root.detailRequested(
+                    eventType || "",
+                    message   || "",
+                    (loggerId !== undefined && loggerId !== null && loggerId > 0) ? loggerId : -1
+                )
+            }
         }
     }
 
@@ -85,8 +131,10 @@ Pane {
 
             Label {
                 Layout.fillWidth: true
-                text: message || ""
+                text: root.displayMessage
                 wrapMode: Text.WordWrap
+                maximumLineCount: 2
+                elide: Text.ElideRight
                 color: AppColors.textSoft
                 font: AppTypography.bodyMedium
             }

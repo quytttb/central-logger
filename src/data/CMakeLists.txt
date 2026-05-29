@@ -59,4 +59,5 @@ target_link_libraries(data
     PUBLIC
         Qt6::Core
         Qt6::Sql
+        utils
 )

@@ -37,6 +37,13 @@ QtObject {
     readonly property string inbox:             "\uE156"  // inbox
     readonly property string description:       "\uE873"  // description
     readonly property string wifiOff:           "\uE648"  // wifi_off
+    readonly property string arrowUpward:       "\uE5D8"  // arrow_upward
+    readonly property string arrowDownward:     "\uE5DB"  // arrow_downward
+    readonly property string checkCircle:       "\uE92D"  // check_circle_outline
+    readonly property string warning:           "\uE002"  // warning (same glyph as alertOutline)
+    readonly property string error:             "\uE000"  // error
+    readonly property string info:              "\uE88E"  // info (same glyph as informationOutline)
+    readonly property string sensors:           "\uE51F"  // sensors
 
     function glyph(name) {
         switch (name) {
@@ -69,6 +76,13 @@ QtObject {
         case "inbox":               return inbox
         case "description":         return description
         case "wifiOff":             return wifiOff
+        case "arrowUpward":         return arrowUpward
+        case "arrowDownward":       return arrowDownward
+        case "checkCircle":         return checkCircle
+        case "warning":             return warning
+        case "error":               return error
+        case "info":                return info
+        case "sensors":             return sensors
         default:                    return close
         }
     }

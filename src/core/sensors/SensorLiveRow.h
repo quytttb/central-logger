@@ -1,6 +1,7 @@
 #pragma once
 
 #include <QString>
+#include <QStringList>
 
 namespace CentralLogger::Core {
 
@@ -13,18 +14,18 @@ struct SensorLiveRow
     QString sensorType;   // ANALOG|DI|DO|UNKNOWN
     QString unit;
     QString value;        // formatted: "25.50" (analog) or "ON"/"OFF" (DI/DO)
-    /// Chip text: WAIT|OK|ALARM|ERR|STALE or attach-DI label (Monitoring, Error, …).
+    /// Operational chip: WAIT|OK|ALARM|ERR|STALE (not attach-DI labels).
     QString displayStatus;
-    /// Raw attach-DI code (00–03/custom) when applicable; empty otherwise.
-    QString diStatusCode;
-    /// min|max|min+max when alarm; empty otherwise.
+    /// Active attach-DI type codes for this analog (`di_type`, sorted 02→03→01→custom).
+    QStringList attachDiTypeCodes;
+    /// Chip labels parallel to attachDiTypeCodes (catalog name for custom di_type codes).
+    QStringList attachDiTypeLabels;
+    /// min|max|min+max|device when alarm; empty otherwise.
     QString alarmType;
     QString timestamp;    // HH:mm:ss UTC from snapshot.measuredAt
     bool    valid = true;
     bool    alarm = false;
     bool    stale = false;
-    /// True when row.alarm — UI may show secondary ALARM badge on attach-DI chip.
-    bool    showAlarmBadge = false;
 };
 
 } // namespace CentralLogger::Core

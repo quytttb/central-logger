@@ -33,7 +33,8 @@ set(QT_QML_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}" CACHE PATH
 include(GNUInstallDirs)
 
 # Qt recommended layout — see cmake-get-started.html
-# Layers: data → network (Modbus / REST) → core (C++ singletons) → components (reusable QML) → app (shell)
+# Layers: utils → data → network (Modbus / REST) → core (C++ singletons) → components (reusable QML) → app (shell)
+add_subdirectory(src/utils)
 add_subdirectory(src/data)
 add_subdirectory(src/network)
 add_subdirectory(src/core)

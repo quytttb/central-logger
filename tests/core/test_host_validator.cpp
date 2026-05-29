@@ -1,4 +1,4 @@
-#include "core/HostValidator.h"
+#include "utils/HostValidator.h"
 
 #include <QTest>
 

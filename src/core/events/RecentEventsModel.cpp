@@ -1,6 +1,6 @@
 #include "RecentEventsModel.h"
 
-#include "core/events/EventLevels.h"
+#include "utils/events/EventLevels.h"
 #include "data/db/Database.h"
 
 namespace CentralLogger::Core {

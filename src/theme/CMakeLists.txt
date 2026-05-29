@@ -2,6 +2,8 @@
 
 set_source_files_properties(QuickControlsConfig.qml PROPERTIES QT_QML_SINGLETON_TYPE TRUE)
 set_source_files_properties(AppColors.qml PROPERTIES QT_QML_SINGLETON_TYPE TRUE)
+set_source_files_properties(OperationalStatus.qml PROPERTIES QT_QML_SINGLETON_TYPE TRUE)
+set_source_files_properties(AttachDiType.qml PROPERTIES QT_QML_SINGLETON_TYPE TRUE)
 set_source_files_properties(AppTheme.qml PROPERTIES QT_QML_SINGLETON_TYPE TRUE)
 set_source_files_properties(AppTypography.qml PROPERTIES QT_QML_SINGLETON_TYPE TRUE)
 
@@ -12,6 +14,8 @@ qt_add_qml_module(central_logger_theme
     QML_FILES
         QuickControlsConfig.qml
         AppColors.qml
+        OperationalStatus.qml
+        AttachDiType.qml
         AppTheme.qml
         AppTypography.qml
     DEPENDENCIES

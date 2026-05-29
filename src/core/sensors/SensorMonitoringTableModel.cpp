@@ -2,6 +2,20 @@
 
 namespace CentralLogger::Core {
 
+namespace {
+
+QVariantList toVariantList(const QStringList &strings)
+{
+    QVariantList out;
+    out.reserve(strings.size());
+    for (const QString &s : strings) {
+        out.append(s);
+    }
+    return out;
+}
+
+} // namespace
+
 SensorMonitoringTableModel::SensorMonitoringTableModel(QObject *parent)
     : QAbstractTableModel(parent)
 {
@@ -36,20 +50,20 @@ QVariant SensorMonitoringTableModel::data(const QModelIndex &index, int role) co
     }
 
     switch (role) {
-    case SensorIdRole:      return row.edgeSensorId;
-    case NameRole:          return row.name;
-    case ValueRole:         return row.value;
-    case UnitRole:          return row.unit;
-    case DisplayStatusRole: return row.displayStatus;
-    case DiStatusCodeRole:  return row.diStatusCode;
-    case AlarmTypeRole:     return row.alarmType;
-    case ShowAlarmBadgeRole:return row.showAlarmBadge;
-    case SensorTypeRole:    return row.sensorType;
-    case ValidRole:         return row.valid;
-    case AlarmRole:         return row.alarm;
-    case StaleRole:         return row.stale;
-    case TimestampRole:     return row.timestamp;
-    default:                return {};
+    case SensorIdRole:           return row.edgeSensorId;
+    case NameRole:               return row.name;
+    case ValueRole:              return row.value;
+    case UnitRole:               return row.unit;
+    case DisplayStatusRole:      return row.displayStatus;
+    case AttachDiTypeCodesRole:  return toVariantList(row.attachDiTypeCodes);
+    case AttachDiTypeLabelsRole: return toVariantList(row.attachDiTypeLabels);
+    case AlarmTypeRole:          return row.alarmType;
+    case SensorTypeRole:         return row.sensorType;
+    case ValidRole:              return row.valid;
+    case AlarmRole:              return row.alarm;
+    case StaleRole:              return row.stale;
+    case TimestampRole:          return row.timestamp;
+    default:                     return {};
     }
 }
 
@@ -73,20 +87,20 @@ QVariant SensorMonitoringTableModel::headerData(int section,
 QHash<int, QByteArray> SensorMonitoringTableModel::roleNames() const
 {
     return {
-        { Qt::DisplayRole,   "display" },
-        { SensorIdRole,      "sensorId" },
-        { NameRole,          "name" },
-        { ValueRole,         "value" },
-        { UnitRole,          "unit" },
-        { DisplayStatusRole, "displayStatus" },
-        { DiStatusCodeRole,  "diStatusCode" },
-        { AlarmTypeRole,     "alarmType" },
-        { ShowAlarmBadgeRole,"showAlarmBadge" },
-        { SensorTypeRole,    "sensorType" },
-        { ValidRole,         "valid" },
-        { AlarmRole,         "alarm" },
-        { StaleRole,         "stale" },
-        { TimestampRole,     "timestamp" },
+        { Qt::DisplayRole,          "display" },
+        { SensorIdRole,             "sensorId" },
+        { NameRole,                 "name" },
+        { ValueRole,                "value" },
+        { UnitRole,                 "unit" },
+        { DisplayStatusRole,        "displayStatus" },
+        { AttachDiTypeCodesRole,    "attachDiTypeCodes" },
+        { AttachDiTypeLabelsRole,   "attachDiTypeLabels" },
+        { AlarmTypeRole,            "alarmType" },
+        { SensorTypeRole,           "sensorType" },
+        { ValidRole,                "valid" },
+        { AlarmRole,                "alarm" },
+        { StaleRole,                "stale" },
+        { TimestampRole,            "timestamp" },
     };
 }
 
@@ -105,8 +119,17 @@ void SensorMonitoringTableModel::setRows(const QVector<SensorLiveRow> &rows)
 
     if (oldCount == newCount && oldCount > 0) {
         m_rows = rows;
+        const QVector<int> rowRoles = {
+            Qt::DisplayRole,
+            ValueRole,
+            DisplayStatusRole,
+            AlarmTypeRole,
+            AttachDiTypeCodesRole,
+            AttachDiTypeLabelsRole,
+        };
         emit dataChanged(index(0, 0),
-                         index(oldCount - 1, ColumnCount - 1));
+                         index(oldCount - 1, ColumnCount - 1),
+                         rowRoles);
         return;
     }
 

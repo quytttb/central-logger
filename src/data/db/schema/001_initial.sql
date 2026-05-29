@@ -1,4 +1,4 @@
--- Central Logger — SQLite schema (user_version = 2)
+-- Central Logger — SQLite schema (user_version = 3)
 -- Reference: docs/thiet_ke_db.md
 -- Engine: SQLite (QSQLITE) — see docs/adr/0001-db.md
 
@@ -38,6 +38,7 @@ CREATE TABLE IF NOT EXISTS logger_sensor (
     active                 INTEGER NOT NULL DEFAULT 1,
     parent_edge_sensor_id  INTEGER,
     di_type                TEXT,
+    all_parent_ids         TEXT,
     UNIQUE(logger_id, sensor_type, edge_sensor_id),
     FOREIGN KEY (logger_id) REFERENCES logger_info(id) ON DELETE CASCADE
 );

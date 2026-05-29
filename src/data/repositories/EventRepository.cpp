@@ -1,28 +1,16 @@
 #include "EventRepository.h"
 
+#include "utils/DateTimeUtils.h"
+
 #include <QSqlError>
 #include <QSqlQuery>
-#include <QTimeZone>
 #include <QVariant>
 
 namespace CentralLogger::Data {
 
 namespace {
 
-QDateTime parseUtc(const QString &iso)
-{
-    if (iso.isEmpty()) {
-        return {};
-    }
-    QDateTime dt = QDateTime::fromString(iso, Qt::ISODateWithMs);
-    if (!dt.isValid()) {
-        dt = QDateTime::fromString(iso, Qt::ISODate);
-    }
-    if (dt.isValid() && dt.timeSpec() == Qt::LocalTime) {
-        dt.setTimeZone(QTimeZone::UTC);
-    }
-    return dt;
-}
+using CentralLogger::Utils::parseUtc;
 
 SystemEvent rowToModel(const QSqlQuery &q)
 {

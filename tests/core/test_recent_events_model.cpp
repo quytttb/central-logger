@@ -70,6 +70,7 @@ private slots:
     void dashboardOfflineTransitionLogsWarningEvent();
     void dashboardSkipsFirstSnapshotAndDoesNotSpamRepeats();
     void displayLevelPrefersEventTypeOverStaleLevel();
+    void logEventReloadsModel();
 };
 
 void TestRecentEventsModel::emptyByDefault()
@@ -332,6 +333,51 @@ void TestRecentEventsModel::displayLevelPrefersEventTypeOverStaleLevel()
 
     QCOMPARE(model.rowCount(), 1);
     QCOMPARE(model.data(model.index(0), RecentEventsModel::DisplayLevelRole).toString(),
+             QStringLiteral("warning"));
+}
+
+void TestRecentEventsModel::logEventReloadsModel()
+{
+    // DashboardController::logEvent inserts a row AND refreshes recentEvents
+    // so the list is immediately up to date without a manual reload() call.
+    Database db;
+    QVERIFY(db.open(uniqueConnection("logEventReload"), QStringLiteral(":memory:")));
+
+    DashboardController ctrl(nullptr);
+    ctrl.setDatabase(&db);
+
+    const qint64 id = ctrl.addLogger(QStringLiteral("TRAM-LR"),
+                                     QStringLiteral("Trạm LR"),
+                                     QStringLiteral("h"),
+                                     5020, 8080, {});
+    QVERIFY(id > 0);
+
+    auto *model = ctrl.recentEvents();
+    const int rowsBefore = model->rowCount();
+
+    // Simulate the report-download path: logEvent called by LoggerDetailViewModel.
+    ctrl.logEvent(id, QStringLiteral("Info"),
+                  QStringLiteral("Report saved: /tmp/report_20260529.txt"));
+
+    // Model must be refreshed immediately without an extra reload() call.
+    QCOMPARE(model->rowCount(), rowsBefore + 1);
+    QCOMPARE(model->data(model->index(0), RecentEventsModel::EventTypeRole)
+                 .toString(),
+             QStringLiteral("Info"));
+    QVERIFY(model->data(model->index(0), RecentEventsModel::MessageRole)
+                .toString()
+                .contains(QStringLiteral("report_20260529.txt")));
+
+    // Warning events (report fail) should show "warning" display level.
+    ctrl.logEvent(id, QStringLiteral("Warning"),
+                  QStringLiteral("Report download failed: 404 Not Found"));
+
+    QCOMPARE(model->rowCount(), rowsBefore + 2);
+    QCOMPARE(model->data(model->index(0), RecentEventsModel::EventTypeRole)
+                 .toString(),
+             QStringLiteral("Warning"));
+    QCOMPARE(model->data(model->index(0), RecentEventsModel::DisplayLevelRole)
+                 .toString(),
              QStringLiteral("warning"));
 }
 

@@ -12,7 +12,7 @@ namespace CentralLogger::Data {
 namespace {
 
 constexpr auto kSchemaResource = ":/db/schema/001_initial.sql";
-constexpr int  kSchemaVersion  = 2;
+constexpr int  kSchemaVersion  = 3;
 
 QString readResourceSql(const char *resourcePath, QString *errorOut)
 {
@@ -191,6 +191,21 @@ bool Database::migrateSchemaIfNeeded(int currentVersion, QString *errorOut)
             }
         }
         currentVersion = 2;
+    }
+
+    if (currentVersion < 3) {
+        if (!q.exec(QStringLiteral(
+                "ALTER TABLE logger_sensor ADD COLUMN all_parent_ids TEXT"))) {
+            const QString err = q.lastError().text();
+            if (!err.contains(QStringLiteral("duplicate column"), Qt::CaseInsensitive)) {
+                m_db.rollback();
+                if (errorOut) {
+                    *errorOut = QStringLiteral("Migration v3 all_parent_ids: %1").arg(err);
+                }
+                return false;
+            }
+        }
+        currentVersion = 3;
     }
 
     if (!q.exec(QStringLiteral("PRAGMA user_version = %1").arg(currentVersion))) {

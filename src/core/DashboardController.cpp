@@ -1,13 +1,13 @@
 #include "DashboardController.h"
 
-#include "core/events/EventLevels.h"
+#include "utils/events/EventLevels.h"
 
-#include "HostValidator.h"
+#include "utils/HostValidator.h"
 #include "AppState.h"
 #include "SettingsController.h"
 #include "core/charts/ChartPresentation.h"
 #include "core/charts/ChartQueryService.h"
-#include "core/charts/ChartDisplayLimits.h"
+#include "utils/charts/ChartDisplayLimits.h"
 #include "data/db/Database.h"
 #include "data/models/LoggerInfo.h"
 #include "data/models/SystemEvent.h"
@@ -600,6 +600,7 @@ void DashboardController::logEvent(qint64 loggerId,
     ev.message   = message;
     ev.level     = displayLevelForEvent(eventType, QString{});
     events.insert(ev);
+    m_recentEvents.reload();
 }
 
 void DashboardController::afterMutation()

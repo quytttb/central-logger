@@ -37,10 +37,11 @@ Source layout under `src/components/` (import unchanged: `import CentralLogger.C
 | Folder | Contents |
 |--------|----------|
 | `shell/` | `AppButton`, `IconToolButton`, `NavItem`, `AppNavigationRail`, `AppTopBar`, `UiIcon`, `MaterialIcons`, `ThemeToggle` |
-| `layout/` | `ElevatedPane`, `SectionHeader`, `StatCard`, `InlineBanner`, `EmptyStatePlaceholder`, `TableContentStack` |
+| `layout/` | `ElevatedPane`, `SectionHeader`, `StatCard`, `InlineBanner`, `EmptyStatePlaceholder`, `TableContentStack`, `AppNotifier` (singleton), `AppToastHost`, `MessageDetailDialog`, `FormNotice` |
 | `table/` | `TableHeaderCell`, `TableCellBackground` |
 | `chart/` | `ChartGraphsView`, `ChartGraphsTheme`, `ChartTimeSeriesPanel`, `ChartHoverTooltip`, … |
-| `logger/` | `LoggerFormDialog`, `StatusBadge`, `SensorStatusChip`, `RecentEventListItem` |
+| `status/` | `StatusChip`, `SensorStatusColumn` |
+| `logger/` | `LoggerFormDialog`, `RecentEventListItem` |
 
 | Component | Notes |
 |-----------|--------|
@@ -55,7 +56,36 @@ Source layout under `src/components/` (import unchanged: `import CentralLogger.C
 | `ChartHoverTooltip` | Snap-to-point hover (`snapAt`); tooltip follows cursor in plot |
 | `ChartLinePointMarker` | Circular markers on `LineSeries` (`pointDelegate`) |
 | `EmptyStatePlaceholder` | Icon above, message below, centered |
-| `LoggerFormDialog` | `ExtraLargeScale`; inputs `Outlined` |
+| `LoggerFormDialog` | `ExtraLargeScale`; inputs `Outlined`; `FormNotice` inside for connect/save errors |
+| `AppNotifier` | **Singleton** (`pragma Singleton`). Call `AppNotifier.show(summary, semantic, options)`. `options`: `{ copyPath, detailText, detailTitle, loggerId, durationMs }`. `copyPath` → toast tap copies path to clipboard. |
+| `AppToastHost` | Custom `Popup`-based toast. Tap **Copy path** when `copyPath` set, or **Details** → `MessageDetailDialog`. Place once in `Main.qml`. |
+| `DesktopService` | `copyToClipboard(text)`, `reportSavedMessagePrefix()` for Recent events rows. |
+| `MessageDetailDialog` | Modal `Dialog` for full error/info text (selectable). Call `showMessage(title, body, loggerId)`. Shows "Mở logger" button when `loggerId >= 0`. Emits `navigateToLogger(id)`. |
+| `FormNotice` | Compact inline notice strip for form dialogs. `semantic`: `"success"/"error"/"info"/"warning"`. When `detailText` is set, a "Xem chi tiết" link calls `AppNotifier.openDetail`. |
+
+## Notification policy
+
+| Context | Toast | Form inline | Recent events |
+|---------|-------|-------------|---------------|
+| Report download **OK** | Yes — `"success"`, tap **Copy path** | — | Info row (list shows `Report saved: <basename>`; DB stores full path; tap copies path) |
+| Report download **fail** | Yes — `"error"`, tap → detail dialog | — | Warning row (auto on `logEvent`) |
+| Config push **fail** | Yes — `"error"`, tap → detail dialog | — | Already logged as Warning |
+| Settings save **OK** | Yes — `"success"` | — | — |
+| Settings save **fail** | Yes — `"error"`, tap → detail dialog | — | — |
+| Form Save **OK** | Yes — `"success"` (after `close()`) | — | Info row |
+| Form Save **fail** | **No** | `FormNotice` + detail link | — |
+| Form Connect **fail** | **No** | `FormNotice` | — |
+| Form Connect **OK** | **No** | Short `FormNotice "success"` line | — |
+
+**Rule:** Never show a toast while `AppNotifier.suppressed` is true (set via `onVisibleChanged: AppNotifier.suppressed = visible` on modal dialogs).
+
+## Recent events click policy
+
+| `eventType` | Action |
+|-------------|--------|
+| `Online`, `Offline`, `Info` (audit, not report-saved) | `loggerId > 0` → Logger Detail |
+| Message starts with `Report saved:` | **Copy path** to clipboard (not navigate) |
+| `Warning`, `Error`, `Alarm` | `MessageDetailDialog` (+ "Mở logger" if `loggerId > 0`) |
 
 ## Charts (`QtGraphs`)
 

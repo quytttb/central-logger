@@ -118,6 +118,8 @@ DI/DO **không** tính vào giới hạn 125 register — đọc bằng FC02/FC0
 
 Firmware **phải** đảm bảo mọi DI active có `edge_sensor_id < Ndi` và bit phản ánh đúng trạng thái vật lý.
 
+Central **không** tự tạo `logger_sensor` cho mọi bit `0..Ndi-1` — chỉ ghi readings cho sensor đã có trong catalog (sau `GET /config`).
+
 **Bỏ qua:** `Ndi = 0` → không gửi FC02 trong chu kỳ đó.
 
 **Giới hạn chuẩn Modbus:** tối đa **2000** discrete / PDU — đủ cho hàng trăm DI; Central đọc **một** PDU `quantity = Ndi` mỗi poll.

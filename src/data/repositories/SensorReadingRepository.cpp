@@ -1,5 +1,7 @@
 #include "SensorReadingRepository.h"
 
+#include "utils/DateTimeUtils.h"
+
 #include <QSqlError>
 #include <QSqlQuery>
 #include <QVariant>
@@ -8,10 +10,7 @@ namespace CentralLogger::Data {
 
 namespace {
 
-QString isoUtc(const QDateTime &dt)
-{
-    return dt.toUTC().toString(Qt::ISODateWithMs);
-}
+using CentralLogger::Utils::isoUtc;
 
 void setErr(QString *out, const QSqlQuery &q)
 {

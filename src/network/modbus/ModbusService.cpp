@@ -369,7 +369,9 @@ void ModbusService::readDiscreteInputs(LoggerState &state)
             finishCycle(*s, false, reply->errorString());
             return;
         }
-        s->currentSnapshot.diBits = ModbusMapParser::unpackDiscrete(regsFromUnit(reply->result()));
+        const auto diRegs = regsFromUnit(reply->result());
+        const int bitCount = static_cast<int>(s->currentSnapshot.header.ndi);
+        s->currentSnapshot.diBits = ModbusMapParser::unpackDiscrete(diRegs, bitCount);
         readCoils(*s);
     });
 }
@@ -400,7 +402,9 @@ void ModbusService::readCoils(LoggerState &state)
             finishCycle(*s, false, reply->errorString());
             return;
         }
-        s->currentSnapshot.doBits = ModbusMapParser::unpackDiscrete(regsFromUnit(reply->result()));
+        const auto doRegs = regsFromUnit(reply->result());
+        const int bitCount = static_cast<int>(s->currentSnapshot.header.ndo);
+        s->currentSnapshot.doBits = ModbusMapParser::unpackDiscrete(doRegs, bitCount);
         finishCycle(*s, true);
     });
 }

@@ -18,7 +18,11 @@ Item {
 
     readonly property bool isWide: width > AppTheme.detailWideBreakpoint
 
-    onLoggerIdChanged: refresh()
+    onLoggerIdChanged: {
+        root._modbusToastKey = ""
+        refresh()
+        Qt.callLater(root.maybeShowModbusOfflineToast)
+    }
     Component.onCompleted: refresh()
 
     Connections {
@@ -37,8 +41,17 @@ Item {
 
         onReportDownloaded: (ok, savePath, errorMessage) => {
             if (ok) {
-                reportSuccessLabel.text = qsTr("Report saved to: %1").arg(savePath);
-                reportSuccessLabel.visible = true;
+                AppNotifier.show(
+                    qsTr("Report saved: %1").arg(DesktopService.fileBaseName(savePath)),
+                    "success",
+                    { copyPath: savePath }
+                );
+            } else if (errorMessage.length > 0) {
+                AppNotifier.show(
+                    qsTr("Report download failed"),
+                    "error",
+                    { detailText: errorMessage, detailTitle: qsTr("Report download error") }
+                );
             }
         }
     }
@@ -62,26 +75,49 @@ Item {
         }
     }
 
+    // Modbus offline / poll fail → toast (not InlineBanner). Edge-trigger per logger.
+    property string _modbusToastKey: ""
+
+    function modbusOfflineDetail() {
+        const err = detailVm.lastModbusError
+        if (err && err.length > 0) {
+            return qsTr("Modbus polling failed: %1. REST/config may still work on the API port — verify Modbus host, port (default 5020), and unit ID.").arg(err)
+        }
+        if (detailVm.hasApiToken) {
+            return qsTr("Modbus live data is not available yet. Values in the table below are from config (WAIT) until polling succeeds. REST fetch/apply still works.")
+        }
+        return qsTr("Logger is offline for Modbus polling. Check host, Modbus port, and that the device is reachable.")
+    }
+
+    function maybeShowModbusOfflineToast() {
+        if (root.loggerId < 0 || detailVm.online)
+            return
+        const key = root.loggerId + "|" + detailVm.lastModbusError
+        if (key === root._modbusToastKey)
+            return
+        root._modbusToastKey = key
+        const body = root.modbusOfflineDetail()
+        AppNotifier.show(
+            body.split("\n")[0],
+            "warning",
+            {
+                detailText:  body,
+                detailTitle: qsTr("Modbus / logger offline"),
+                loggerId:    root.loggerId,
+                durationMs:  8000
+            }
+        )
+    }
+
+    Connections {
+        target: detailVm
+        function onLiveStateChanged() { root.maybeShowModbusOfflineToast() }
+        function onLastModbusErrorChanged() { root.maybeShowModbusOfflineToast() }
+    }
+
     ColumnLayout {
         anchors.fill: parent
         spacing: 0
-
-        InlineBanner {
-            Layout.fillWidth: true
-            Layout.leftMargin: AppTheme.pagePadding
-            Layout.rightMargin: AppTheme.pagePadding
-            Layout.topMargin: AppTheme.pageTopSpacing
-            visible: root.loggerId >= 0 && !detailVm.online
-            semantic: "warning"
-            message: {
-                var err = detailVm.lastModbusError
-                if (err && err.length > 0)
-                    return qsTr("Modbus polling failed: %1. REST/config may still work on the API port — verify Modbus host, port (default 5020), and unit ID.").arg(err)
-                if (detailVm.hasApiToken)
-                    return qsTr("Modbus live data is not available yet. Values in the table below are from config (WAIT) until polling succeeds. REST fetch/apply still works.")
-                return qsTr("Logger is offline for Modbus polling. Check host, Modbus port, and that the device is reachable.")
-            }
-        }
 
         Label {
             Layout.fillWidth: true
@@ -91,17 +127,6 @@ Item {
             visible: detailVm.lastError.length > 0
             text: detailVm.lastError
             color: AppColors.error
-            wrapMode: Text.WordWrap
-        }
-
-        Label {
-            id: reportSuccessLabel
-            Layout.fillWidth: true
-            Layout.leftMargin: AppTheme.pagePadding
-            Layout.rightMargin: AppTheme.pagePadding
-            Layout.topMargin: 4
-            visible: false
-            color: AppColors.success
             wrapMode: Text.WordWrap
         }
 
@@ -171,10 +196,10 @@ Item {
                                     Layout.fillHeight: true
                                     model: detailVm.sensorTable
                                     clip: true
-                                    reuseItems: true
+                                    reuseItems: false
 
-                                    readonly property var colWeights:  [0, 1, 0, 0, 0.35]
-                                    readonly property var colMinimums: [52, 96, 88, 52, 72]
+                                    readonly property var colWeights:  [0, 0.5, 0, 0, 0.5]
+                                    readonly property var colMinimums: [52, 72, 88, 52, 112]
                                     property var colWidths: []
 
                                     function recomputeColumns() {
@@ -200,9 +225,9 @@ Item {
                                         required property var value
                                         required property var unit
                                         required property var displayStatus
-                                        required property var diStatusCode
+                                        required property var attachDiTypeCodes
+                                        required property var attachDiTypeLabels
                                         required property var alarmType
-                                        required property var showAlarmBadge
 
                                         implicitHeight: 40
                                         padding: 0
@@ -241,19 +266,17 @@ Item {
                                                 elide: Text.ElideRight
                                             }
 
-                                            SensorStatusChip {
+                                            SensorStatusColumn {
                                                 visible: sensorCell.column === 4
                                                 anchors {
                                                     left: parent.left
                                                     leftMargin: 8
-                                                    right: parent.right
-                                                    rightMargin: 16
                                                     verticalCenter: parent.verticalCenter
                                                 }
                                                 displayStatus: sensorCell.displayStatus
-                                                diStatusCode: sensorCell.diStatusCode || ""
-                                                alarmType: sensorCell.alarmType || ""
-                                                showAlarmBadge: !!sensorCell.showAlarmBadge
+                                                alarmType: sensorCell.alarmType
+                                                attachDiTypeCodes: sensorCell.attachDiTypeCodes
+                                                attachDiTypeLabels: sensorCell.attachDiTypeLabels
                                             }
                                         }
                                     }
@@ -378,27 +401,27 @@ Item {
             spacing: AppTheme.toolbarGap
             Layout.alignment: Qt.AlignVCenter
 
-            StatusBadge {
+            StatusChip {
                 label: detailVm.online ? qsTr("Online") : qsTr("Offline")
-                active: detailVm.online
+                indicatorActive: detailVm.online
             }
-            StatusBadge {
+            StatusChip {
                 visible: detailVm.online
                 label: qsTr("Polling")
-                active: detailVm.polling
-                activeColor: AppColors.info
+                indicatorActive: detailVm.polling
+                indicatorActiveColor: AppColors.info
             }
-            StatusBadge {
+            StatusChip {
                 visible: detailVm.online
                 label: qsTr("RTU")
-                active: detailVm.rtuConnected
-                activeColor: AppColors.graphSeriesColors[0]
+                indicatorActive: detailVm.rtuConnected
+                indicatorActiveColor: AppColors.graphSeriesColors[0]
             }
-            StatusBadge {
+            StatusChip {
                 visible: detailVm.online
                 label: qsTr("Alarm")
-                active: detailVm.anyAlarm
-                activeColor: AppColors.error
+                indicatorActive: detailVm.anyAlarm
+                indicatorActiveColor: AppColors.error
             }
 
             Label {
@@ -419,10 +442,7 @@ Item {
                                 : !detailVm.online
                                     ? qsTr("Logger must be online to download report")
                                     : qsTr("Download report")
-                onClicked: {
-                    reportSuccessLabel.visible = false;
-                    reportSaveDialog.open();
-                }
+                onClicked: reportSaveDialog.open()
             }
 
             BusyIndicator {
