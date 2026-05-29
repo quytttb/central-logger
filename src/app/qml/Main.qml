@@ -40,6 +40,36 @@ ApplicationWindow {
         currentView = "logger-detail";
     }
 
+    // --- Notification overlay -----------------------------------------
+
+    MessageDetailDialog {
+        id: msgDetailDialog
+        parent: Overlay.overlay
+        anchors.centerIn: parent
+        onNavigateToLogger: loggerId => root.selectLogger(loggerId)
+    }
+
+    AppToastHost {
+        id: appToastHost
+        parent: root.contentItem
+        // Bottom-center of the content area, above the navigation rail.
+        x: root.navigationRailWidth + (root.contentItem.width - root.navigationRailWidth - width) / 2
+        y: root.contentItem.height - height - 24
+        z: 999
+    }
+
+    Connections {
+        target: AppNotifier
+        function onDetailRequested(title, body, loggerId) {
+            const alreadyOnThisLogger = root.currentView === "logger-detail"
+                                        && loggerId >= 0
+                                        && loggerId === root.selectedLoggerId
+            msgDetailDialog.showMessage(title, body, loggerId, alreadyOnThisLogger)
+        }
+    }
+
+    // ------------------------------------------------------------------
+
     SplitView {
         anchors.fill: parent
         orientation: Qt.Horizontal

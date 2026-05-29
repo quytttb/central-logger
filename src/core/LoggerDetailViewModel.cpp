@@ -1,8 +1,10 @@
 #include "LoggerDetailViewModel.h"
 
+#include "DesktopService.h"
 #include "core/charts/ChartPresentation.h"
 
 #include <QDateTime>
+#include <QFileInfo>
 
 #include "AppState.h"
 #include "DashboardController.h"
@@ -135,7 +137,9 @@ void LoggerDetailViewModel::refreshSensorTableFromCache()
 void LoggerDetailViewModel::reloadConfigCatalogFromDatabase()
 {
     m_configCatalog.clear();
-    if (!m_db || !m_db->isOpen() || m_loggerId < 0) return;
+    if (!m_db || !m_db->isOpen() || m_loggerId < 0) {
+        return;
+    }
     Data::SensorCatalogRepository catalog(m_db->connection());
     m_configCatalog = catalog.listByLoggerId(m_loggerId);
 }
@@ -222,21 +226,23 @@ void LoggerDetailViewModel::downloadReport(const QUrl &fileUrl)
     // and strips the file:// scheme correctly on both Linux and Windows.
     const QString savePath = fileUrl.toLocalFile();
     if (!m_rest || m_loggerId < 0) {
-        emit reportDownloaded(false, QString{}, QStringLiteral("REST service not ready"));
+        emit reportDownloaded(false, QString{},
+                              QStringLiteral("REST service not ready"));
         return;
     }
     if (!m_hasApiToken) {
-        emit reportDownloaded(false, QString{}, QStringLiteral("Device REST token empty — Scan QR on logger"));
+        emit reportDownloaded(false, QString{},
+                              QStringLiteral("Device REST token empty — Scan QR on logger"));
         return;
     }
     if (savePath.isEmpty()) {
-        emit reportDownloaded(false, QString{}, QStringLiteral("No save path specified"));
+        emit reportDownloaded(false, QString{},
+                              QStringLiteral("No save path specified"));
         return;
     }
     if (m_reportBusy) return;
     m_reportBusy = true;
     emit reportBusyChanged();
-    setError({});
     m_rest->downloadLatestReport(m_loggerId, savePath);
 }
 
@@ -260,9 +266,20 @@ void LoggerDetailViewModel::onReportDownloaded(qint64 loggerId, bool ok,
     if (loggerId != m_loggerId) return;
     m_reportBusy = false;
     emit reportBusyChanged();
-    if (!ok) {
-        setError(errorMessage);
+
+    if (g_dashboard) {
+        if (ok) {
+            const QString absPath = QFileInfo(savePath).absoluteFilePath();
+            g_dashboard->logEvent(
+                loggerId,
+                QStringLiteral("Info"),
+                DesktopService::reportSavedMessagePrefix() + absPath);
+        } else {
+            g_dashboard->logEvent(loggerId, QStringLiteral("Warning"),
+                                  QStringLiteral("Report download failed: %1").arg(errorMessage));
+        }
     }
+
     emit reportDownloaded(ok, savePath, errorMessage);
 }
 

@@ -24,6 +24,7 @@ private slots:
     void formatRestErrorMaps422MissingFieldsNotRevision();
     void formatRestErrorMaps422MissingApiVersion();
     void formatRestErrorMaps404();
+    void formatReportDownloadErrorMaps404NoReport();
     void formatRestErrorTransportFallback();
     void prettyJsonRoundTrip();
 };
@@ -62,15 +63,18 @@ void TestRestConfigParser::parsesParentIdAndDiType()
         "revision": 1,
         "sensors": [
             {"id": 10, "sensor_type": "ANALOG", "name": "Tank"},
-            {"id": 11, "sensor_type": "DI", "parent_id": 10, "di_type": "02", "name": "FaultDI"}
+            {"id": 11, "sensor_type": "DI", "parent_id": 10, "di_type": "02", "name": "FaultDI", "register_address": 3},
+            {"id": 12, "sensor_type": "DI", "parent_id": 10, "di_type": "03", "name": "MaintDI"}
         ]
     })";
     const auto parsed = RestConfigParser::parseConfigResponse(1, body);
     QVERIFY(parsed.valid);
-    QCOMPARE(parsed.sensors.size(), 2);
+    QCOMPARE(parsed.sensors.size(), 3);
     QVERIFY(!parsed.sensors[1].parentEdgeSensorId.has_value()
             || parsed.sensors[1].parentEdgeSensorId.value() == 10);
     QCOMPARE(parsed.sensors[1].diType, QStringLiteral("02"));
+    QCOMPARE(parsed.sensors[1].edgeSensorId, 3); // register_address should override id for DI/DO
+    QCOMPARE(parsed.sensors[2].edgeSensorId, 12); // fallback to id when register_address is absent
 }
 
 void TestRestConfigParser::parsesModbusTcpUnitIdFromConfig()
@@ -186,6 +190,13 @@ void TestRestConfigParser::formatRestErrorMaps404()
 {
     const QString msg = RestConfigParser::formatRestError(404, "");
     QVERIFY(msg.contains(QStringLiteral("firmware")));
+}
+
+void TestRestConfigParser::formatReportDownloadErrorMaps404NoReport()
+{
+    const QString msg = RestConfigParser::formatReportDownloadError(
+        404, R"({"detail":"Not Found"})");
+    QVERIFY(msg.contains(QStringLiteral("No latest report")));
 }
 
 void TestRestConfigParser::formatRestErrorTransportFallback()

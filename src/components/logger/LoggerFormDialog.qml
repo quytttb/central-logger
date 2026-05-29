@@ -36,6 +36,10 @@ Dialog {
     modal: true
     standardButtons: Dialog.NoButton
     closePolicy: Popup.CloseOnEscape
+
+    // Suppress global toasts while this modal is visible.
+    onVisibleChanged: AppNotifier.suppressed = visible
+
     width: parent
         ? Math.max(360, Math.min(parent.width - 64,
             formWide ? AppTheme.dialogMaxWidth : AppTheme.dialogNarrowMaxWidth))
@@ -142,7 +146,7 @@ Dialog {
                 root.onConfigLoadSuccess();
             } else {
                 root.configLoaded = false;
-                root.configLoadError = errorMessage;
+                root.configLoadError = "";
                 root.probeStatus = "error";
                 root.probeMessage = errorMessage;
             }
@@ -156,20 +160,26 @@ Dialog {
                 }
             } else {
                 root.configLoaded = false;
-                root.configLoadError = errorMessage;
+                root.configLoadError = "";
                 root.probeStatus = "error";
-                root.probeMessage = errorMessage;
-                if (root.initialData.status === "offline") {
-                    root.probeMessage = errorMessage + "\n"
-                        + qsTr("Device may be unreachable — fix host/network, then Connect.");
-                }
+                root.probeMessage = root.initialData.status === "offline"
+                    ? errorMessage + "\n"
+                      + qsTr("Device may be unreachable — fix host/network, then Connect.")
+                    : errorMessage;
             }
         }
         function onFormSaveFinished(ok, savedLoggerId, errorMessage) {
             root.saveInProgress = false;
             if (ok) {
+                const loggerName = nameField.text.trim();
                 root.saved(savedLoggerId);
                 root.close();
+                AppNotifier.show(
+                    root.mode === "add"
+                        ? qsTr("Logger \"%1\" added successfully.").arg(loggerName)
+                        : qsTr("Logger \"%1\" saved successfully.").arg(loggerName),
+                    "success"
+                );
             } else if (errorMessage.length > 0) {
                 root.configLoadError = errorMessage;
             }
@@ -397,25 +407,30 @@ Dialog {
             Layout.alignment: Qt.AlignHCenter
         }
 
-        Label {
-            text: root.probeMessage
-            visible: root.probeMessage.length > 0
-            color: root.probeStatus === "success"
-                   ? AppColors.success
-                   : AppColors.error
-            wrapMode: Text.WordWrap
+        // Probe / connect status notice
+        FormNotice {
             Layout.fillWidth: true
-            font: AppTypography.labelMedium
+            visible: root.probeMessage.length > 0
+            semantic: root.probeStatus === "success" ? "success"
+                    : root.probeStatus === "error"   ? "error"
+                    : "info"
+            summary: root.probeMessage
+            onDetailRequested: (title, body) => AppNotifier.openDetail(title, body, -1)
         }
 
-        Label {
-            text: root.configLoadError.length > 0
-                  ? root.configLoadError
-                  : DashboardController.lastError
-            visible: root.configLoadError.length > 0 || DashboardController.lastError.length > 0
-            color: AppColors.error
-            wrapMode: Text.WordWrap
+        // Save error only — connect/load errors use probe FormNotice above.
+        FormNotice {
+            id: errorNotice
             Layout.fillWidth: true
+            visible: root.configLoadError.length > 0
+
+            semantic: "error"
+            summary: {
+                const first = root.configLoadError.split("\n")[0]
+                return first.length > 0 ? first : root.configLoadError
+            }
+            detailText: root.configLoadError.split("\n").length > 1 ? root.configLoadError : ""
+            onDetailRequested: (title, body) => AppNotifier.openDetail(title, body, -1)
         }
     }
 

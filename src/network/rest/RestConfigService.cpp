@@ -345,7 +345,7 @@ void RestConfigService::downloadLatestReport(qint64 loggerId, const QString &sav
         if (!httpOk) {
             const QByteArray body = reply->readAll();
             emit reportDownloaded(loggerId, false, QString{},
-                RestConfigParser::formatRestError(status, body, reply->errorString()));
+                RestConfigParser::formatReportDownloadError(status, body, reply->errorString()));
             return;
         }
 

@@ -82,20 +82,28 @@ void ModbusBridge::applySnapshot(const PollSnapshot &snapshot)
                       sample.isValid(), sample.isAlarm(), sample.isStale());
     }
 
-    for (int i = 0; i < snapshot.diBits.size(); ++i) {
-        const qint64 sensorId = catalog.ensureExists(snapshot.loggerId, i,
-                                                     QStringLiteral("DI"));
-        if (sensorId <= 0) continue;
-        appendReading(sensorId, snapshot.diBits[i] ? 1.0 : 0.0,
-                      true, false, false);
-    }
-
-    for (int i = 0; i < snapshot.doBits.size(); ++i) {
-        const qint64 sensorId = catalog.ensureExists(snapshot.loggerId, i,
-                                                     QStringLiteral("DO"));
-        if (sensorId <= 0) continue;
-        appendReading(sensorId, snapshot.doBits[i] ? 1.0 : 0.0,
-                      true, false, false);
+    // Persist DI/DO only for catalog rows (from GET /config). Do not auto-create
+    // logger_sensor rows for every FC bit 0..Ndi-1 — that produced phantom DI#0..7.
+    const auto catalogRows = catalog.listByLoggerId(snapshot.loggerId);
+    for (const auto &sensor : catalogRows) {
+        if (!sensor.active || sensor.id <= 0) {
+            continue;
+        }
+        if (sensor.sensorType == QStringLiteral("DI")) {
+            const int bit = sensor.edgeSensorId;
+            if (bit < 0 || bit >= snapshot.diBits.size()) {
+                continue;
+            }
+            appendReading(sensor.id, snapshot.diBits.at(bit) ? 1.0 : 0.0,
+                          true, false, false);
+        } else if (sensor.sensorType == QStringLiteral("DO")) {
+            const int bit = sensor.edgeSensorId;
+            if (bit < 0 || bit >= snapshot.doBits.size()) {
+                continue;
+            }
+            appendReading(sensor.id, snapshot.doBits.at(bit) ? 1.0 : 0.0,
+                          true, false, false);
+        }
     }
 
     if (!batch.isEmpty()) {

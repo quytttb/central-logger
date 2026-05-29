@@ -75,12 +75,22 @@ inline QVector<Data::LoggerSensor> readSensors(qint64 loggerId, const QJsonArray
         const auto obj = v.toObject();
         Data::LoggerSensor s;
         s.loggerId     = loggerId;
-        s.edgeSensorId = readInt(obj, "sensor_id", -1);
-        if (s.edgeSensorId < 0) {
-            s.edgeSensorId = readInt(obj, "id", -1);
+        s.sensorType   = normaliseType(readStr(obj, "sensor_type"));
+        if (s.sensorType == QLatin1String("DI") || s.sensorType == QLatin1String("DO")) {
+            s.edgeSensorId = readInt(obj, "register_address", -1);
+            if (s.edgeSensorId < 0) {
+                s.edgeSensorId = readInt(obj, "sensor_id", -1);
+            }
+            if (s.edgeSensorId < 0) {
+                s.edgeSensorId = readInt(obj, "id", -1);
+            }
+        } else {
+            s.edgeSensorId = readInt(obj, "sensor_id", -1);
+            if (s.edgeSensorId < 0) {
+                s.edgeSensorId = readInt(obj, "id", -1);
+            }
         }
         if (s.edgeSensorId < 0) continue;
-        s.sensorType   = normaliseType(readStr(obj, "sensor_type"));
         s.name         = readStr(obj, "name");
         s.unit         = readStr(obj, "unit");
         s.minThreshold = readOptDouble(obj, "min_threshold");
@@ -94,6 +104,20 @@ inline QVector<Data::LoggerSensor> readSensors(qint64 loggerId, const QJsonArray
         const QString diType = readStr(obj, "di_type").trimmed();
         if (!diType.isEmpty()) {
             s.diType = diType;
+        }
+        if (s.sensorType == QLatin1String("DI")) {
+            if (parentId >= 0) {
+                s.allParentIds.append(parentId);
+            }
+            const auto analogIdsVal = obj.value(QLatin1String("analog_ids"));
+            if (analogIdsVal.isArray()) {
+                for (const auto &aidVal : analogIdsVal.toArray()) {
+                    const int aid = aidVal.isDouble() ? aidVal.toInt() : -1;
+                    if (aid >= 0 && !s.allParentIds.contains(aid)) {
+                        s.allParentIds.append(aid);
+                    }
+                }
+            }
         }
         out.append(s);
     }
@@ -272,6 +296,25 @@ inline QString formatRestError(int httpStatus, const QByteArray &body, const QSt
     }
 
     return QStringLiteral("HTTP %1").arg(httpStatus);
+}
+
+/// Maps HTTP errors for `GET /reports/latest`. A 404 on this route (after Bearer
+/// auth) usually means no report artifact yet — the route itself returns 401
+/// when unauthenticated.
+inline QString formatReportDownloadError(int httpStatus, const QByteArray &body,
+                                         const QString &transportError = {})
+{
+    if (httpStatus == 404) {
+        const QString lower = QString::fromUtf8(body).toLower();
+        if (lower.contains(QLatin1String("report"))
+            || lower.contains(QLatin1String("not found"))
+            || body.trimmed().isEmpty()) {
+            return QStringLiteral(
+                "No latest report on device. Generate a report on the data-logger first.");
+        }
+        return QStringLiteral("Report endpoint not found. Update data-logger firmware.");
+    }
+    return formatRestError(httpStatus, body, transportError);
 }
 
 /// Pretty-prints `body` for the debug dialog. Falls back to UTF-8 text when

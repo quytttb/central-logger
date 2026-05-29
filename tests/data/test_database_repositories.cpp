@@ -87,7 +87,7 @@ void TestDatabaseRepositories::initInMemory()
 
     QVERIFY(q.exec(QStringLiteral("PRAGMA user_version")));
     QVERIFY(q.next());
-    QCOMPARE(q.value(0).toInt(), 2);
+    QCOMPARE(q.value(0).toInt(), 3);
 }
 
 void TestDatabaseRepositories::seedAppSettings()

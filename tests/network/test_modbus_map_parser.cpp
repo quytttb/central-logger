@@ -36,6 +36,8 @@ private slots:
     void parseHeaderRejectsShortBuffer();
     void parseAnalogAbcdDecode();
     void unpackDiscreteBitArray();
+    void unpackDiscretePackedRegister();
+    void unpackDiscreteQtBytePaddedValues();
     void planPollHeaderOnlyWhenZero();
     void planPoll14Analog();
     void planPoll15Analog();
@@ -95,9 +97,9 @@ void TestModbusMapParser::parseAnalogAbcdDecode()
 
 void TestModbusMapParser::unpackDiscreteBitArray()
 {
-    // QModbusReply for FC02 packs one register per bit.
+    // Expanded: one uint16 per discrete (Qt path).
     const QVector<quint16> bits{ 0, 1, 0, 1, 1, 0, 0, 1 };
-    const auto unpacked = ModbusMapParser::unpackDiscrete(bits);
+    const auto unpacked = ModbusMapParser::unpackDiscrete(bits, 8);
 
     QCOMPARE(unpacked.size(), 8);
     QCOMPARE(unpacked[1], true);
@@ -106,6 +108,31 @@ void TestModbusMapParser::unpackDiscreteBitArray()
     QCOMPARE(unpacked[7], true);
     QCOMPARE(unpacked[0], false);
     QCOMPARE(unpacked[2], false);
+}
+
+void TestModbusMapParser::unpackDiscretePackedRegister()
+{
+    // Packed: DI at bit index 10 ON (data-logger pymodbus / Modbus word LSB-first).
+    const QVector<quint16> packed{ 1024, 0 };
+    const auto unpacked = ModbusMapParser::unpackDiscrete(packed, 12);
+
+    QCOMPARE(unpacked.size(), 12);
+    QCOMPARE(unpacked[10], true);
+    QCOMPARE(unpacked[0], false);
+    QCOMPARE(unpacked[9], false);
+}
+
+void TestModbusMapParser::unpackDiscreteQtBytePaddedValues()
+{
+    // Qt byte-rounds a 12-bit FC02 request to 2 bytes → 16 values (regCount > bitCount).
+    QVector<quint16> regs(16, 0);
+    regs[10] = 1;  // bit 10 ON (index 10 of the expanded vector)
+    const auto unpacked = ModbusMapParser::unpackDiscrete(regs, 12);
+
+    QCOMPARE(unpacked.size(), 12);
+    QCOMPARE(unpacked[10], true);
+    QCOMPARE(unpacked[0], false);
+    QCOMPARE(unpacked[1], false);
 }
 
 void TestModbusMapParser::planPollHeaderOnlyWhenZero()

@@ -16,14 +16,20 @@ Item {
 
     Component.onCompleted: DashboardController.reloadLoggers()
 
-    // Show a self-dismissing banner when form Save POST /config fails.
+    // Show a dismissible toast when form Save POST /config fails.
     Connections {
         target: DashboardController
         function onConfigApplyFailed(loggerId, errorMessage) {
-            configFailBanner.message = qsTr("Config push failed (logger #%1): %2")
-                                            .arg(loggerId).arg(errorMessage);
-            configFailBanner.visible = true;
-            applyFailTimer.restart();
+            AppNotifier.show(
+                qsTr("Config push failed (logger #%1)").arg(loggerId),
+                "error",
+                {
+                    detailText:  errorMessage,
+                    detailTitle: qsTr("Config push error"),
+                    loggerId:    loggerId,
+                    durationMs:  7000
+                }
+            );
         }
     }
 
@@ -39,12 +45,13 @@ Item {
         title: qsTr("Delete logger")
         modal: true
         anchors.centerIn: parent
+        width: parent ? Math.min(400, parent.width - 48) : 400
         standardButtons: Dialog.Cancel | Dialog.Ok
         Label {
+            width: confirmDelete.width - 48
             text: qsTr("Xóa logger \"%1\"? Catalog cảm biến và lịch sử số đo sẽ bị xóa theo.")
                     .arg(confirmDelete.targetCode)
             wrapMode: Text.WordWrap
-            width: 360
         }
         onAccepted: DashboardController.removeLogger(targetId)
     }
@@ -54,24 +61,9 @@ Item {
         sourceModel: DashboardController.loggers
     }
 
-    Timer {
-        id: applyFailTimer
-        interval: 7000
-        onTriggered: configFailBanner.visible = false
-    }
-
     ColumnLayout {
         anchors.fill: parent
         spacing: 0
-
-        InlineBanner {
-            id: configFailBanner
-            visible: false
-            Layout.fillWidth: true
-            semantic: "error"
-            dismissible: true
-            onDismissed: applyFailTimer.stop()
-        }
 
         Item {
             Layout.fillWidth: true

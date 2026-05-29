@@ -1,5 +1,7 @@
 #include "SensorCatalogRepository.h"
 
+#include <QJsonArray>
+#include <QJsonDocument>
 #include <QSqlError>
 #include <QSqlQuery>
 #include <QVariant>
@@ -8,6 +10,28 @@
 namespace CentralLogger::Data {
 
 namespace {
+
+QString serializeParentIds(const QVector<int> &ids)
+{
+    if (ids.isEmpty()) return {};
+    QJsonArray arr;
+    for (int id : ids) arr.append(id);
+    return QString::fromUtf8(QJsonDocument(arr).toJson(QJsonDocument::Compact));
+}
+
+QVector<int> deserializeParentIds(const QVariant &v)
+{
+    if (v.isNull() || !v.isValid()) return {};
+    const QString json = v.toString();
+    if (json.isEmpty()) return {};
+    const auto doc = QJsonDocument::fromJson(json.toUtf8());
+    if (!doc.isArray()) return {};
+    QVector<int> result;
+    for (const auto &item : doc.array()) {
+        if (item.isDouble()) result.append(item.toInt());
+    }
+    return result;
+}
 
 QVariant optDouble(const std::optional<double> &v)
 {
@@ -38,7 +62,8 @@ LoggerSensor rowToModel(const QSqlQuery &q)
     if (!parentV.isNull()) {
         s.parentEdgeSensorId = parentV.toInt();
     }
-    s.diType = q.value(QStringLiteral("di_type")).toString();
+    s.diType       = q.value(QStringLiteral("di_type")).toString();
+    s.allParentIds = deserializeParentIds(q.value(QStringLiteral("all_parent_ids")));
     return s;
 }
 
@@ -96,11 +121,11 @@ bool SensorCatalogRepository::upsert(LoggerSensor &sensor, QString *errorOut)
         "INSERT INTO logger_sensor ("
         "  logger_id, edge_sensor_id, sensor_type, name, unit,"
         "  min_threshold, max_threshold, active,"
-        "  parent_edge_sensor_id, di_type"
+        "  parent_edge_sensor_id, di_type, all_parent_ids"
         ") VALUES ("
         "  :logger_id, :edge_sensor_id, :sensor_type, :name, :unit,"
         "  :min_threshold, :max_threshold, :active,"
-        "  :parent_edge_sensor_id, :di_type"
+        "  :parent_edge_sensor_id, :di_type, :all_parent_ids"
         ") "
         // M-5: sensor_type is part of the UNIQUE conflict key and cannot
         // change on update (doing so would only write the same value back).
@@ -112,7 +137,8 @@ bool SensorCatalogRepository::upsert(LoggerSensor &sensor, QString *errorOut)
         "  max_threshold         = excluded.max_threshold,"
         "  active                = excluded.active,"
         "  parent_edge_sensor_id = excluded.parent_edge_sensor_id,"
-        "  di_type               = excluded.di_type"));
+        "  di_type               = excluded.di_type,"
+        "  all_parent_ids        = excluded.all_parent_ids"));
     q.bindValue(QStringLiteral(":logger_id"),      sensor.loggerId);
     q.bindValue(QStringLiteral(":edge_sensor_id"), sensor.edgeSensorId);
     q.bindValue(QStringLiteral(":sensor_type"),    sensor.sensorType);
@@ -127,6 +153,10 @@ bool SensorCatalogRepository::upsert(LoggerSensor &sensor, QString *errorOut)
                     : QVariant(QMetaType(QMetaType::Int)));
     q.bindValue(QStringLiteral(":di_type"),
                 sensor.diType.isEmpty() ? QVariant() : sensor.diType);
+    {
+        const QString ids = serializeParentIds(sensor.allParentIds);
+        q.bindValue(QStringLiteral(":all_parent_ids"), ids.isEmpty() ? QVariant() : ids);
+    }
 
     if (!q.exec()) {
         setErr(errorOut, q);

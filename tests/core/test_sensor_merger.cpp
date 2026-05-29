@@ -54,13 +54,14 @@ PollSnapshot makeSnapshot(qint64 loggerId, quint16 statusFlags = 0x02)
 LoggerSensor makeChildDi(qint64 loggerId,
                          int edgeSensorId,
                          int parentEdgeId,
-                         const QString &diType)
+                         const QString &diType,
+                         const QString &name = QStringLiteral("ChildDI"))
 {
     LoggerSensor s;
     s.loggerId            = loggerId;
     s.edgeSensorId        = edgeSensorId;
     s.sensorType          = QStringLiteral("DI");
-    s.name                = QStringLiteral("ChildDI");
+    s.name                = name;
     s.parentEdgeSensorId  = parentEdgeId;
     s.diType              = diType;
     s.active              = true;
@@ -343,8 +344,9 @@ void TestSensorMerger::attachDiErrorCodeShowsLabel()
     const auto rows = SensorMerger::buildRows(loggerId, snap, catalog);
     const auto *tank = findRow(rows, 10);
     QVERIFY(tank);
-    QCOMPARE(tank->diStatusCode, QStringLiteral("02"));
-    QCOMPARE(tank->displayStatus, QStringLiteral("Error"));
+    QCOMPARE(tank->attachDiTypeCodes, QStringList{QStringLiteral("02")});
+    QCOMPARE(tank->attachDiTypeLabels, QStringList{QStringLiteral("Error")});
+    QCOMPARE(tank->displayStatus, QStringLiteral("OK"));
 }
 
 void TestSensorMerger::attachDiPriority02Over03()
@@ -361,7 +363,13 @@ void TestSensorMerger::attachDiPriority02Over03()
     snap.diBits  = { false, true, true };
 
     const auto rows = SensorMerger::buildRows(loggerId, snap, catalog);
-    QCOMPARE(findRow(rows, 10)->diStatusCode, QStringLiteral("02"));
+    const auto *tank = findRow(rows, 10);
+    QVERIFY(tank);
+    QCOMPARE(tank->attachDiTypeCodes,
+             QStringList({QStringLiteral("02"), QStringLiteral("03")}));
+    QCOMPARE(tank->attachDiTypeLabels,
+             QStringList({QStringLiteral("Error"), QStringLiteral("Maintenance")}));
+    QCOMPARE(tank->displayStatus, QStringLiteral("OK"));
 }
 
 void TestSensorMerger::attachDiCustomCode()
@@ -369,7 +377,8 @@ void TestSensorMerger::attachDiCustomCode()
     constexpr qint64 loggerId = 1;
     QVector<LoggerSensor> catalog{
         makeCatalog(loggerId, 10, "ANALOG"),
-        makeChildDi(loggerId, 5, 10, QStringLiteral("05")),
+        makeChildDi(loggerId, 5, 10, QStringLiteral("05"),
+                    QStringLiteral("Leaking seal")),
     };
 
     auto snap = makeSnapshot(loggerId);
@@ -378,8 +387,11 @@ void TestSensorMerger::attachDiCustomCode()
     snap.diBits[5] = true;
 
     const auto rows = SensorMerger::buildRows(loggerId, snap, catalog);
-    QCOMPARE(findRow(rows, 10)->diStatusCode, QStringLiteral("05"));
-    QCOMPARE(findRow(rows, 10)->displayStatus, QStringLiteral("05"));
+    const auto *tank = findRow(rows, 10);
+    QVERIFY(tank);
+    QCOMPARE(tank->attachDiTypeCodes, QStringList{QStringLiteral("05")});
+    QCOMPARE(tank->attachDiTypeLabels, QStringList{QStringLiteral("Leaking seal")});
+    QCOMPARE(tank->displayStatus, QStringLiteral("OK"));
 }
 
 QTEST_APPLESS_MAIN(TestSensorMerger)

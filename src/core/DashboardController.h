@@ -197,6 +197,11 @@ public slots:
     void onSnapshotApplied(const CentralLogger::Network::PollSnapshot &snapshot,
                            int sensorCount);
 
+    /// Insert a row into `system_event` and refresh the recent-events list.
+    /// Called from LoggerDetailViewModel after a report download completes.
+    /// @p loggerId may be 0 for app-level events.
+    void logEvent(qint64 loggerId, const QString &eventType, const QString &message);
+
 signals:
     void lastErrorChanged();
     void readingsChartChanged();
@@ -230,7 +235,6 @@ private:
                         int apiPort);
     void setError(const QString &message);
     QString humanizeSqlError(const QString &raw, const QString &stationCode) const;
-    void logEvent(qint64 loggerId, const QString &eventType, const QString &message);
     void afterMutation();
 
     void syncModbusRegistry();

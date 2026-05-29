@@ -107,7 +107,7 @@ Toàn bộ deliverable **Phase 1** (khảo sát app PySide6 `central-logger-app`
   - `Q_PROPERTY` live state: `online`, `polling`, `anyAlarm`, `rtuConnected` (đọc từ `LoggerListModel`, `liveStateChanged`).
   - REST Task 5 giữ nguyên (`rawConfig`, fetch/apply/debug). Test `test_logger_detail_view_model` (+ live state, `rtuConnected` role).
 - **Task 9 (Logger Detail UI — badges + sensor table / FE-009, FE-011):**
-  - [`LoggerDetailView.qml`](src/app/qml/views/LoggerDetailView.qml): hàng badge `StatusBadge` (Online, Polling, RTU, Alarm) bind `detailVm.*`; `ListView` `model: detailVm.sensorTable` (cột ID / Name / Value / Unit / Status pill theo `displayStatus`).
+  - [`LoggerDetailView.qml`](src/app/qml/views/LoggerDetailView.qml): hàng chip `StatusChip` (Online, Polling, RTU, Alarm); cột Status bảng sensor qua `SensorStatusColumn`; theme `OperationalStatus` + `AttachDiType`; C++ `AttachDiTypeHelper`.
   - Giữ toolbar REST Task 5 + dialog readings debug + pane `rawConfig` (RAM, thu nhỏ phía dưới).
   - `LoggerListModel`: role `rtuConnected` (HR1 bit1); `updateLoggerRow(..., rtuConnected)` từ `snapshot.header.isRtuConnected()`.
   - Manual gợi ý: logger online → bảng đổi theo poll; Fetch config → cập nhật name/unit/type catalog (metadata), không merge `/readings` vào bảng live.

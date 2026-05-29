@@ -64,25 +64,42 @@ inline QVector<AnalogSample> parseAnalogChunk(const quint16 *regs, int size)
     return out;
 }
 
-/// QModbusDataUnit values for FC02/FC01 already arrive one-bit-per-uint16
-/// (each "register" is 0 or 1). This helper just normalises that into a
-/// QVector<bool> of the requested length.
-inline QVector<bool> unpackDiscrete(const quint16 *bits, int count)
+/// Decode FC02/FC01 payload into `bitCount` booleans (indices 0 .. bitCount-1).
+///
+/// Qt's QModbusDataUnit normalises DiscreteInputs/Coils values to 0 or 1 per bit,
+/// and byte-rounds the response (e.g. 12-bit request → 2 bytes → 16 values).
+/// Therefore when regCount >= bitCount each regs[i] is one bit (expanded form).
+///
+/// Only when regCount < bitCount (pymodbus path / direct TCP) are registers packed
+/// as 16-bit words (bit 0 = LSB).
+inline QVector<bool> unpackDiscrete(const quint16 *regs, int regCount, int bitCount)
 {
     QVector<bool> out;
-    if (!bits || count <= 0) {
+    if (!regs || bitCount <= 0) {
         return out;
     }
-    out.reserve(count);
-    for (int i = 0; i < count; ++i) {
-        out.append(bits[i] != 0);
+    out.reserve(bitCount);
+
+    if (regCount >= bitCount) {
+        // Expanded: one uint16 per bit (Qt QModbusDataUnit path).
+        for (int i = 0; i < bitCount; ++i) {
+            out.append(regs[i] != 0);
+        }
+        return out;
+    }
+
+    // Packed: 16 bits per uint16 word, LSB-first.
+    for (int i = 0; i < bitCount; ++i) {
+        const int reg = i / 16;
+        const int bit = i % 16;
+        out.append(reg < regCount ? (bool)((regs[reg] >> bit) & 1u) : false);
     }
     return out;
 }
 
-inline QVector<bool> unpackDiscrete(const QVector<quint16> &bits)
+inline QVector<bool> unpackDiscrete(const QVector<quint16> &regs, int bitCount)
 {
-    return unpackDiscrete(bits.constData(), bits.size());
+    return unpackDiscrete(regs.constData(), regs.size(), bitCount);
 }
 
 } // namespace CentralLogger::Network::ModbusMapParser
