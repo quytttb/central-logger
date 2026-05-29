@@ -26,7 +26,8 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y \
-            libegl1 libgl1 libglib2.0-0 libxkbcommon0 libxkbcommon-x11-0 \
+            build-essential libgl1-mesa-dev libfontconfig1-dev libdbus-1-dev \
+            libxkbcommon-dev libegl1 libgl1 libglib2.0-0 libxkbcommon0 libxkbcommon-x11-0 \
             libdbus-1-3 libfontconfig1 libxcb-cursor0 libxcb-icccm4 \
             libxcb-image0 libxcb-keysyms1 libxcb-randr0 libxcb-render-util0 \
             libxcb-shape0 libxcb-sync1 libxcb-xfixes0 libxcb-xkb1 \
@@ -41,11 +42,19 @@ jobs:
           arch: linux_gcc_64
           modules: ${{ env.QT_MODULES }}
           install-deps: false
-          cache: true
-          cache-key-prefix: qt611-full-v3
+          cache: false
 
       - name: Configure
-        run: bash packaging/linux/ci_configure.sh build
+        run: |
+          PRE="${QT_ROOT_DIR}"
+          if [ ! -f "${PRE}/lib/cmake/Qt6Graphs/Qt6GraphsConfig.cmake" ]; then
+            PRE="$(dirname "${PRE}")/gcc_64"
+          fi
+          export PATH="${PRE}/bin:${PATH}"
+          "${PRE}/bin/qmake6" -query QT_VERSION
+          cmake -B build -DCMAKE_BUILD_TYPE=Debug \
+            -DCMAKE_PREFIX_PATH="${PRE}" \
+            -DQt6_DIR="${PRE}/lib/cmake/Qt6"
 
       - name: Build
         run: cmake --build build -j"$(nproc)"

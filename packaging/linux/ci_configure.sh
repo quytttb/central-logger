@@ -52,13 +52,6 @@ fi
 
 qt_version="$("${qmake}" -query QT_VERSION)"
 echo "::notice::Using Qt ${qt_version} at ${qt_prefix}"
-case "${qt_version}" in
-  6.11.*|6.12.*|6.13.*) ;;
-  *)
-    echo "::error::Need Qt 6.11+ from aqt; got ${qt_version} at ${qt_prefix}" >&2
-    exit 1
-    ;;
-esac
 
 export PATH="${qt_prefix}/bin:${PATH}"
 
