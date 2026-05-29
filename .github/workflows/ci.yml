@@ -45,6 +45,8 @@ jobs:
 
       - name: Configure
         run: |
+          cmake --version
+          QT_ROOT_DIR="$(cat .ci_qt_root)"
           echo "QT_ROOT_DIR=${QT_ROOT_DIR}"
           test -f "${QT_ROOT_DIR}/lib/cmake/Qt6/Qt6Config.cmake"
           cmake -B build -DCMAKE_BUILD_TYPE=Debug \

@@ -1,3 +1,6 @@
+# --- CI ephemeral ---
+.ci_qt_root
+
 # --- Build / CMake ---
 build/
 build-*/

@@ -27,3 +27,6 @@ fi
 if [[ -n "${GITHUB_ENV:-}" ]]; then
   echo "QT_ROOT_DIR=${qt_root}" >> "${GITHUB_ENV}"
 fi
+if [[ -n "${GITHUB_WORKSPACE:-}" ]]; then
+  echo "${qt_root}" > "${GITHUB_WORKSPACE}/.ci_qt_root"
+fi

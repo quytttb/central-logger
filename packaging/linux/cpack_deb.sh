@@ -19,6 +19,9 @@ cmake_args=(
   -DCMAKE_INSTALL_PREFIX=/usr
   -DCMAKE_INSTALL_LIBDIR=lib
 )
+if [[ -f "${ROOT}/.ci_qt_root" ]]; then
+  QT_ROOT_DIR="$(cat "${ROOT}/.ci_qt_root")"
+fi
 if [[ -n "${QT_ROOT_DIR:-}" ]]; then
   cmake_args+=(-DCMAKE_PREFIX_PATH="${QT_ROOT_DIR}" -DQt6_DIR="${QT_ROOT_DIR}/lib/cmake/Qt6")
 elif [[ -x "${ROOT}/packaging/linux/resolve_qt_prefix.sh" ]]; then

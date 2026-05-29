@@ -30,3 +30,4 @@ foreach ($pkg in @("Qt6Graphs", "Qt6SerialBus", "Qt6TaskTree", "Qt6Quick3D", "Qt
 $qtBin = Join-Path $qtRoot "bin"
 Add-Content -Path $env:GITHUB_PATH -Value $qtBin
 Add-Content -Path $env:GITHUB_ENV -Value "QT_ROOT_DIR=$qtRoot"
+Set-Content -Path (Join-Path $env:GITHUB_WORKSPACE ".ci_qt_root") -Value $qtRoot -NoNewline
