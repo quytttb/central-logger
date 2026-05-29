@@ -197,7 +197,7 @@ Thứ tự implement gợi ý: **Task 1** DB → **2** shell QML → **3** logge
 | FE-017 / Task 18 | Close thoát app; không tray/frameless |
 | FE-020 / Task 21 | Không decode QR trong app — copy-paste text provision |
 
-**CI (2026-05):** `.github/workflows/ci.yml`, `dev-build.yml`, `build-release.yml` trên `main`. Linux: CPack DEB (`cmake/CPackOptions.cmake`, `packaging/linux/`). Windows: QTIFW (`packaging/windows/`). Nhánh `dev` giữ cho feature; workflow không trigger trên `dev` trừ khi mở rộng sau.
+**CI (2026-05):** workflows trên `main`; hướng dẫn đóng gói + `deploy.sh` / `deploy.ps1` trong [`packaging/README.md`](packaging/README.md). Linux: CPack DEB; Windows: QTIFW. Release: `packaging/linux/deploy.sh` hoặc `packaging/windows/deploy.ps1` (bump `CMakeLists.txt` → tag `v*.*.*`).
 
 **Next / Tiếp theo:** Manual Task 4 (edge/simulator) khi có hardware.
 

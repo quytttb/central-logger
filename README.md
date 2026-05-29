@@ -60,23 +60,15 @@ cd build && ctest --output-on-failure
 
 ### CI / đóng gói
 
-GitHub Actions trên nhánh **`main`**:
+Chi tiết Linux + Windows + phát hành: [`packaging/README.md`](packaging/README.md).
 
 | Workflow | Khi chạy | Kết quả |
 |----------|----------|---------|
-| `ci.yml` | push / PR `main` | `cmake` Debug + `ctest` (Ubuntu, Qt 6.11) |
-| `dev-build.yml` | push `main` (path filter) | `.deb` (CPack) + `CentralLoggerSetup.exe` (QTIFW) — artifacts 7 ngày |
-| `build-release.yml` | tag `v*.*.*` | GitHub Release: `.deb` + installer |
+| `ci.yml` | push / PR `main` | `cmake` Debug + `ctest` |
+| `dev-build.yml` | push `main` | artifact `.deb` + `CentralLoggerSetup.exe` |
+| `build-release.yml` | tag `v*.*.*` | GitHub Release |
 
-**Linux .deb (local):** cần Qt 6.11, `patchelf`, `dpkg-dev`:
-
-```bash
-export CMAKE_PREFIX_PATH=~/Qt/6.11.1/gcc_64
-packaging/linux/cpack_deb.sh
-# → dist/central-logger-app_<version>_amd64.deb
-```
-
-**Windows installer:** xem [`packaging/windows/huong_dan_dong_goi.md`](packaging/windows/huong_dan_dong_goi.md) và [`packaging/windows/build_installer.ps1`](packaging/windows/build_installer.ps1) (biến `CL_*` cho CI).
+**Release (bump → tag → push):** `./packaging/linux/deploy.sh` hoặc `.\packaging\windows\deploy.ps1`
 
 ## Tài liệu
 
