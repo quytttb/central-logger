@@ -153,9 +153,19 @@ jobs:
           CL_BUILD_DIR: ${{ github.workspace }}/build-dev-win
           CL_MINGW_DIR: ${{ env.IQTA_TOOLS }}/mingw1310_64
         run: |
-          $ifw = Get-ChildItem -Path $env:IQTA_TOOLS -Filter binarycreator.exe -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
-          if (-not $ifw) { throw "binarycreator.exe not found under IQTA_TOOLS=$($env:IQTA_TOOLS)" }
-          $env:CL_IFW_DIR = $ifw.Directory.Parent.Parent.FullName
+          $qtRoot = "${{ runner.workspace }}/Qt"
+          $toolsRoot = if ($env:IQTA_TOOLS) { $env:IQTA_TOOLS } else { Join-Path $qtRoot "Tools" }
+          $ifw = Get-ChildItem -Path $toolsRoot -Filter binarycreator.exe -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
+          if (-not $ifw) {
+            python -m pip install "aqtinstall>=3.3.0"
+            python -m aqt install-tool windows desktop tools_ifw -O $qtRoot
+            if ($LASTEXITCODE -ne 0) { throw "aqt install-tool tools_ifw failed" }
+            $ifw = Get-ChildItem -Path (Join-Path $qtRoot "Tools") -Filter binarycreator.exe -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
+          }
+          if (-not $ifw) { throw "binarycreator.exe not found under $toolsRoot" }
+          # IFW layout: .../QtInstallerFramework/<ver>/bin/binarycreator.exe → root is parent of bin
+          $env:CL_IFW_DIR = $ifw.Directory.Parent.FullName
+          Write-Host "CL_IFW_DIR=$($env:CL_IFW_DIR)"
           & "${{ github.workspace }}/packaging/windows/build_installer.ps1"
 
       - name: Upload installer artifact
