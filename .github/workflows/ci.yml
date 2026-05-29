@@ -9,8 +9,8 @@ on:
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
   QT_VERSION: "6.11.1"
-  # qtsvg in Qt base; SerialBus→serialport; Graphs→quick3d; Qml→tasktree (aqt list-qt --modules 6.11.1 linux_gcc_64)
   QT_MODULES: qtserialbus qtserialport qtgraphs qttasktree qtquick3d qtshadertools
+  AQT_SOURCE: git+https://github.com/miurahr/aqtinstall.git@8c3695d4a4e1ceabf6a74dc6c79681656dc6b74b
 
 jobs:
   test:
@@ -39,9 +39,9 @@ jobs:
           modules: ${{ env.QT_MODULES }}
           dir: ${{ runner.workspace }}
           install-deps: false
-          aqtsource: git+https://github.com/miurahr/aqtinstall.git@master
+          aqtsource: ${{ env.AQT_SOURCE }}
           cache: true
-          cache-key-prefix: qt611-linux-aqtmaster-v1
+          cache-key-prefix: qt611-linux
 
       - name: Configure
         run: |

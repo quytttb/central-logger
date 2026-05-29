@@ -97,7 +97,7 @@ Logo/icon sinh từ `resources/icons/brand_4m_technologies_blue.svg` qua [`windo
 
 Script: kiểm tra `central_logger.exe` + `windeployqt` + `binarycreator` → deploy QML/DLL vào `installer_build/.../data` → tạo `CentralLoggerSetup.exe`.
 
-**CI:** biến `CL_PROJECT_ROOT`, `CL_QT_DIR`, `CL_BUILD_DIR`, `CL_MINGW_DIR`, `CL_IFW_DIR` (mặc định suy từ vị trí script).
+**CI:** `CL_PROJECT_ROOT`, `CL_QT_DIR`, `CL_BUILD_DIR`, `CL_MINGW_DIR`; `CL_IFW_DIR` tuỳ chọn (tự tìm `binarycreator.exe` dưới `IQTA_TOOLS`).
 
 Mặc định exe Release: `build/Desktop_Qt_6_11_1_MinGW_64_bit-Release/bin/` hoặc `build-dev-win/bin/` (CI).
 

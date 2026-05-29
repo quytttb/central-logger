@@ -16,7 +16,11 @@ fi
 echo "::notice::aqt output dir ${out_dir}"
 
 python3 -m pip install --upgrade pip
-python3 -m pip install "aqtinstall>=3.3.0"
+if [[ -n "${AQT_SOURCE:-}" ]]; then
+  python3 -m pip install "${AQT_SOURCE}"
+else
+  python3 -m pip install "aqtinstall>=3.3.0"
+fi
 
 if [[ -n "${AQT_BASE:-}" ]]; then
   python3 -m aqt install-qt linux desktop "${version}" linux_gcc_64 \

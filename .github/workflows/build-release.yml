@@ -19,6 +19,7 @@ env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
   QT_VERSION: "6.11.1"
   QT_MODULES: qtserialbus qtserialport qtgraphs qttasktree qtquick3d qtshadertools
+  AQT_SOURCE: git+https://github.com/miurahr/aqtinstall.git@8c3695d4a4e1ceabf6a74dc6c79681656dc6b74b
 
 permissions:
   contents: read
@@ -84,9 +85,9 @@ jobs:
           modules: ${{ env.QT_MODULES }}
           dir: ${{ runner.workspace }}
           install-deps: false
-          aqtsource: git+https://github.com/miurahr/aqtinstall.git@master
+          aqtsource: ${{ env.AQT_SOURCE }}
           cache: true
-          cache-key-prefix: qt611-linux-aqtmaster-v1
+          cache-key-prefix: qt611-linux
 
       - name: Build .deb
         run: |
@@ -143,20 +144,9 @@ jobs:
           dir: ${{ runner.workspace }}
           install-deps: false
           add-tools-to-path: true
-          aqtsource: git+https://github.com/miurahr/aqtinstall.git@8c3695d4a4e1ceabf6a74dc6c79681656dc6b74b
+          aqtsource: ${{ env.AQT_SOURCE }}
           cache: true
-          cache-key-prefix: qt611-win-mingw-v1
-
-      - name: Verify Qt environment
-        shell: pwsh
-        run: |
-          Write-Host "QT_ROOT_DIR=$env:QT_ROOT_DIR"
-          Write-Host "IQTA_TOOLS=$env:IQTA_TOOLS"
-          if (-not $env:QT_ROOT_DIR) { throw "QT_ROOT_DIR not set" }
-          if (-not (Test-Path "$env:QT_ROOT_DIR\lib\cmake\Qt6Graphs\Qt6GraphsConfig.cmake")) {
-            throw "Qt6Graphs missing under $env:QT_ROOT_DIR"
-          }
-          & "$env:QT_ROOT_DIR\bin\qmake.exe" -query QT_VERSION
+          cache-key-prefix: qt611-win
 
       - name: Configure and build Release
         shell: pwsh
@@ -173,20 +163,7 @@ jobs:
           CL_QT_DIR: ${{ env.QT_ROOT_DIR }}
           CL_BUILD_DIR: ${{ github.workspace }}/build-release-win
           CL_MINGW_DIR: ${{ env.IQTA_TOOLS }}/mingw1310_64
-        run: |
-          $qtRoot = "${{ runner.workspace }}/Qt"
-          $toolsRoot = if ($env:IQTA_TOOLS) { $env:IQTA_TOOLS } else { Join-Path $qtRoot "Tools" }
-          $ifw = Get-ChildItem -Path $toolsRoot -Filter binarycreator.exe -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
-          if (-not $ifw) {
-            python -m pip install "aqtinstall>=3.3.0"
-            python -m aqt install-tool windows desktop tools_ifw -O $qtRoot
-            if ($LASTEXITCODE -ne 0) { throw "aqt install-tool tools_ifw failed" }
-            $ifw = Get-ChildItem -Path (Join-Path $qtRoot "Tools") -Filter binarycreator.exe -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
-          }
-          if (-not $ifw) { throw "binarycreator.exe not found under $toolsRoot" }
-          $env:CL_IFW_DIR = $ifw.Directory.Parent.FullName
-          Write-Host "CL_IFW_DIR=$($env:CL_IFW_DIR)"
-          & "${{ github.workspace }}/packaging/windows/build_installer.ps1"
+        run: ${{ github.workspace }}/packaging/windows/build_installer.ps1
 
       - name: Upload installer artifact
         uses: actions/upload-artifact@v6

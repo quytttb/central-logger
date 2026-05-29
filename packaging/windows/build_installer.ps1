@@ -13,7 +13,16 @@ $PROJECT_ROOT = if ($env:CL_PROJECT_ROOT) {
 }
 $QT_DIR = if ($env:CL_QT_DIR) { $env:CL_QT_DIR } elseif ($env:QT_ROOT_DIR) { $env:QT_ROOT_DIR } else { "C:\Qt\6.11.1\mingw_64" }
 $MINGW_DIR = if ($env:CL_MINGW_DIR) { $env:CL_MINGW_DIR } else { "C:\Qt\Tools\mingw1310_64" }
-$IFW_DIR = if ($env:CL_IFW_DIR) { $env:CL_IFW_DIR } else { "C:\Qt\Tools\QtInstallerFramework\4.11" }
+
+$IFW_DIR = $env:CL_IFW_DIR
+if (-not $IFW_DIR -or -not (Test-Path "$IFW_DIR\bin\binarycreator.exe")) {
+    $toolsRoot = if ($env:IQTA_TOOLS) { $env:IQTA_TOOLS } elseif ($env:CL_MINGW_DIR) { Split-Path $env:CL_MINGW_DIR -Parent } else { $null }
+    if ($toolsRoot) {
+        $hit = Get-ChildItem -Path $toolsRoot -Filter binarycreator.exe -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
+        if ($hit) { $IFW_DIR = $hit.Directory.Parent.FullName }
+    }
+}
+if (-not $IFW_DIR) { $IFW_DIR = "C:\Qt\Tools\QtInstallerFramework\4.11" }
 $BUILD_RELEASE_DIR = if ($env:CL_BUILD_DIR) { $env:CL_BUILD_DIR } else { "$PROJECT_ROOT\build\Desktop_Qt_6_11_1_MinGW_64_bit-Release" }
 $INSTALLER_BUILD_DIR = Join-Path $PackagingWindows "installer_build"
 

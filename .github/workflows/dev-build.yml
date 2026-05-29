@@ -21,8 +21,9 @@ concurrency:
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
   QT_VERSION: "6.11.1"
-  # qttools is not an aqt module — use tools: on Windows only
   QT_MODULES: qtserialbus qtserialport qtgraphs qttasktree qtquick3d qtshadertools
+  # PyPI aqtinstall 3.3.0 lacks Qt 6.11 Windows layout (miurahr/aqtinstall#1000)
+  AQT_SOURCE: git+https://github.com/miurahr/aqtinstall.git@8c3695d4a4e1ceabf6a74dc6c79681656dc6b74b
 
 permissions:
   contents: read
@@ -63,9 +64,9 @@ jobs:
           modules: ${{ env.QT_MODULES }}
           dir: ${{ runner.workspace }}
           install-deps: false
-          aqtsource: git+https://github.com/miurahr/aqtinstall.git@master
+          aqtsource: ${{ env.AQT_SOURCE }}
           cache: true
-          cache-key-prefix: qt611-linux-aqtmaster-v1
+          cache-key-prefix: qt611-linux
 
       - name: Build .deb
         run: |
@@ -99,47 +100,25 @@ jobs:
           cmakeVersion: "~3.28.0"
           ninjaVersion: latest
 
-      - name: Read version
-        id: meta
-        shell: bash
-        run: |
-          VERSION=$(grep -E '^project\(central_logger VERSION' CMakeLists.txt \
-            | sed -E 's/.*VERSION ([0-9.]+).*/\1/')
-          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
-
-      # aqtinstall 3.3.0 (PyPI) misses Qt 6.11 Windows repo layout — miurahr/aqtinstall#1000 on master
       - name: Install Qt
         uses: jurplel/install-qt-action@v4.3.1
         with:
           version: ${{ env.QT_VERSION }}
           host: windows
           target: desktop
-          # Qt 6.11 repo: win64_mingw → qt6_611x_mingw; win64_mingw1310_64 maps to no extension (aqt #959)
           arch: win64_mingw
           modules: ${{ env.QT_MODULES }}
           tools: tools_mingw1310 tools_ifw
           dir: ${{ runner.workspace }}
           install-deps: false
           add-tools-to-path: true
-          aqtsource: git+https://github.com/miurahr/aqtinstall.git@8c3695d4a4e1ceabf6a74dc6c79681656dc6b74b
+          aqtsource: ${{ env.AQT_SOURCE }}
           cache: true
-          cache-key-prefix: qt611-win-mingw-v1
-
-      - name: Verify Qt environment
-        shell: pwsh
-        run: |
-          Write-Host "QT_ROOT_DIR=$env:QT_ROOT_DIR"
-          Write-Host "IQTA_TOOLS=$env:IQTA_TOOLS"
-          if (-not $env:QT_ROOT_DIR) { throw "QT_ROOT_DIR not set" }
-          if (-not (Test-Path "$env:QT_ROOT_DIR\lib\cmake\Qt6Graphs\Qt6GraphsConfig.cmake")) {
-            throw "Qt6Graphs missing under $env:QT_ROOT_DIR"
-          }
-          & "$env:QT_ROOT_DIR\bin\qmake.exe" -query QT_VERSION
+          cache-key-prefix: qt611-win
 
       - name: Configure and build Release
         shell: pwsh
         run: |
-          cmake --version
           cmake -S . -B build-dev-win -G Ninja `
             -DCMAKE_BUILD_TYPE=Release `
             -DCMAKE_PREFIX_PATH="$env:QT_ROOT_DIR"
@@ -152,21 +131,7 @@ jobs:
           CL_QT_DIR: ${{ env.QT_ROOT_DIR }}
           CL_BUILD_DIR: ${{ github.workspace }}/build-dev-win
           CL_MINGW_DIR: ${{ env.IQTA_TOOLS }}/mingw1310_64
-        run: |
-          $qtRoot = "${{ runner.workspace }}/Qt"
-          $toolsRoot = if ($env:IQTA_TOOLS) { $env:IQTA_TOOLS } else { Join-Path $qtRoot "Tools" }
-          $ifw = Get-ChildItem -Path $toolsRoot -Filter binarycreator.exe -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
-          if (-not $ifw) {
-            python -m pip install "aqtinstall>=3.3.0"
-            python -m aqt install-tool windows desktop tools_ifw -O $qtRoot
-            if ($LASTEXITCODE -ne 0) { throw "aqt install-tool tools_ifw failed" }
-            $ifw = Get-ChildItem -Path (Join-Path $qtRoot "Tools") -Filter binarycreator.exe -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
-          }
-          if (-not $ifw) { throw "binarycreator.exe not found under $toolsRoot" }
-          # IFW layout: .../QtInstallerFramework/<ver>/bin/binarycreator.exe → root is parent of bin
-          $env:CL_IFW_DIR = $ifw.Directory.Parent.FullName
-          Write-Host "CL_IFW_DIR=$($env:CL_IFW_DIR)"
-          & "${{ github.workspace }}/packaging/windows/build_installer.ps1"
+        run: ${{ github.workspace }}/packaging/windows/build_installer.ps1
 
       - name: Upload installer artifact
         uses: actions/upload-artifact@v6
