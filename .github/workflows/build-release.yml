@@ -61,7 +61,7 @@ jobs:
       - name: Sync CMake project version
         env:
           VERSION: ${{ needs.prepare.outputs.version }}
-        run: python3 scripts/sync_cmake_version.py
+        run: python3 packaging/linux/sync_cmake_version.py
 
       - name: Install system packages
         run: |
@@ -85,8 +85,8 @@ jobs:
 
       - name: Build .deb
         run: |
-          chmod +x scripts/cpack_deb.sh
-          scripts/cpack_deb.sh
+          chmod +x packaging/linux/cpack_deb.sh
+          packaging/linux/cpack_deb.sh
 
       - name: Upload .deb artifact
         uses: actions/upload-artifact@v4
@@ -108,7 +108,7 @@ jobs:
       - name: Sync CMake project version
         env:
           VERSION: ${{ needs.prepare.outputs.version }}
-        run: python scripts/sync_cmake_version.py
+        run: python packaging/linux/sync_cmake_version.py
 
       - name: Install Qt and MinGW
         uses: jurplel/install-qt-action@v4
@@ -148,13 +148,13 @@ jobs:
         run: |
           $ifwAlt = Get-ChildItem -Path "${{ github.workspace }}/Qt/Tools" -Filter binarycreator.exe -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
           if ($ifwAlt) { $env:CL_IFW_DIR = $ifwAlt.Directory.Parent.Parent.FullName }
-          & "${{ github.workspace }}/build_installer.ps1"
+          & "${{ github.workspace }}/packaging/windows/build_installer.ps1"
 
       - name: Upload installer artifact
         uses: actions/upload-artifact@v4
         with:
           name: installer-package
-          path: installer_build/CentralLoggerSetup.exe
+          path: packaging/windows/installer_build/CentralLoggerSetup.exe
           if-no-files-found: error
           retention-days: 14
 

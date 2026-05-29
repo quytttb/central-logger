@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Build Release + CPack .deb (Qt deploy via qt_generate_deploy_app_script).
 set -euo pipefail
-ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 # Qt deploy RPATH patching fails on very long build paths; keep BUILD short on CI/local.
 if [[ -n "${BUILD_DIR:-}" ]]; then
   BUILD="$BUILD_DIR"

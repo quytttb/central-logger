@@ -95,6 +95,6 @@ $RECYCLE.BIN/
 .cache/
 
 # --- Installer / Packaging ---
-installer_build/packages/*/data/
-installer_build/CentralLoggerSetup.exe
-convert_tool/build/
+packaging/windows/installer_build/packages/*/data/
+packaging/windows/installer_build/CentralLoggerSetup.exe
+packaging/windows/convert_tool/build/

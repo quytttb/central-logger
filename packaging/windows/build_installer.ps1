@@ -5,12 +5,17 @@ $ErrorActionPreference = "Stop"
 
 # ==================== DINH NGHIA CAC DUONG DAN MAC DINH ====================
 # CI: set CL_PROJECT_ROOT, CL_QT_DIR, CL_BUILD_DIR, CL_MINGW_DIR, CL_IFW_DIR
-$PROJECT_ROOT = if ($env:CL_PROJECT_ROOT) { $env:CL_PROJECT_ROOT } else { "C:\Projects\central_logger" }
+$PackagingWindows = $PSScriptRoot
+$PROJECT_ROOT = if ($env:CL_PROJECT_ROOT) {
+    $env:CL_PROJECT_ROOT
+} else {
+    (Resolve-Path (Join-Path $PackagingWindows "..\..")).Path
+}
 $QT_DIR = if ($env:CL_QT_DIR) { $env:CL_QT_DIR } elseif ($env:QT_ROOT_DIR) { $env:QT_ROOT_DIR } else { "C:\Qt\6.11.1\mingw_64" }
 $MINGW_DIR = if ($env:CL_MINGW_DIR) { $env:CL_MINGW_DIR } else { "C:\Qt\Tools\mingw1310_64" }
 $IFW_DIR = if ($env:CL_IFW_DIR) { $env:CL_IFW_DIR } else { "C:\Qt\Tools\QtInstallerFramework\4.11" }
 $BUILD_RELEASE_DIR = if ($env:CL_BUILD_DIR) { $env:CL_BUILD_DIR } else { "$PROJECT_ROOT\build\Desktop_Qt_6_11_1_MinGW_64_bit-Release" }
-$INSTALLER_BUILD_DIR = "$PROJECT_ROOT\installer_build"
+$INSTALLER_BUILD_DIR = Join-Path $PackagingWindows "installer_build"
 
 Write-Host "==========================================================" -ForegroundColor Cyan
 Write-Host "BAT DAU DONG GOI UNG DUNG CENTRAL LOGGER" -ForegroundColor Cyan

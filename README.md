@@ -72,11 +72,11 @@ GitHub Actions trên nhánh **`main`**:
 
 ```bash
 export CMAKE_PREFIX_PATH=~/Qt/6.11.1/gcc_64
-scripts/cpack_deb.sh
+packaging/linux/cpack_deb.sh
 # → dist/central-logger-app_<version>_amd64.deb
 ```
 
-**Windows installer:** xem [`huong_dan_dong_goi.md`](huong_dan_dong_goi.md) và `build_installer.ps1` (biến `CL_*` cho CI).
+**Windows installer:** xem [`packaging/windows/huong_dan_dong_goi.md`](packaging/windows/huong_dan_dong_goi.md) và [`packaging/windows/build_installer.ps1`](packaging/windows/build_installer.ps1) (biến `CL_*` cho CI).
 
 ## Tài liệu
 
