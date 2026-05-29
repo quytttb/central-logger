@@ -28,16 +28,10 @@ jobs:
             libxcb-shape0 libxcb-sync1 libxcb-xfixes0 libxcb-xkb1 \
             patchelf
 
-      - name: Install Qt
-        uses: jurplel/install-qt-action@v4
-        with:
-          version: ${{ env.QT_VERSION }}
-          host: linux
-          target: desktop
-          arch: linux_gcc_64
-          modules: ${{ env.QT_MODULES }}
-          install-deps: false
-          cache: false
+      - name: Install Qt (aqt)
+        env:
+          QT_AQT_MODULES: ${{ env.QT_MODULES }}
+        run: bash packaging/linux/install_qt_aqt.sh
 
       - name: Configure
         run: |

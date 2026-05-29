@@ -73,17 +73,10 @@ jobs:
             libxcb-shape0 libxcb-sync1 libxcb-xfixes0 libxcb-xkb1 \
             patchelf dpkg-dev
 
-      - name: Install Qt
-        uses: jurplel/install-qt-action@v4
-        with:
-          version: ${{ env.QT_VERSION }}
-          host: linux
-          target: desktop
-          arch: linux_gcc_64
-          modules: ${{ env.QT_MODULES }}
-          install-deps: false
-          cache: true
-          cache-key-prefix: install-qt-v2
+      - name: Install Qt (aqt)
+        env:
+          QT_AQT_MODULES: ${{ env.QT_MODULES }}
+        run: bash packaging/linux/install_qt_aqt.sh
 
       - name: Build .deb
         run: |
@@ -121,22 +114,12 @@ jobs:
           VERSION: ${{ needs.prepare.outputs.version }}
         run: python packaging/linux/sync_cmake_version.py
 
-      - name: Install MinGW
+      - name: Install Qt and MinGW (aqt)
         shell: pwsh
+        env:
+          QT_AQT_MODULES: ${{ env.QT_MODULES }}
         run: |
-          python -m pip install aqtinstall
-          python -m aqt install-tool windows desktop tools_mingw1310 -O "${{ github.workspace }}/Qt"
-
-      - name: Install Qt
-        uses: jurplel/install-qt-action@v4
-        with:
-          version: ${{ env.QT_VERSION }}
-          host: windows
-          target: desktop
-          arch: win64_mingw1310_64
-          modules: ${{ env.QT_MODULES }}
-          cache: true
-          cache-key-prefix: install-qt-v2
+          & "${{ github.workspace }}/packaging/windows/install_qt_aqt.ps1"
 
       - name: Install Qt Installer Framework
         shell: pwsh
