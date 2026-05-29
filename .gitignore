@@ -1,6 +1,8 @@
 # --- Build / CMake ---
 build/
 build-*/
+dist/
+*.deb
 cmake-build-*/
 out/
 _build/
