@@ -14,6 +14,12 @@ python3 -m aqt install-qt linux desktop "${version}" linux_gcc_64 \
   -O "${out_dir}"
 
 qt_root="${out_dir}/${version}/gcc_64"
+for pkg in Qt6Graphs Qt6SerialBus Qt6TaskTree Qt6Quick3D Qt6ShaderTools; do
+  if [[ ! -f "${qt_root}/lib/cmake/${pkg}/${pkg}Config.cmake" ]]; then
+    echo "::error::Missing ${pkg} under ${qt_root} (modules: ${modules})" >&2
+    exit 1
+  fi
+done
 qt_bin="${qt_root}/bin"
 if [[ -n "${GITHUB_PATH:-}" ]]; then
   echo "${qt_bin}" >> "${GITHUB_PATH}"
