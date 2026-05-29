@@ -133,17 +133,7 @@ jobs:
           VERSION: ${{ needs.prepare.outputs.version }}
         run: python packaging/linux/sync_cmake_version.py
 
-      - name: Install MinGW
-        uses: jurplel/install-qt-action@v4
-        with:
-          host: windows
-          target: desktop
-          tools: tools_mingw1310
-          tools-only: true
-          setup-python: false
-          cache: false
-
-      - name: Install Qt
+      - name: Install Qt (MinGW + IFW + modules)
         uses: jurplel/install-qt-action@v4
         with:
           version: ${{ env.QT_VERSION }}
@@ -151,32 +141,22 @@ jobs:
           target: desktop
           arch: win64_mingw1310_64
           modules: ${{ env.QT_MODULES }}
+          tools: tools_mingw1310 tools_ifw
           install-deps: false
           setup-python: false
+          add-tools-to-path: true
           cache: true
-          cache-key-prefix: qt611-win-mingw-v1
-
-      - name: Install Qt Installer Framework
-        shell: pwsh
-        run: |
-          python -m pip install aqtinstall
-          $qtRoot = Join-Path (Split-Path $env:GITHUB_WORKSPACE -Parent) "Qt"
-          python -m aqt install-tool windows desktop tools_ifw -O $qtRoot
-          if ($LASTEXITCODE -ne 0) { throw "aqt install-tool tools_ifw failed" }
+          cache-key-prefix: qt611-win-full-v2
 
       - name: Configure and build Release
         shell: pwsh
         run: |
-          $qt = "${{ env.QT_ROOT_DIR }}"
+          $qt = $env:QT_ROOT_DIR
+          if (-not $qt) { throw "QT_ROOT_DIR not set after install-qt-action" }
           if (-not (Test-Path "$qt\lib\cmake\Qt6Graphs\Qt6GraphsConfig.cmake")) {
-            $qt = Join-Path (Split-Path $qt -Parent) "win64_mingw1310_64"
+            throw "Qt6Graphs missing under QT_ROOT_DIR=$qt"
           }
-          $mingw = Join-Path $env:IQTA_TOOLS "mingw1310_64"
-          $env:Path = "$(Join-Path $qt 'bin');$(Join-Path $mingw 'bin');$env:Path"
-          cmake -S . -B build-release-win -G Ninja `
-            -DCMAKE_BUILD_TYPE=Release `
-            -DCMAKE_PREFIX_PATH="$qt" `
-            -DQt6_DIR="$(Join-Path $qt 'lib\cmake\Qt6')"
+          cmake -S . -B build-release-win -G Ninja -DCMAKE_BUILD_TYPE=Release
           cmake --build build-release-win -j
 
       - name: Build QTIFW installer
@@ -187,10 +167,9 @@ jobs:
           CL_BUILD_DIR: ${{ github.workspace }}/build-release-win
           CL_MINGW_DIR: ${{ env.IQTA_TOOLS }}/mingw1310_64
         run: |
-          $qtRoot = Join-Path (Split-Path $env:GITHUB_WORKSPACE -Parent) "Qt"
-          $env:CL_IFW_DIR = Join-Path $qtRoot "Tools\QtInstallerFramework\4.11"
-          $ifwAlt = Get-ChildItem -Path (Join-Path $qtRoot "Tools") -Filter binarycreator.exe -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
-          if ($ifwAlt) { $env:CL_IFW_DIR = $ifwAlt.Directory.Parent.Parent.FullName }
+          $ifw = Get-ChildItem -Path $env:IQTA_TOOLS -Filter binarycreator.exe -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
+          if (-not $ifw) { throw "binarycreator.exe not found under IQTA_TOOLS=$($env:IQTA_TOOLS)" }
+          $env:CL_IFW_DIR = $ifw.Directory.Parent.Parent.FullName
           & "${{ github.workspace }}/packaging/windows/build_installer.ps1"
 
       - name: Upload installer artifact
