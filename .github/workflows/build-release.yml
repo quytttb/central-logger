@@ -18,7 +18,7 @@ concurrency:
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
   QT_VERSION: "6.11.1"
-  QT_MODULES: qtserialbus qtgraphs
+  QT_MODULES: qtserialbus qtserialport qtgraphs qttasktree qtquick3d qtshadertools
 
 permissions:
   contents: read
@@ -81,6 +81,7 @@ jobs:
           target: desktop
           arch: linux_gcc_64
           modules: ${{ env.QT_MODULES }}
+          install-deps: false
           cache: true
 
       - name: Build .deb
@@ -119,7 +120,18 @@ jobs:
           VERSION: ${{ needs.prepare.outputs.version }}
         run: python packaging/linux/sync_cmake_version.py
 
-      - name: Install Qt and MinGW
+      - name: Install MinGW
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: ${{ env.QT_VERSION }}
+          host: windows
+          target: desktop
+          arch: win64_mingw1310_64
+          tools: tools_mingw1310,qt.tools.win64_mingw1310_64
+          tools-only: true
+          cache: true
+
+      - name: Install Qt
         uses: jurplel/install-qt-action@v4
         with:
           version: ${{ env.QT_VERSION }}
@@ -127,7 +139,6 @@ jobs:
           target: desktop
           arch: win64_mingw1310_64
           modules: ${{ env.QT_MODULES }}
-          tools: tools_mingw1310
           cache: true
 
       - name: Install Qt Installer Framework

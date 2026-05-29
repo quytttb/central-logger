@@ -9,8 +9,8 @@ on:
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
   QT_VERSION: "6.11.1"
-  # qtsvg is in Qt base for 6.11; addons via aqt list-qt --modules 6.11.1 linux_gcc_64
-  QT_MODULES: qtserialbus qtgraphs
+  # qtsvg in Qt base; SerialBus→serialport; Graphs→quick3d; Qml→tasktree (aqt list-qt --modules 6.11.1 linux_gcc_64)
+  QT_MODULES: qtserialbus qtserialport qtgraphs qttasktree qtquick3d qtshadertools
 
 jobs:
   test:
@@ -36,10 +36,13 @@ jobs:
           target: desktop
           arch: linux_gcc_64
           modules: ${{ env.QT_MODULES }}
+          install-deps: false
           cache: true
 
       - name: Configure
-        run: cmake -B build -DCMAKE_BUILD_TYPE=Debug
+        run: |
+          cmake -B build -DCMAKE_BUILD_TYPE=Debug \
+            -DCMAKE_PREFIX_PATH="${QT_ROOT_DIR}"
 
       - name: Build
         run: cmake --build build -j"$(nproc)"

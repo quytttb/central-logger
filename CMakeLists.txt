@@ -7,9 +7,9 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 # Maintenance Tool IDs (Qt 6.11.1, linux_gcc_64) — see README.md § Qt components
 #   Essentials: qt.qt6.6111.linux_gcc_64  (Quick, Qml, Sql, Network, Test, …)
-#   Modbus:     qt.qt6.6111.addons.qtserialbus.linux_gcc_64
-#               qt.qt6.6111.addons.qtserialport.linux_gcc_64  (dependency of SerialBus)
-#   Charts UI:  qt.qt6.6111.addons.qtgraphs.linux_gcc_64  (not qtcharts — deprecated in 6.11)
+#   Modbus:     qtserialbus + qtserialport (SerialBus dependency)
+#   Charts UI:  qtgraphs + qtquick3d + qtshadertools (Graphs/Quick3D; not qtcharts — deprecated in 6.11)
+#   Qml base:   qttasktree (Qt 6.11 Qml asset downloader dependency)
 find_package(Qt6 6.11 REQUIRED COMPONENTS
     Quick
     QuickControls2
