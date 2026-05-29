@@ -21,7 +21,8 @@ concurrency:
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
   QT_VERSION: "6.11.1"
-  QT_MODULES: qtserialbus qtgraphs qttools
+  # qttools is not an aqt module — use tools: on Windows only
+  QT_MODULES: qtserialbus qtgraphs
 
 permissions:
   contents: read
@@ -67,19 +68,28 @@ jobs:
           packaging/linux/cpack_deb.sh
 
       - name: Upload .deb artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: central-logger-dev-deb-${{ github.sha }}
           path: dist/central-logger-app_${{ steps.meta.outputs.version }}_amd64.deb
           if-no-files-found: error
           retention-days: 7
 
-  build-installer:
+  build-exe:
     if: "!contains(github.event.head_commit.message, 'chore(release):')"
     runs-on: windows-latest
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v6
+
+      - name: Prefer Actions Python over WindowsApps stub
+        shell: pwsh
+        run: |
+          $env:PATH = ($env:PATH -split ';' | Where-Object { $_ -and $_ -notmatch 'WindowsApps' }) -join ';'
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
 
       - name: Read version
         id: meta
@@ -101,9 +111,10 @@ jobs:
           cache: true
 
       - name: Install Qt Installer Framework
+        shell: pwsh
         run: |
-          pip install aqtinstall
-          aqt install-tool windows desktop tools_ifw -O ${{ github.workspace }}/Qt
+          python -m pip install aqtinstall
+          python -m aqt install-tool windows desktop tools_ifw -O "${{ github.workspace }}/Qt"
 
       - name: Configure and build Release
         shell: pwsh
@@ -130,9 +141,9 @@ jobs:
           & "${{ github.workspace }}/packaging/windows/build_installer.ps1"
 
       - name: Upload installer artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
-          name: central-logger-dev-installer-${{ github.sha }}
+          name: central-logger-dev-exe-${{ github.sha }}
           path: packaging/windows/installer_build/CentralLoggerSetup.exe
           if-no-files-found: error
           retention-days: 7
