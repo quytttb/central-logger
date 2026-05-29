@@ -137,15 +137,15 @@ jobs:
           version: ${{ env.QT_VERSION }}
           host: windows
           target: desktop
-          arch: win64_mingw1310_64
+          arch: win64_mingw
           modules: ${{ env.QT_MODULES }}
           tools: tools_mingw1310 tools_ifw
           dir: ${{ runner.workspace }}
           install-deps: false
           add-tools-to-path: true
-          aqtsource: git+https://github.com/miurahr/aqtinstall.git@master
+          aqtsource: git+https://github.com/miurahr/aqtinstall.git@8c3695d4a4e1ceabf6a74dc6c79681656dc6b74b
           cache: true
-          cache-key-prefix: qt611-win-aqtmaster-v1
+          cache-key-prefix: qt611-win-mingw-v1
 
       - name: Verify Qt environment
         shell: pwsh

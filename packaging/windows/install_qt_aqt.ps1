@@ -25,7 +25,7 @@ if ($base) {
 if ($LASTEXITCODE -ne 0) { throw "aqt install-tool mingw failed" }
 
 $aqtArgs = @(
-    "install-qt", "windows", "desktop", $version, "win64_mingw1310_64",
+    "install-qt", "windows", "desktop", $version, "win64_mingw",
     "-m"
 ) + $mods + @("-O", $outDir)
 if ($base) { $aqtArgs += @("--base", $base) }
@@ -33,7 +33,10 @@ python -m aqt @aqtArgs
 if ($LASTEXITCODE -ne 0) { throw "aqt install-qt failed" }
 
 $baseVer = Join-Path $outDir $version
-$qtRoot = Join-Path $baseVer "win64_mingw1310_64"
+$qtRoot = Join-Path $baseVer "mingw_64"
+if (-not (Test-Path (Join-Path $qtRoot "lib\cmake\Qt6\Qt6Config.cmake"))) {
+    $qtRoot = Join-Path $baseVer "win64_mingw1310_64"
+}
 if (-not (Test-Path (Join-Path $qtRoot "lib\cmake\Qt6\Qt6Config.cmake"))) {
     $cfg = Get-ChildItem -Path $baseVer -Recurse -Filter "Qt6Config.cmake" -ErrorAction SilentlyContinue |
         Where-Object { $_.Directory.Name -eq "Qt6" } |
