@@ -63,6 +63,11 @@ jobs:
           VERSION: ${{ needs.prepare.outputs.version }}
         run: python3 packaging/linux/sync_cmake_version.py
 
+      - name: Setup CMake
+        uses: lukka/get-cmake@latest
+        with:
+          cmakeVersion: "~4.2.0"
+
       - name: Install system packages
         run: |
           sudo apt-get update

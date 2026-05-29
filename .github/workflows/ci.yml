@@ -22,6 +22,12 @@ jobs:
         with:
           python-version: "3.12"
 
+      # Qt 6.11 CMake package caps at 3.21; ubuntu-latest ships 3.28 — use CMake 4.x (matches dev).
+      - name: Setup CMake
+        uses: lukka/get-cmake@latest
+        with:
+          cmakeVersion: "~4.2.0"
+
       - name: Install Qt / OpenGL system libs
         run: |
           sudo apt-get update
