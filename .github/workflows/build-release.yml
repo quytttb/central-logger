@@ -83,6 +83,7 @@ jobs:
           modules: ${{ env.QT_MODULES }}
           install-deps: false
           cache: true
+          cache-key-prefix: install-qt-v2
 
       - name: Build .deb
         run: |
@@ -121,15 +122,10 @@ jobs:
         run: python packaging/linux/sync_cmake_version.py
 
       - name: Install MinGW
-        uses: jurplel/install-qt-action@v4
-        with:
-          version: ${{ env.QT_VERSION }}
-          host: windows
-          target: desktop
-          arch: win64_mingw1310_64
-          tools: tools_mingw1310,qt.tools.win64_mingw1310_64
-          tools-only: true
-          cache: true
+        shell: pwsh
+        run: |
+          python -m pip install aqtinstall
+          python -m aqt install-tool windows desktop tools_mingw1310 -O "${{ github.workspace }}/Qt"
 
       - name: Install Qt
         uses: jurplel/install-qt-action@v4
@@ -140,6 +136,7 @@ jobs:
           arch: win64_mingw1310_64
           modules: ${{ env.QT_MODULES }}
           cache: true
+          cache-key-prefix: install-qt-v2
 
       - name: Install Qt Installer Framework
         shell: pwsh

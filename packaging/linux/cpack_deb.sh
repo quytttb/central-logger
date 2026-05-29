@@ -19,8 +19,10 @@ cmake_args=(
   -DCMAKE_INSTALL_PREFIX=/usr
   -DCMAKE_INSTALL_LIBDIR=lib
 )
-if [[ -n "${QT_ROOT_DIR:-}" ]]; then
-  cmake_args+=(-DCMAKE_PREFIX_PATH="${QT_ROOT_DIR}")
+if [[ -x "${ROOT}/packaging/linux/resolve_qt_prefix.sh" ]]; then
+  if QT_PREFIX="$("${ROOT}/packaging/linux/resolve_qt_prefix.sh" 2>/dev/null)"; then
+    cmake_args+=(-DCMAKE_PREFIX_PATH="${QT_PREFIX}")
+  fi
 fi
 
 cmake -S "$ROOT" -B "$BUILD" "${cmake_args[@]}"

@@ -38,11 +38,14 @@ jobs:
           modules: ${{ env.QT_MODULES }}
           install-deps: false
           cache: true
+          cache-key-prefix: install-qt-v2
 
       - name: Configure
         run: |
+          QT_PREFIX="$(bash packaging/linux/resolve_qt_prefix.sh)"
+          echo "Using Qt at ${QT_PREFIX}"
           cmake -B build -DCMAKE_BUILD_TYPE=Debug \
-            -DCMAKE_PREFIX_PATH="${QT_ROOT_DIR}"
+            -DCMAKE_PREFIX_PATH="${QT_PREFIX}"
 
       - name: Build
         run: cmake --build build -j"$(nproc)"
