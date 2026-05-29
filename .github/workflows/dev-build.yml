@@ -64,6 +64,7 @@ jobs:
       - name: Install Qt (aqt)
         env:
           QT_AQT_MODULES: ${{ env.QT_MODULES }}
+          AQT_BASE: https://download.qt.io
         run: bash packaging/linux/install_qt_aqt.sh
 
       - name: Build .deb
@@ -113,6 +114,7 @@ jobs:
         shell: pwsh
         env:
           QT_AQT_MODULES: ${{ env.QT_MODULES }}
+          AQT_BASE: https://download.qt.io
         run: |
           & "${{ github.workspace }}/packaging/windows/install_qt_aqt.ps1"
 

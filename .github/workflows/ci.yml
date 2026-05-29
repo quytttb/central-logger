@@ -41,6 +41,7 @@ jobs:
       - name: Install Qt (aqt)
         env:
           QT_AQT_MODULES: ${{ env.QT_MODULES }}
+          AQT_BASE: https://download.qt.io
         run: bash packaging/linux/install_qt_aqt.sh
 
       - name: Configure

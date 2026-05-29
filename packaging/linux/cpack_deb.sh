@@ -19,12 +19,14 @@ cmake_args=(
   -DCMAKE_INSTALL_PREFIX=/usr
   -DCMAKE_INSTALL_LIBDIR=lib
 )
-if [[ -x "${ROOT}/packaging/linux/ci_configure.sh" ]] && command -v qmake6 >/dev/null 2>&1; then
+if [[ -f "${ROOT}/.ci_qt_root" ]]; then
+  export QT_ROOT_DIR="$(tr -d '\r\n' < "${ROOT}/.ci_qt_root")"
+fi
+if [[ -f "${ROOT}/packaging/linux/ci_configure.sh" ]] \
+    && [[ -n "${QT_ROOT_DIR:-}" ]] \
+    && [[ -f "${QT_ROOT_DIR}/lib/cmake/Qt6/Qt6Config.cmake" ]]; then
   CMAKE_BUILD_TYPE=Release bash "${ROOT}/packaging/linux/ci_configure.sh" "$BUILD"
 else
-  if [[ -f "${ROOT}/.ci_qt_root" ]]; then
-    QT_ROOT_DIR="$(cat "${ROOT}/.ci_qt_root")"
-  fi
   if [[ -n "${QT_ROOT_DIR:-}" ]]; then
     cmake_args+=(-DCMAKE_PREFIX_PATH="${QT_ROOT_DIR}" -DQt6_DIR="${QT_ROOT_DIR}/lib/cmake/Qt6")
   fi

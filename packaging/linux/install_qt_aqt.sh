@@ -14,9 +14,13 @@ fi
 python3 -m pip install --upgrade pip
 python3 -m pip install "aqtinstall>=3.3.0"
 
-python3 -m aqt install-qt linux desktop "${version}" linux_gcc_64 \
-  -m ${modules} \
-  -O "${out_dir}"
+if [[ -n "${AQT_BASE:-}" ]]; then
+  python3 -m aqt install-qt linux desktop "${version}" linux_gcc_64 \
+    -m ${modules} -O "${out_dir}" --base "${AQT_BASE}"
+else
+  python3 -m aqt install-qt linux desktop "${version}" linux_gcc_64 \
+    -m ${modules} -O "${out_dir}"
+fi
 
 # aqt arch linux_gcc_64 installs into .../gcc_64 (not linux_gcc_64).
 qt_root="${out_dir}/${version}/gcc_64"
