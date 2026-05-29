@@ -59,11 +59,12 @@ esac
 export PATH="${qt_prefix}/bin:${PATH}"
 
 cmake --version
+log="${TMPDIR:-/tmp}/cmake-configure.err"
 if ! cmake -S "${root}" -B "${build_dir}" \
   -DCMAKE_BUILD_TYPE="${CMAKE_BUILD_TYPE:-Debug}" \
   -DCMAKE_PREFIX_PATH="${qt_prefix}" \
-  -DQt6_DIR="${qt_prefix}/lib/cmake/Qt6" 2> >(tee "${TMPDIR:-/tmp}/cmake-configure.err" >&2); then
+  -DQt6_DIR="${qt_prefix}/lib/cmake/Qt6" 2>&1 | tee "${log}"; then
   echo "::error::CMake configure failed. Last lines:" >&2
-  tail -n 40 "${TMPDIR:-/tmp}/cmake-configure.err" >&2 || true
+  tail -n 40 "${log}" >&2 || true
   exit 1
 fi
