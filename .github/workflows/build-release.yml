@@ -63,7 +63,7 @@ jobs:
           VERSION: ${{ needs.prepare.outputs.version }}
         run: python3 packaging/linux/sync_cmake_version.py
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
 
@@ -117,7 +117,7 @@ jobs:
         run: |
           $env:PATH = ($env:PATH -split ';' | Where-Object { $_ -and $_ -notmatch 'WindowsApps' }) -join ';'
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
 
@@ -147,9 +147,11 @@ jobs:
           QT_MODULES: ${{ env.QT_MODULES }}
         run: |
           python -m pip install "aqtinstall>=3.3.0"
-          $mods = $env:QT_MODULES -split '\s+'
-          python -m aqt --base https://download.qt.io install-qt windows desktop 6.11.1 win64_mingw1310_64 `
-            -m @mods -O "${{ github.workspace }}/Qt"
+          $outDir = "${{ github.workspace }}/Qt"
+          python -m aqt install-qt windows desktop 6.11.1 win64_mingw1310_64 `
+            -m qtserialbus qtserialport qtgraphs qttasktree qtquick3d qtshadertools `
+            -O $outDir --base https://download.qt.io
+          if ($LASTEXITCODE -ne 0) { throw "aqt install-qt failed" }
           $qt = "${{ github.workspace }}\Qt\6.11.1\win64_mingw1310_64"
           if (-not (Test-Path "$qt\lib\cmake\Qt6\Qt6Config.cmake")) {
             throw "Qt not found at $qt"
