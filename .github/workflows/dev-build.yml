@@ -66,7 +66,8 @@ jobs:
           arch: linux_gcc_64
           modules: ${{ env.QT_MODULES }}
           install-deps: false
-          cache: false
+          cache: true
+          cache-key-prefix: qt611-full-v4
 
       - name: Build .deb
         run: |
@@ -105,7 +106,16 @@ jobs:
             | sed -E 's/.*VERSION ([0-9.]+).*/\1/')
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
 
-      - name: Install Qt and MinGW
+      - name: Install MinGW
+        uses: jurplel/install-qt-action@v4
+        with:
+          host: windows
+          target: desktop
+          tools: tools_mingw1310
+          tools-only: true
+          cache: false
+
+      - name: Install Qt
         uses: jurplel/install-qt-action@v4
         with:
           version: ${{ env.QT_VERSION }}
@@ -113,7 +123,6 @@ jobs:
           target: desktop
           arch: win64_mingw1310_64
           modules: ${{ env.QT_MODULES }}
-          tools: tools_mingw1310
           cache: false
 
       - name: Install Qt Installer Framework
@@ -126,11 +135,13 @@ jobs:
         shell: pwsh
         run: |
           $qt = "${{ env.QT_ROOT_DIR }}"
-          if (-not $qt -and (Test-Path ".ci_qt_root")) { $qt = (Get-Content ".ci_qt_root" -Raw).Trim() }
-          if (-not $qt) { throw "QT_ROOT_DIR not set after aqt install" }
-          $env:Path = "$(Join-Path $qt 'bin');$env:Path"
+          if (-not (Test-Path "$qt\lib\cmake\Qt6Graphs\Qt6GraphsConfig.cmake")) {
+            $qt = Join-Path (Split-Path $qt -Parent) "win64_mingw1310_64"
+          }
+          $mingw = "${{ github.workspace }}\Qt\Tools\mingw1310_64"
+          $env:Path = "$(Join-Path $qt 'bin');$(Join-Path $mingw 'bin');$env:Path"
           cmake --version
-          & qmake6 -query QT_VERSION
+          & (Join-Path $qt "bin\qmake.exe") -query QT_VERSION
           cmake -S . -B build-dev-win -G Ninja `
             -DCMAKE_BUILD_TYPE=Release `
             -DCMAKE_PREFIX_PATH="$qt" `
