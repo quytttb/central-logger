@@ -61,8 +61,7 @@ jobs:
           arch: linux_gcc_64
           modules: ${{ env.QT_MODULES }}
           install-deps: false
-          cache: true
-          cache-key-prefix: install-qt-v2
+          cache: false
 
       - name: Build .deb
         run: |
@@ -115,8 +114,7 @@ jobs:
           target: desktop
           arch: win64_mingw1310_64
           modules: ${{ env.QT_MODULES }}
-          cache: true
-          cache-key-prefix: install-qt-v2
+          cache: false
 
       - name: Install Qt Installer Framework
         shell: pwsh
