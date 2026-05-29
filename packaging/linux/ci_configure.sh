@@ -5,32 +5,49 @@ set -euo pipefail
 root="$(cd "$(dirname "$0")/../.." && pwd)"
 build_dir="${1:-${root}/build}"
 
-qt_prefix=""
-if [[ -n "${QT_ROOT_DIR:-}" && -f "${QT_ROOT_DIR}/lib/cmake/Qt6/Qt6Config.cmake" ]]; then
-  qt_prefix="${QT_ROOT_DIR}"
-elif [[ -f "${root}/.ci_qt_root" ]]; then
-  qt_prefix="$(tr -d '\r\n' < "${root}/.ci_qt_root")"
-fi
+discover_qt_prefix() {
+  local candidates=()
+  if [[ -n "${QT_ROOT_DIR:-}" ]]; then
+    candidates+=("${QT_ROOT_DIR}")
+    candidates+=("$(dirname "${QT_ROOT_DIR}")/gcc_64")
+    candidates+=("$(dirname "${QT_ROOT_DIR}")/linux_gcc_64")
+  fi
+  if [[ -f "${root}/.ci_qt_root" ]]; then
+    candidates+=("$(tr -d '\r\n' < "${root}/.ci_qt_root")")
+  fi
+  if [[ -n "${GITHUB_WORKSPACE:-}" ]]; then
+    local qt_base
+    qt_base="$(cd "${GITHUB_WORKSPACE}/.." && pwd)/Qt/6.11.1"
+    candidates+=("${qt_base}/gcc_64" "${qt_base}/linux_gcc_64")
+  fi
+  local c seen=""
+  for c in "${candidates[@]}"; do
+    [[ -z "${c}" ]] && continue
+    [[ " ${seen} " == *" ${c} "* ]] && continue
+    seen+=" ${c}"
+    if [[ -f "${c}/lib/cmake/Qt6/Qt6Config.cmake" ]]; then
+      echo "${c}"
+      return 0
+    fi
+  done
+  return 1
+}
 
-if [[ -z "${qt_prefix}" || ! -f "${qt_prefix}/lib/cmake/Qt6/Qt6Config.cmake" ]]; then
-  echo "::error::Qt 6.11 prefix not found (set QT_ROOT_DIR or run install_qt_aqt.sh)" >&2
+if ! qt_prefix="$(discover_qt_prefix)"; then
+  echo "::error::Qt 6.11 prefix not found. Set QT_ROOT_DIR or run install_qt_aqt.sh" >&2
+  ls -la "${GITHUB_WORKSPACE:-.}/../Qt/6.11.1" 2>/dev/null >&2 || true
   exit 1
 fi
 
 qmake="${qt_prefix}/bin/qmake6"
+[[ -x "${qmake}" ]] || qmake="${qt_prefix}/bin/qmake"
 if [[ ! -x "${qmake}" ]]; then
-  qmake="${qt_prefix}/bin/qmake"
-fi
-if [[ ! -x "${qmake}" ]]; then
-  echo "::error::No qmake under ${qt_prefix}/bin" >&2
+  echo "::error::No qmake in ${qt_prefix}/bin" >&2
   exit 1
 fi
 
 qt_version="$("${qmake}" -query QT_VERSION)"
-echo "qmake=${qmake}"
-echo "QT_VERSION=${qt_version}"
-echo "QT_PREFIX=${qt_prefix}"
-
+echo "::notice::Using Qt ${qt_version} at ${qt_prefix}"
 case "${qt_version}" in
   6.11.*|6.12.*|6.13.*) ;;
   *)
@@ -39,17 +56,14 @@ case "${qt_version}" in
     ;;
 esac
 
-for pkg in Qt6Graphs Qt6SerialBus Qt6TaskTree; do
-  if [[ ! -f "${qt_prefix}/lib/cmake/${pkg}/${pkg}Config.cmake" ]]; then
-    echo "::error::Missing ${pkg} under ${qt_prefix}" >&2
-    exit 1
-  fi
-done
-
 export PATH="${qt_prefix}/bin:${PATH}"
 
 cmake --version
-cmake -S "${root}" -B "${build_dir}" \
+if ! cmake -S "${root}" -B "${build_dir}" \
   -DCMAKE_BUILD_TYPE="${CMAKE_BUILD_TYPE:-Debug}" \
   -DCMAKE_PREFIX_PATH="${qt_prefix}" \
-  -DQt6_DIR="${qt_prefix}/lib/cmake/Qt6"
+  -DQt6_DIR="${qt_prefix}/lib/cmake/Qt6" 2> >(tee "${TMPDIR:-/tmp}/cmake-configure.err" >&2); then
+  echo "::error::CMake configure failed. Last lines:" >&2
+  tail -n 40 "${TMPDIR:-/tmp}/cmake-configure.err" >&2 || true
+  exit 1
+fi

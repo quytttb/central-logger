@@ -5,11 +5,15 @@ set -euo pipefail
 version="${QT_VERSION:-6.11.1}"
 modules="${QT_AQT_MODULES:-qtserialbus qtserialport qtgraphs qttasktree qtquick3d qtshadertools}"
 
+# Match install-qt-action layout: $RUNNER_WORKSPACE/Qt (parent of checkout).
 if [[ -n "${GITHUB_WORKSPACE:-}" ]]; then
   out_dir="$(cd "${GITHUB_WORKSPACE}/.." && pwd)/Qt"
+elif [[ -n "${RUNNER_WORKSPACE:-}" ]]; then
+  out_dir="${RUNNER_WORKSPACE}/Qt"
 else
-  out_dir="${QT_INSTALL_DIR:-${RUNNER_WORKSPACE:-$HOME}/Qt}"
+  out_dir="${QT_INSTALL_DIR:-${HOME}/Qt}"
 fi
+echo "::notice::aqt output dir ${out_dir}"
 
 python3 -m pip install --upgrade pip
 python3 -m pip install "aqtinstall>=3.3.0"
