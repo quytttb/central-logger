@@ -1,0 +1,141 @@
+name: Dev Build
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "**.cpp"
+      - "**.h"
+      - "**.qml"
+      - "CMakeLists.txt"
+      - "cmake/**"
+      - "packaging/**"
+      - "scripts/**"
+      - "resources/**"
+      - "installer_build/**"
+      - "build_installer.ps1"
+      - ".github/workflows/**"
+  workflow_dispatch:
+
+concurrency:
+  group: dev-build-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+  QT_VERSION: "6.11.1"
+  QT_MODULES: qtserialbus qtgraphs qtsvg qttools
+
+permissions:
+  contents: read
+
+jobs:
+  build-deb:
+    if: "!contains(github.event.head_commit.message, 'chore(release):')"
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Read version
+        id: meta
+        run: |
+          VERSION=$(grep -E '^project\(central_logger VERSION' CMakeLists.txt \
+            | sed -E 's/.*VERSION ([0-9.]+).*/\1/')
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+
+      - name: Install system packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libegl1 libgl1 libxkbcommon0 libxkbcommon-x11-0 \
+            libdbus-1-3 libfontconfig1 libxcb-cursor0 libxcb-icccm4 \
+            libxcb-image0 libxcb-keysyms1 libxcb-randr0 libxcb-render-util0 \
+            libxcb-shape0 libxcb-sync1 libxcb-xfixes0 libxcb-xkb1 \
+            patchelf dpkg-dev
+
+      - name: Install Qt
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: ${{ env.QT_VERSION }}
+          host: linux
+          target: desktop
+          arch: gcc_64
+          modules: ${{ env.QT_MODULES }}
+          cache: true
+
+      - name: Build .deb
+        run: |
+          chmod +x scripts/cpack_deb.sh
+          scripts/cpack_deb.sh
+
+      - name: Upload .deb artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: central-logger-dev-deb-${{ github.sha }}
+          path: dist/central-logger-app_${{ steps.meta.outputs.version }}_amd64.deb
+          if-no-files-found: error
+          retention-days: 7
+
+  build-installer:
+    if: "!contains(github.event.head_commit.message, 'chore(release):')"
+    runs-on: windows-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Read version
+        id: meta
+        shell: bash
+        run: |
+          VERSION=$(grep -E '^project\(central_logger VERSION' CMakeLists.txt \
+            | sed -E 's/.*VERSION ([0-9.]+).*/\1/')
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+
+      - name: Install Qt and MinGW
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: ${{ env.QT_VERSION }}
+          host: windows
+          target: desktop
+          arch: win64_mingw
+          modules: ${{ env.QT_MODULES }}
+          tools: tools_mingw1310
+          cache: true
+
+      - name: Install Qt Installer Framework
+        run: |
+          pip install aqtinstall
+          aqt install-tool windows desktop tools_ifw -O ${{ github.workspace }}/Qt
+
+      - name: Configure and build Release
+        shell: pwsh
+        run: |
+          $qt = "${{ env.QT_ROOT_DIR }}"
+          if (-not $qt) { $qt = "$env:GITHUB_WORKSPACE\Qt\6.11.1\mingw_64" }
+          $env:Path = "$qt\bin;$env:Path"
+          cmake -S . -B build-dev-win -G Ninja `
+            -DCMAKE_BUILD_TYPE=Release `
+            -DCMAKE_PREFIX_PATH="$qt"
+          cmake --build build-dev-win -j
+
+      - name: Build QTIFW installer
+        shell: pwsh
+        env:
+          CL_PROJECT_ROOT: ${{ github.workspace }}
+          CL_QT_DIR: ${{ env.QT_ROOT_DIR }}
+          CL_BUILD_DIR: ${{ github.workspace }}/build-dev-win
+          CL_MINGW_DIR: ${{ github.workspace }}/Qt/Tools/mingw1310_64
+          CL_IFW_DIR: ${{ github.workspace }}/Qt/Tools/QtInstallerFramework/4.11
+        run: |
+          $ifwAlt = Get-ChildItem -Path "${{ github.workspace }}/Qt/Tools" -Filter binarycreator.exe -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
+          if ($ifwAlt) { $env:CL_IFW_DIR = $ifwAlt.Directory.Parent.Parent.FullName }
+          & "${{ github.workspace }}/build_installer.ps1"
+
+      - name: Upload installer artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: central-logger-dev-installer-${{ github.sha }}
+          path: installer_build/CentralLoggerSetup.exe
+          if-no-files-found: error
+          retention-days: 7

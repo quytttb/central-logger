@@ -197,6 +197,8 @@ Thứ tự implement gợi ý: **Task 1** DB → **2** shell QML → **3** logge
 | FE-017 / Task 18 | Close thoát app; không tray/frameless |
 | FE-020 / Task 21 | Không decode QR trong app — copy-paste text provision |
 
+**CI (2026-05):** `.github/workflows/ci.yml`, `dev-build.yml`, `build-release.yml` trên `main`. Linux: Qt 6.5+ deploy API + CPack DEB (`cmake/CPackOptions.cmake`, `scripts/cpack_deb.sh`). Windows: QTIFW (`build_installer.ps1`). Nhánh `dev` giữ cho feature; workflow không trigger trên `dev` trừ khi mở rộng sau.
+
 **Next / Tiếp theo:** Manual Task 4 (edge/simulator) khi có hardware.
 
 **UI modernization (done 2026-05):** [`docs/plan/ui-modernization-agent-prompts.md`](docs/plan/ui-modernization-agent-prompts.md) — **UI-M1** `Loader` navigation; **UI-M2** sensor `TableView` + `HorizontalHeaderView`; **UI-M3/M3b** loggers `QAbstractTableModel` (7 cột) + `headerData()`/`tr()` (không header `Pane` thủ công). Cột Status: `DisplayRole` + QML `display` = Online/Offline (C++ `tr()`).

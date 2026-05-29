@@ -50,8 +50,24 @@ target_link_libraries(app
         network
 )
 
+# Linux/Windows packaging: Qt CMake Deployment API + CPack DEB (see cmake/CPackOptions.cmake)
+qt_generate_deploy_app_script(
+    TARGET app
+    OUTPUT_SCRIPT deploy_script
+    NO_UNSUPPORTED_PLATFORM_ERROR
+)
+
 install(TARGETS app
-    BUNDLE  DESTINATION .
-    LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
     RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+)
+
+install(SCRIPT ${deploy_script})
+
+install(FILES ${CMAKE_SOURCE_DIR}/packaging/linux/central-logger.desktop
+    DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/applications
+)
+
+install(FILES ${CMAKE_SOURCE_DIR}/resources/icons/brand_4m_technologies_blue.svg
+    DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/icons/hicolor/scalable/apps
+    RENAME central-logger.svg
 )

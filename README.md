@@ -52,6 +52,32 @@ Cấu trúc CMake theo [Qt CMake Get Started](https://doc.qt.io/qt-6/cmake-get-s
 
 Chạy ngoài IDE: `./build/Desktop-Debug/bin/central_logger` (hoặc `./build/bin/central_logger` tùy build dir).
 
+### Test
+
+```bash
+cd build && ctest --output-on-failure
+```
+
+### CI / đóng gói
+
+GitHub Actions trên nhánh **`main`**:
+
+| Workflow | Khi chạy | Kết quả |
+|----------|----------|---------|
+| `ci.yml` | push / PR `main` | `cmake` Debug + `ctest` (Ubuntu, Qt 6.11) |
+| `dev-build.yml` | push `main` (path filter) | `.deb` (CPack) + `CentralLoggerSetup.exe` (QTIFW) — artifacts 7 ngày |
+| `build-release.yml` | tag `v*.*.*` | GitHub Release: `.deb` + installer |
+
+**Linux .deb (local):** cần Qt 6.11, `patchelf`, `dpkg-dev`:
+
+```bash
+export CMAKE_PREFIX_PATH=~/Qt/6.11.1/gcc_64
+scripts/cpack_deb.sh
+# → dist/central-logger-app_<version>_amd64.deb
+```
+
+**Windows installer:** xem [`huong_dan_dong_goi.md`](huong_dan_dong_goi.md) và `build_installer.ps1` (biến `CL_*` cho CI).
+
 ## Tài liệu
 
 | Path | Nội dung |
