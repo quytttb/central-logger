@@ -42,10 +42,6 @@ jobs:
             | sed -E 's/.*VERSION ([0-9.]+).*/\1/')
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
 
-      - uses: actions/setup-python@v6
-        with:
-          python-version: "3.12"
-
       - name: Install system packages
         run: |
           sudo apt-get update
@@ -58,17 +54,17 @@ jobs:
             patchelf dpkg-dev
 
       - name: Install Qt
-        uses: jurplel/install-qt-action@v4
+        uses: jurplel/install-qt-action@v4.3.1
         with:
           version: ${{ env.QT_VERSION }}
           host: linux
           target: desktop
           arch: linux_gcc_64
           modules: ${{ env.QT_MODULES }}
+          dir: ${{ runner.workspace }}
           install-deps: false
-          setup-python: false
           cache: true
-          cache-key-prefix: qt611-full-v4
+          cache-key-prefix: qt611-linux-v431
 
       - name: Build .deb
         run: |
@@ -95,10 +91,6 @@ jobs:
         run: |
           $env:PATH = ($env:PATH -split ';' | Where-Object { $_ -and $_ -notmatch 'WindowsApps' }) -join ';'
 
-      - uses: actions/setup-python@v6
-        with:
-          python-version: "3.12"
-
       - name: Setup CMake and Ninja
         uses: lukka/get-cmake@latest
         with:
@@ -113,9 +105,8 @@ jobs:
             | sed -E 's/.*VERSION ([0-9.]+).*/\1/')
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
 
-      # One step per https://github.com/marketplace/actions/install-qt — dir defaults to runner.workspace
-      - name: Install Qt (MinGW + IFW + modules)
-        uses: jurplel/install-qt-action@v4
+      - name: Install Qt
+        uses: jurplel/install-qt-action@v4.3.1
         with:
           version: ${{ env.QT_VERSION }}
           host: windows
@@ -123,23 +114,30 @@ jobs:
           arch: win64_mingw1310_64
           modules: ${{ env.QT_MODULES }}
           tools: tools_mingw1310 tools_ifw
+          dir: ${{ runner.workspace }}
           install-deps: false
-          setup-python: false
           add-tools-to-path: true
           cache: true
-          cache-key-prefix: qt611-win-full-v2
+          cache-key-prefix: qt611-win-v431
+
+      - name: Verify Qt environment
+        shell: pwsh
+        run: |
+          Write-Host "QT_ROOT_DIR=$env:QT_ROOT_DIR"
+          Write-Host "IQTA_TOOLS=$env:IQTA_TOOLS"
+          if (-not $env:QT_ROOT_DIR) { throw "QT_ROOT_DIR not set" }
+          if (-not (Test-Path "$env:QT_ROOT_DIR\lib\cmake\Qt6Graphs\Qt6GraphsConfig.cmake")) {
+            throw "Qt6Graphs missing under $env:QT_ROOT_DIR"
+          }
+          & "$env:QT_ROOT_DIR\bin\qmake.exe" -query QT_VERSION
 
       - name: Configure and build Release
         shell: pwsh
         run: |
-          $qt = $env:QT_ROOT_DIR
-          if (-not $qt) { throw "QT_ROOT_DIR not set after install-qt-action" }
-          if (-not (Test-Path "$qt\lib\cmake\Qt6Graphs\Qt6GraphsConfig.cmake")) {
-            throw "Qt6Graphs missing under QT_ROOT_DIR=$qt"
-          }
           cmake --version
-          & "$qt\bin\qmake.exe" -query QT_VERSION
-          cmake -S . -B build-dev-win -G Ninja -DCMAKE_BUILD_TYPE=Release
+          cmake -S . -B build-dev-win -G Ninja `
+            -DCMAKE_BUILD_TYPE=Release `
+            -DCMAKE_PREFIX_PATH="$env:QT_ROOT_DIR"
           cmake --build build-dev-win -j
 
       - name: Build QTIFW installer

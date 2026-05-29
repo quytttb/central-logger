@@ -18,10 +18,6 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      - uses: actions/setup-python@v6
-        with:
-          python-version: "3.12"
-
       - name: Install Qt / OpenGL system libs
         run: |
           sudo apt-get update
@@ -34,17 +30,17 @@ jobs:
             patchelf
 
       - name: Install Qt
-        uses: jurplel/install-qt-action@v4
+        uses: jurplel/install-qt-action@v4.3.1
         with:
           version: ${{ env.QT_VERSION }}
           host: linux
           target: desktop
           arch: linux_gcc_64
           modules: ${{ env.QT_MODULES }}
+          dir: ${{ runner.workspace }}
           install-deps: false
-          setup-python: false
           cache: true
-          cache-key-prefix: qt611-full-v4
+          cache-key-prefix: qt611-linux-v431
 
       - name: Configure
         run: |
