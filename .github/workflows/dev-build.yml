@@ -63,8 +63,9 @@ jobs:
           modules: ${{ env.QT_MODULES }}
           dir: ${{ runner.workspace }}
           install-deps: false
+          aqtsource: git+https://github.com/miurahr/aqtinstall.git@master
           cache: true
-          cache-key-prefix: qt611-linux-v431
+          cache-key-prefix: qt611-linux-aqtmaster-v1
 
       - name: Build .deb
         run: |
@@ -86,10 +87,11 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      - name: Prefer Actions Python over WindowsApps stub
+      - name: Exclude Windows Store Python stub from PATH
         shell: pwsh
         run: |
-          $env:PATH = ($env:PATH -split ';' | Where-Object { $_ -and $_ -notmatch 'WindowsApps' }) -join ';'
+          $filtered = ($env:PATH -split ';' | Where-Object { $_ -and $_ -notmatch 'WindowsApps' })
+          echo "PATH=$($filtered -join ';')" >> $env:GITHUB_ENV
 
       - name: Setup CMake and Ninja
         uses: lukka/get-cmake@latest
@@ -105,6 +107,7 @@ jobs:
             | sed -E 's/.*VERSION ([0-9.]+).*/\1/')
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
 
+      # aqtinstall 3.3.0 (PyPI) misses Qt 6.11 Windows repo layout — miurahr/aqtinstall#1000 on master
       - name: Install Qt
         uses: jurplel/install-qt-action@v4.3.1
         with:
@@ -117,8 +120,9 @@ jobs:
           dir: ${{ runner.workspace }}
           install-deps: false
           add-tools-to-path: true
+          aqtsource: git+https://github.com/miurahr/aqtinstall.git@master
           cache: true
-          cache-key-prefix: qt611-win-v431
+          cache-key-prefix: qt611-win-aqtmaster-v1
 
       - name: Verify Qt environment
         shell: pwsh

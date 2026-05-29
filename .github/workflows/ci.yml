@@ -39,8 +39,9 @@ jobs:
           modules: ${{ env.QT_MODULES }}
           dir: ${{ runner.workspace }}
           install-deps: false
+          aqtsource: git+https://github.com/miurahr/aqtinstall.git@master
           cache: true
-          cache-key-prefix: qt611-linux-v431
+          cache-key-prefix: qt611-linux-aqtmaster-v1
 
       - name: Configure
         run: |

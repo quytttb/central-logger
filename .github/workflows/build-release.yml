@@ -84,8 +84,9 @@ jobs:
           modules: ${{ env.QT_MODULES }}
           dir: ${{ runner.workspace }}
           install-deps: false
+          aqtsource: git+https://github.com/miurahr/aqtinstall.git@master
           cache: true
-          cache-key-prefix: qt611-linux-v431
+          cache-key-prefix: qt611-linux-aqtmaster-v1
 
       - name: Build .deb
         run: |
@@ -109,10 +110,11 @@ jobs:
         with:
           ref: ${{ needs.prepare.outputs.ref }}
 
-      - name: Prefer Actions Python over WindowsApps stub
+      - name: Exclude Windows Store Python stub from PATH
         shell: pwsh
         run: |
-          $env:PATH = ($env:PATH -split ';' | Where-Object { $_ -and $_ -notmatch 'WindowsApps' }) -join ';'
+          $filtered = ($env:PATH -split ';' | Where-Object { $_ -and $_ -notmatch 'WindowsApps' })
+          echo "PATH=$($filtered -join ';')" >> $env:GITHUB_ENV
 
       - name: Setup CMake and Ninja
         uses: lukka/get-cmake@latest
@@ -141,8 +143,9 @@ jobs:
           dir: ${{ runner.workspace }}
           install-deps: false
           add-tools-to-path: true
+          aqtsource: git+https://github.com/miurahr/aqtinstall.git@master
           cache: true
-          cache-key-prefix: qt611-win-v431
+          cache-key-prefix: qt611-win-aqtmaster-v1
 
       - name: Verify Qt environment
         shell: pwsh
