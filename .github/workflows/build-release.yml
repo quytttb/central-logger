@@ -18,7 +18,7 @@ concurrency:
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
   QT_VERSION: "6.11.1"
-  QT_MODULES: qtserialbus qtgraphs qtsvg qttools
+  QT_MODULES: qtserialbus qtgraphs qttools
 
 permissions:
   contents: read
@@ -54,7 +54,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 120
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           ref: ${{ needs.prepare.outputs.ref }}
 
@@ -79,7 +79,7 @@ jobs:
           version: ${{ env.QT_VERSION }}
           host: linux
           target: desktop
-          arch: gcc_64
+          arch: linux_gcc_64
           modules: ${{ env.QT_MODULES }}
           cache: true
 
@@ -101,7 +101,7 @@ jobs:
     runs-on: windows-latest
     timeout-minutes: 120
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           ref: ${{ needs.prepare.outputs.ref }}
 
@@ -116,7 +116,7 @@ jobs:
           version: ${{ env.QT_VERSION }}
           host: windows
           target: desktop
-          arch: win64_mingw
+          arch: win64_mingw1310_64
           modules: ${{ env.QT_MODULES }}
           tools: tools_mingw1310
           cache: true
@@ -130,7 +130,7 @@ jobs:
         shell: pwsh
         run: |
           $qt = "${{ env.QT_ROOT_DIR }}"
-          if (-not $qt) { $qt = "$env:GITHUB_WORKSPACE\Qt\6.11.1\mingw_64" }
+          if (-not $qt) { $qt = "$env:GITHUB_WORKSPACE\Qt\6.11.1\win64_mingw1310_64" }
           $env:Path = "$qt\bin;$env:Path"
           cmake -S . -B build-release-win -G Ninja `
             -DCMAKE_BUILD_TYPE=Release `

@@ -9,13 +9,14 @@ on:
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
   QT_VERSION: "6.11.1"
-  QT_MODULES: qtserialbus qtgraphs qtsvg
+  # qtsvg is in Qt base for 6.11; addons via aqt list-qt --modules 6.11.1 linux_gcc_64
+  QT_MODULES: qtserialbus qtgraphs
 
 jobs:
   test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Install Qt / OpenGL system libs
         run: |
@@ -33,7 +34,7 @@ jobs:
           version: ${{ env.QT_VERSION }}
           host: linux
           target: desktop
-          arch: gcc_64
+          arch: linux_gcc_64
           modules: ${{ env.QT_MODULES }}
           cache: true
 
