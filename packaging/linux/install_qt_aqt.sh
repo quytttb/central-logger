@@ -41,5 +41,11 @@ fi
 if [[ -n "${GITHUB_WORKSPACE:-}" ]]; then
   echo "${qt_root}" > "${GITHUB_WORKSPACE}/.ci_qt_root"
 fi
+if [[ -n "${GITHUB_OUTPUT:-}" ]]; then
+  {
+    echo "qt_prefix=${qt_root}"
+    echo "qt_version=$("${qt_root}/bin/qmake6" -query QT_VERSION 2>/dev/null || "${qt_root}/bin/qmake" -query QT_VERSION)"
+  } >> "${GITHUB_OUTPUT}"
+fi
 
 echo "Installed Qt ${version} at ${qt_root}"

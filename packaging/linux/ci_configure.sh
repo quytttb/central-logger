@@ -47,7 +47,6 @@ for pkg in Qt6Graphs Qt6SerialBus Qt6TaskTree; do
 done
 
 export PATH="${qt_prefix}/bin:${PATH}"
-export CMAKE_IGNORE_PATH="/usr/lib/x86_64-linux-gnu/cmake;/lib/x86_64-linux-gnu/cmake"
 
 cmake --version
 cmake -S "${root}" -B "${build_dir}" \

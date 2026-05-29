@@ -8,18 +8,13 @@ $base = if ($env:AQT_BASE) { $env:AQT_BASE } else { "https://download.qt.io" }
 python -m pip install --upgrade pip
 python -m pip install "aqtinstall>=3.3.0"
 
-function Invoke-Aqt {
-    param([string[]]$Args)
-    & python -m aqt @Args --base $base
-    if ($LASTEXITCODE -ne 0) { throw "aqt failed: aqt $($Args -join ' ')" }
-}
+python -m aqt --base $base install-tool windows desktop tools_mingw1310 -O $outDir
+if ($LASTEXITCODE -ne 0) { throw "aqt install-tool mingw failed" }
 
-Invoke-Aqt @("install-tool", "windows", "desktop", "tools_mingw1310", "-O", $outDir)
-Invoke-Aqt @(
-    "install-qt", "windows", "desktop", $version, "win64_mingw1310_64",
-    "-m", "qtserialbus", "qtserialport", "qtgraphs", "qttasktree", "qtquick3d", "qtshadertools",
-    "-O", $outDir
-)
+python -m aqt --base $base install-qt windows desktop $version win64_mingw1310_64 `
+    -m qtserialbus qtserialport qtgraphs qttasktree qtquick3d qtshadertools `
+    -O $outDir
+if ($LASTEXITCODE -ne 0) { throw "aqt install-qt failed" }
 
 $baseVer = Join-Path $outDir $version
 $qtRoot = $null
@@ -49,8 +44,14 @@ foreach ($pkg in @("Qt6Graphs", "Qt6SerialBus", "Qt6TaskTree", "Qt6Quick3D", "Qt
     }
 }
 
+$qmake = Join-Path $qtRoot "bin\qmake.exe"
+$qtVer = & $qmake -query QT_VERSION
 $qtBin = Join-Path $qtRoot "bin"
 Add-Content -Path $env:GITHUB_PATH -Value $qtBin
 Add-Content -Path $env:GITHUB_ENV -Value "QT_ROOT_DIR=$qtRoot"
 Set-Content -Path (Join-Path $env:GITHUB_WORKSPACE ".ci_qt_root") -Value $qtRoot -NoNewline
-Write-Host "Installed Qt $(& (Join-Path $qtBin 'qmake.exe') -query QT_VERSION) at $qtRoot"
+if ($env:GITHUB_OUTPUT) {
+    "qt_prefix=$qtRoot" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+    "qt_version=$qtVer" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+}
+Write-Host "Installed Qt $qtVer at $qtRoot"

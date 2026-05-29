@@ -39,12 +39,15 @@ jobs:
             patchelf
 
       - name: Install Qt (aqt)
+        id: qt
         env:
           QT_AQT_MODULES: ${{ env.QT_MODULES }}
           AQT_BASE: https://download.qt.io
         run: bash packaging/linux/install_qt_aqt.sh
 
       - name: Configure
+        env:
+          QT_ROOT_DIR: ${{ steps.qt.outputs.qt_prefix }}
         run: bash packaging/linux/ci_configure.sh build
 
       - name: Build

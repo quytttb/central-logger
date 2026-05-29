@@ -62,12 +62,15 @@ jobs:
             patchelf dpkg-dev
 
       - name: Install Qt (aqt)
+        id: qt
         env:
           QT_AQT_MODULES: ${{ env.QT_MODULES }}
           AQT_BASE: https://download.qt.io
         run: bash packaging/linux/install_qt_aqt.sh
 
       - name: Build .deb
+        env:
+          QT_ROOT_DIR: ${{ steps.qt.outputs.qt_prefix }}
         run: |
           chmod +x packaging/linux/cpack_deb.sh
           packaging/linux/cpack_deb.sh
@@ -111,6 +114,7 @@ jobs:
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
 
       - name: Install Qt and MinGW (aqt)
+        id: qt
         shell: pwsh
         env:
           QT_AQT_MODULES: ${{ env.QT_MODULES }}
@@ -126,9 +130,11 @@ jobs:
 
       - name: Configure and build Release
         shell: pwsh
+        env:
+          QT_ROOT_DIR: ${{ steps.qt.outputs.qt_prefix }}
         run: |
           $qt = "${{ env.QT_ROOT_DIR }}"
-          if (-not $qt -and (Test-Path ".ci_qt_root")) { $qt = Get-Content ".ci_qt_root" -Raw }
+          if (-not $qt -and (Test-Path ".ci_qt_root")) { $qt = (Get-Content ".ci_qt_root" -Raw).Trim() }
           if (-not $qt) { throw "QT_ROOT_DIR not set after aqt install" }
           $env:Path = "$(Join-Path $qt 'bin');$env:Path"
           cmake --version
