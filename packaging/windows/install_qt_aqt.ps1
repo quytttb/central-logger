@@ -2,8 +2,14 @@
 $ErrorActionPreference = "Stop"
 
 $version = if ($env:QT_VERSION) { $env:QT_VERSION } else { "6.11.1" }
-$outDir = if ($env:QT_INSTALL_DIR) { $env:QT_INSTALL_DIR } else { Join-Path $env:GITHUB_WORKSPACE "Qt" }
-$base = if ($env:AQT_BASE) { $env:AQT_BASE } else { "https://download.qt.io" }
+if ($env:QT_INSTALL_DIR) {
+    $outDir = $env:QT_INSTALL_DIR
+} elseif ($env:GITHUB_WORKSPACE) {
+    $outDir = Join-Path (Split-Path $env:GITHUB_WORKSPACE -Parent) "Qt"
+} else {
+    $outDir = Join-Path $env:USERPROFILE "Qt"
+}
+$base = $env:AQT_BASE
 $mods = if ($env:QT_AQT_MODULES) { $env:QT_AQT_MODULES -split '\s+' } else {
     @("qtserialbus", "qtserialport", "qtgraphs", "qttasktree", "qtquick3d", "qtshadertools")
 }
@@ -11,13 +17,18 @@ $mods = if ($env:QT_AQT_MODULES) { $env:QT_AQT_MODULES -split '\s+' } else {
 python -m pip install --upgrade pip
 python -m pip install "aqtinstall>=3.3.0"
 
-python -m aqt install-tool windows desktop tools_mingw1310 -O $outDir --base $base
+if ($base) {
+    python -m aqt install-tool windows desktop tools_mingw1310 -O $outDir --base $base
+} else {
+    python -m aqt install-tool windows desktop tools_mingw1310 -O $outDir
+}
 if ($LASTEXITCODE -ne 0) { throw "aqt install-tool mingw failed" }
 
 $aqtArgs = @(
     "install-qt", "windows", "desktop", $version, "win64_mingw1310_64",
     "-m"
-) + $mods + @("-O", $outDir, "--base", $base)
+) + $mods + @("-O", $outDir)
+if ($base) { $aqtArgs += @("--base", $base) }
 python -m aqt @aqtArgs
 if ($LASTEXITCODE -ne 0) { throw "aqt install-qt failed" }
 
