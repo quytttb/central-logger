@@ -1,5 +1,5 @@
 import QtQuick
-import QtQuick.Controls.Material
+import QtQuick.Window
 
 import CentralLogger.Theme
 
@@ -24,6 +24,15 @@ Item {
             width: parent.width
             height: 1
             color: AppColors.dividerLine
+        }
+    }
+
+    MouseArea {
+        anchors.fill: parent
+        z: -1
+        onPressed: mouse => {
+            if (mouse.button === Qt.LeftButton && Window.window)
+                Window.window.startSystemMove()
         }
     }
 

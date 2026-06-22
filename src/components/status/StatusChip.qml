@@ -97,8 +97,8 @@ Item {
             Rectangle {
                 visible: root.indicatorMode
                 Layout.alignment: Qt.AlignVCenter
-                width: 10
-                height: 10
+                Layout.preferredWidth: 10
+                Layout.preferredHeight: 10
                 radius: 5
                 color: root.indicatorActive ? root.indicatorActiveColor
                                             : root.indicatorInactiveColor

@@ -7,6 +7,7 @@
 #include <QJSEngine>
 #include <QQmlEngine>
 #include <QTimeZone>
+#include <QtGlobal>
 
 namespace CentralLogger::Core {
 
@@ -33,6 +34,11 @@ SettingsController *SettingsController::create(QQmlEngine *, QJSEngine *)
     return g_instance;
 }
 
+void SettingsController::setDatabase(Data::Database *db)
+{
+    m_db = db;
+}
+
 void SettingsController::setTheme(const QString &value)
 {
     if (m_settings.theme == value) return;
@@ -54,11 +60,12 @@ void SettingsController::setDataRetentionDays(int value)
     emit dataRetentionDaysChanged();
 }
 
-void SettingsController::setMaintenanceMode(bool value)
+void SettingsController::setHistoryFlushIntervalS(int value)
 {
-    if (m_settings.maintenanceMode == value) return;
-    m_settings.maintenanceMode = value;
-    emit maintenanceModeChanged();
+    value = qBound(1, value, 3600);
+    if (m_settings.historyFlushIntervalS == value) return;
+    m_settings.historyFlushIntervalS = value;
+    emit historyFlushIntervalSChanged();
 }
 
 void SettingsController::load()
@@ -82,8 +89,8 @@ void SettingsController::load()
     setError(QString{});
     if (previous.theme              != loaded.theme)              emit themeChanged();
     if (previous.systemTimezone     != loaded.systemTimezone)     emit systemTimezoneChanged();
-    if (previous.dataRetentionDays  != loaded.dataRetentionDays)  emit dataRetentionDaysChanged();
-    if (previous.maintenanceMode    != loaded.maintenanceMode)    emit maintenanceModeChanged();
+    if (previous.dataRetentionDays      != loaded.dataRetentionDays)      emit dataRetentionDaysChanged();
+    if (previous.historyFlushIntervalS  != loaded.historyFlushIntervalS)  emit historyFlushIntervalSChanged();
 }
 
 bool SettingsController::save()

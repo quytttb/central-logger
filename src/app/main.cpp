@@ -1,11 +1,15 @@
 #include "core/AppState.h"
 #include "core/DashboardController.h"
+#include "core/LoggerFormController.h"
 #include "core/LoggerDetailViewModel.h"
 #include "core/SettingsController.h"
+#include "core/history/HistoryViewModel.h"
 #include "data/db/Database.h"
 #include "network/modbus/ModbusBridge.h"
+#include "network/modbus/ModbusDataDispatcher.h"
 #include "network/modbus/ModbusService.h"
 #include "network/modbus/ModbusTypes.h"
+#include "network/workers/HistoryWriterWorker.h"
 #include "network/rest/RestConfigService.h"
 
 #include <QCoreApplication>
@@ -21,11 +25,14 @@
 
 using CentralLogger::Core::AppState;
 using CentralLogger::Core::DashboardController;
+using CentralLogger::Core::LoggerFormController;
 using CentralLogger::Core::LoggerDetailViewModel;
 using CentralLogger::Core::SettingsController;
 using CentralLogger::Data::Database;
 using CentralLogger::Network::LoggerRuntimeConfig;
+using CentralLogger::Network::HistoryWriterWorker;
 using CentralLogger::Network::ModbusBridge;
+using CentralLogger::Network::ModbusDataDispatcher;
 using CentralLogger::Network::ModbusService;
 using CentralLogger::Network::PollSnapshot;
 using CentralLogger::Network::RestConfigService;
@@ -72,12 +79,37 @@ int main(int argc, char *argv[])
 
     Database database;
     QString dbError;
-    if (!database.open(Database::defaultConnectionName(), Database::defaultPath(), &dbError)) {
+    const QString dbPath = Database::defaultPath();
+    if (!database.open(Database::defaultConnectionName(), dbPath, &dbError)) {
         qCritical() << "Failed to open database:" << dbError;
-        return -1;
+
+        SettingsController fatalSettings(nullptr);
+        fatalSettings.setTheme(QStringLiteral("dark"));
+        SettingsController::setInstance(&fatalSettings);
+
+        const QString errorKind = dbError.contains(QStringLiteral("Incompatible"),
+                                                   Qt::CaseInsensitive)
+                                      ? QStringLiteral("newer_than_app")
+                                      : QStringLiteral("migrate_fail");
+
+        QQmlApplicationEngine engine;
+        engine.setInitialProperties({
+            {QStringLiteral("errorMessage"), dbError},
+            {QStringLiteral("dbPath"),       dbPath},
+            {QStringLiteral("backupPath"),   dbPath + QStringLiteral(".bak")},
+            {QStringLiteral("errorKind"),    errorKind},
+        });
+        QObject::connect(
+            &engine,
+            &QQmlApplicationEngine::objectCreationFailed,
+            &app,
+            []() { QCoreApplication::exit(1); },
+            Qt::QueuedConnection);
+        engine.loadFromModule(QStringLiteral("CentralLogger.App"), QStringLiteral("FatalStartup"));
+        return app.exec();
     }
 
-    SettingsController settings;
+    SettingsController settings(nullptr);
     settings.setDatabase(&database);
     settings.load();
     SettingsController::setInstance(&settings);
@@ -97,8 +129,29 @@ int main(int argc, char *argv[])
     ModbusBridge bridge;
     bridge.setDatabase(&database);
 
+    ModbusDataDispatcher dispatcher;
+
+    QThread historyThread;
+    historyThread.setObjectName(QStringLiteral("HistoryWriter"));
+    HistoryWriterWorker historyWorker;
+    historyWorker.setDatabasePath(database.connection().databaseName());
+    historyWorker.setFlushIntervalSeconds(settings.historyFlushIntervalS());
+    historyWorker.moveToThread(&historyThread);
+    QObject::connect(&historyThread, &QThread::started,
+                     &historyWorker, &HistoryWriterWorker::start);
+    historyThread.start();
+
+    dispatcher.setHistoryWriter(&historyWorker);
+
+    QObject::connect(&settings, &SettingsController::saved, [&]() {
+        historyWorker.setFlushIntervalSeconds(settings.historyFlushIntervalS());
+    });
+
     QObject::connect(&modbusService, &ModbusService::pollFinished,
-                     &bridge,         &ModbusBridge::applySnapshot,
+                     &dispatcher,     &ModbusDataDispatcher::onPollFinished,
+                     Qt::QueuedConnection);
+    QObject::connect(&dispatcher, &ModbusDataDispatcher::liveSnapshotReady,
+                     &bridge,     &ModbusBridge::applyLiveSnapshot,
                      Qt::QueuedConnection);
 
     DashboardController dashboard(nullptr);
@@ -120,14 +173,27 @@ int main(int argc, char *argv[])
     // REST service for Logger Detail view-models (per-view instance).
     RestConfigService restConfig;
     restConfig.setDatabase(&database);
-    dashboard.setRestConfigService(&restConfig);
+
+    // Logger Add/Edit/Remove + REST config probing (split from dashboard).
+    LoggerFormController loggerForm(nullptr);
+    loggerForm.setDatabase(&database);
+    loggerForm.setRestConfigService(&restConfig);
+    loggerForm.setDashboardController(&dashboard);
+    LoggerFormController::setInstance(&loggerForm);
+
     LoggerDetailViewModel::registerServices(&database, &restConfig, &appState, &dashboard);
+    CentralLogger::Core::HistoryViewModel::registerDatabase(&database);
+    CentralLogger::Core::HistoryViewModel::registerHistoryWriter(&historyWorker);
 
     QObject::connect(&app, &QCoreApplication::aboutToQuit, [&]() {
         QMetaObject::invokeMethod(&modbusService, "shutdown",
                                   Qt::BlockingQueuedConnection);
         modbusThread.quit();
         modbusThread.wait();
+
+        historyWorker.shutdown();
+        historyThread.quit();
+        historyThread.wait();
     });
 
     QQmlApplicationEngine engine;

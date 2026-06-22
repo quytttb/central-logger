@@ -1,6 +1,5 @@
 import QtQuick
 import QtQuick.Controls.Material
-import QtQuick.Layouts
 
 import CentralLogger.Components
 import CentralLogger.Theme

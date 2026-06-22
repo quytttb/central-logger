@@ -1,6 +1,5 @@
 pragma Singleton
 import QtQuick
-import QtQuick.Controls.Material
 
 // M3 typography scale (1 dp ≈ 1 logical px on desktop).
 QtObject {

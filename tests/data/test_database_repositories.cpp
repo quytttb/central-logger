@@ -59,6 +59,7 @@ private slots:
     void pruneOrphanSensorsDeactivatesNotDeletes();
     // D-1: ensureExists must reactivate sensors with active=0 after a prune.
     void sensorPruneAndRecover();
+    void searchHistoryAllAndPerLogger();
 };
 
 void TestDatabaseRepositories::initInMemory()
@@ -87,7 +88,7 @@ void TestDatabaseRepositories::initInMemory()
 
     QVERIFY(q.exec(QStringLiteral("PRAGMA user_version")));
     QVERIFY(q.next());
-    QCOMPARE(q.value(0).toInt(), 3);
+    QCOMPARE(q.value(0).toInt(), Database::schemaVersion());
 }
 
 void TestDatabaseRepositories::seedAppSettings()
@@ -100,16 +101,18 @@ void TestDatabaseRepositories::seedAppSettings()
     QCOMPARE(s.theme,             QStringLiteral("dark"));
     QCOMPARE(s.systemTimezone,    QStringLiteral("Asia/Ho_Chi_Minh"));
     QCOMPARE(s.dataRetentionDays, 30);
-    QCOMPARE(s.maintenanceMode,   false);
+    QCOMPARE(s.historyFlushIntervalS, 5);
 
     AppSettings updated = s;
-    updated.theme             = QStringLiteral("light");
-    updated.dataRetentionDays = 7;
+    updated.theme                 = QStringLiteral("light");
+    updated.dataRetentionDays     = 7;
+    updated.historyFlushIntervalS = 10;
     QVERIFY(repo.update(updated));
 
     const AppSettings reloaded = repo.get();
-    QCOMPARE(reloaded.theme,             QStringLiteral("light"));
-    QCOMPARE(reloaded.dataRetentionDays, 7);
+    QCOMPARE(reloaded.theme,                 QStringLiteral("light"));
+    QCOMPARE(reloaded.dataRetentionDays,     7);
+    QCOMPARE(reloaded.historyFlushIntervalS, 10);
 }
 
 void TestDatabaseRepositories::stationCodeUnique()
@@ -241,6 +244,7 @@ void TestDatabaseRepositories::upsertUpdatesMetadata()
     s.unit          = QStringLiteral("C");
     s.minThreshold  = 10.0;
     s.maxThreshold  = 40.0;
+    s.decimals      = 2;
     QVERIFY(catalog.upsert(s));
     QVERIFY(s.id > 0);
 
@@ -249,6 +253,7 @@ void TestDatabaseRepositories::upsertUpdatesMetadata()
     s2.sensorType   = QStringLiteral("ANALOG");
     s2.name         = QStringLiteral("Nhiệt độ đã đổi tên");
     s2.maxThreshold = 50.0;
+    s2.decimals     = 1;
     QVERIFY(catalog.upsert(s2));
     QCOMPARE(s2.id, s.id);
 
@@ -258,6 +263,7 @@ void TestDatabaseRepositories::upsertUpdatesMetadata()
     QCOMPARE(stored->name, QStringLiteral("Nhiệt độ đã đổi tên"));
     QVERIFY(stored->maxThreshold.has_value());
     QCOMPARE(*stored->maxThreshold, 50.0);
+    QCOMPARE(stored->decimals, 1);
 }
 
 void TestDatabaseRepositories::purgeRetention()
@@ -470,6 +476,58 @@ void TestDatabaseRepositories::sensorPruneAndRecover()
     r.recordedAt = QDateTime::currentDateTimeUtc();
     QVERIFY(readings.insertBatch({r}));
     QCOMPARE(readings.countForSensor(recoveredId), 1);
+}
+
+void TestDatabaseRepositories::searchHistoryAllAndPerLogger()
+{
+    Database db;
+    QVERIFY(db.open(uniqueConnectionName("history_search"), QStringLiteral(":memory:")));
+
+    LoggerRepository loggerRepo(db.connection());
+    SensorCatalogRepository catalog(db.connection());
+    SensorReadingRepository readings(db.connection());
+
+    LoggerInfo loggerA = makeLogger(QStringLiteral("TRAM-A"), QStringLiteral("Logger A"));
+    LoggerInfo loggerB = makeLogger(QStringLiteral("TRAM-B"), QStringLiteral("Logger B"));
+    QVERIFY(loggerRepo.insert(loggerA));
+    QVERIFY(loggerRepo.insert(loggerB));
+
+    const qint64 sensorA = catalog.ensureExists(loggerA.id, 1, QStringLiteral("ANALOG"));
+    const qint64 sensorB = catalog.ensureExists(loggerB.id, 1, QStringLiteral("ANALOG"));
+    QVERIFY(sensorA > 0);
+    QVERIFY(sensorB > 0);
+
+    const QDateTime now = QDateTime::currentDateTimeUtc();
+    SensorReading rA;
+    rA.sensorId   = sensorA;
+    rA.value      = 10.0;
+    rA.recordedAt = now;
+    SensorReading rB;
+    rB.sensorId   = sensorB;
+    rB.value      = 20.0;
+    rB.recordedAt = now;
+    QVERIFY(readings.insertBatch({rA, rB}));
+
+    const QDateTime from = now.addDays(-1);
+    const QDateTime to   = now.addDays(1);
+
+    const auto allRows = readings.searchHistory(0, from, to);
+    QCOMPARE(allRows.size(), 2);
+    QCOMPARE(readings.countHistory(0, from, to), 2);
+
+    const auto rowsA = readings.searchHistory(loggerA.id, from, to);
+    QCOMPARE(rowsA.size(), 1);
+    QCOMPARE(readings.countHistory(loggerA.id, from, to), 1);
+    QCOMPARE(rowsA.at(0).loggerName, QStringLiteral("Logger A"));
+    QCOMPARE(rowsA.at(0).value, 10.0);
+
+    const auto rowsB = readings.searchHistory(loggerB.id, from, to);
+    QCOMPARE(rowsB.size(), 1);
+    QCOMPARE(rowsB.at(0).loggerName, QStringLiteral("Logger B"));
+
+    const auto sensorsAll = readings.sensorsWithReadings(0);
+    QCOMPARE(sensorsAll.size(), 2);
+    QVERIFY(sensorsAll.at(0).second.contains(QStringLiteral(" — ")));
 }
 
 QTEST_MAIN(TestDatabaseRepositories)

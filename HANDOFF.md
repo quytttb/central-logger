@@ -205,7 +205,7 @@ Thứ tự implement gợi ý: **Task 1** DB → **2** shell QML → **3** logge
 
 **M3 UI Migration (done 2026-05, pane parity 2026-05):** Material Design 3 on Qt Quick Controls Material — Teal primary + Indigo accent, no dynamic color.
 - **Theme:** `AppColors`, `AppTypography`, `AppTheme` layout + shape tokens (`cardRadius`, `chipRadius`, `listItemRadius`).
-- **Components:** `ElevatedPane`, `SectionHeader`, `IconToolButton`, `StatCard`, `TableHeaderCell`, `TableCellBackground`, `EmptyStatePlaceholder`, rail `NavItem` with `accentContainer` / `onAccentContainer`.
+- **Components:** `ElevatedPane`, `SectionHeader`, `AppButton` (single button for all actions — icon/text/both, `kind`, `iconOnly`, `controlSize`; replaced the old `IconToolButton`), `StatCard`, `TableHeaderCell`, `TableCellBackground`, `EmptyStatePlaceholder`, rail `NavItem` with `accentContainer` / `onAccentContainer`.
 - **Views:** All data views use `ElevatedPane` (Dashboard, Settings, Loggers, Logger Detail); Loggers search `Outlined`; section headers + typography tokens unified.
 - **Charts:** `ChartGraphsTheme` — plot + view background `surfaceContainerLow`; live on rail theme toggle.
 - **Docs:** [`docs/ui/material3-component-guidelines.md`](docs/ui/material3-component-guidelines.md) (includes manual QA checklist), walkthrough [`docs/report/2026-05-27_m3_ui_migration_walkthrough.md`](docs/report/2026-05-27_m3_ui_migration_walkthrough.md).

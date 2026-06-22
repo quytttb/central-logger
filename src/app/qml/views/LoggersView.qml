@@ -1,3 +1,5 @@
+pragma ComponentBehavior: Bound
+
 import QtQuick
 import QtQuick.Controls.Material
 import QtQuick.Layouts
@@ -14,11 +16,9 @@ Item {
 
     signal selectLogger(int loggerId)
 
-    Component.onCompleted: DashboardController.reloadLoggers()
-
     // Show a dismissible toast when form Save POST /config fails.
     Connections {
-        target: DashboardController
+        target: LoggerFormController
         function onConfigApplyFailed(loggerId, errorMessage) {
             AppNotifier.show(
                 qsTr("Config push failed (logger #%1)").arg(loggerId),
@@ -53,7 +53,7 @@ Item {
                     .arg(confirmDelete.targetCode)
             wrapMode: Text.WordWrap
         }
-        onAccepted: DashboardController.removeLogger(targetId)
+        onAccepted: LoggerFormController.removeLogger(targetId)
     }
 
     LoggerSearchProxyModel {
@@ -77,182 +77,133 @@ Item {
                 anchors.fill: parent
                 padding: 0
 
-                TableContentStack {
+                AppTableView {
+                    id: loggerTable
                     Layout.fillWidth: true
                     Layout.fillHeight: true
-                    hasData: loggerTable.rows > 0
+                    model: searchProxy
+                    colWeights:  [1, 1, 0, 0, 0, 0]
+                    colMinimums: [96, 96, 76, 76, 96, 92]
+                    headerAlignRight: function(col) { return col === 2 || col === 3 }
                     emptyIconName: root.searchFilterText.length > 0 ? "magnify" : "server"
                     emptyMessage: root.searchFilterText.length > 0
                                   ? qsTr("No loggers match \"%1\"").arg(root.searchFilterText)
                                   : qsTr("No loggers yet. Click Add Logger to get started.")
 
-                    ColumnLayout {
-                        anchors.fill: parent
-                        spacing: 0
+                    delegate: ItemDelegate {
+                        id: loggerCell
 
-                        HorizontalHeaderView {
-                            Layout.fillWidth: true
-                            Layout.preferredHeight: AppTheme.tableHeaderHeight
-                            syncView: loggerTable
-                            textRole: "display"
+                        required property int  row
+                        required property int  column
+                        required property var  loggerId
+                        required property var  name
+                        required property var  host
+                        required property var  modbusPort
+                        required property var  sensorCount
+                        required property var  online
+                        required property var  polling
+                        required property var  anyAlarm
 
-                            delegate: TableHeaderCell {
-                                cornerRadius: AppTheme.cardRadius
-                                roundTopLeft: column === 0
-                                roundTopRight: column === loggerTable.colWidths.length - 1
-                                alignRight: column === 2 || column === 3
-                            }
+                        implicitHeight: 56
+                        padding: 0
+                        hoverEnabled: true
+                        onHoveredChanged: if (hovered) loggerTable.hoveredRow = row
+
+                        onClicked: {
+                            if (loggerCell.column !== 5)
+                                root.selectLogger(loggerCell.loggerId)
                         }
 
-                        TableView {
-                            id: loggerTable
-                            reuseItems: true
-                            Layout.fillWidth: true
-                            Layout.fillHeight: true
-                            model: searchProxy
-                            clip: true
+                        background: TableCellBackground {
+                            cellHovered: loggerTable.hoveredRow === loggerCell.row
+                        }
 
-                            readonly property var colWeights:  [1, 1, 0, 0, 0, 0]
-                            readonly property var colMinimums: [96, 96, 76, 76, 96, 92]
-                            property var colWidths: []
-
-                            function recomputeColumns() {
-                                colWidths = AppTheme.distributeColumnWidths(
-                                    width, colWeights, colMinimums)
-                                forceLayout()
+                        contentItem: Item {
+                            Label {
+                                anchors { fill: parent; leftMargin: 8; rightMargin: 8 }
+                                visible: loggerCell.column < 4
+                                verticalAlignment: Text.AlignVCenter
+                                text: {
+                                    switch (loggerCell.column) {
+                                    case 0: return loggerCell.name || ""
+                                    case 1: return loggerCell.host || ""
+                                    case 2: return loggerCell.modbusPort !== undefined
+                                                   ? String(loggerCell.modbusPort) : ""
+                                    case 3: return loggerCell.sensorCount !== undefined
+                                                   ? String(loggerCell.sensorCount) : ""
+                                    default: return ""
+                                    }
+                                }
+                                horizontalAlignment: loggerCell.column >= 2
+                                                     ? Text.AlignRight : Text.AlignLeft
+                                color: loggerCell.column >= 1 && loggerCell.column <= 3
+                                       ? AppColors.tableCellMuted
+                                       : AppColors.primaryText
+                                elide: Text.ElideRight
                             }
 
-                            Component.onCompleted: recomputeColumns()
-                            onWidthChanged: recomputeColumns()
+                            RowLayout {
+                                anchors { fill: parent; leftMargin: 8; rightMargin: 8 }
+                                visible: loggerCell.column === 4
+                                spacing: 4
 
-                            columnWidthProvider: function(col) {
-                                return (col >= 0 && col < colWidths.length)
-                                       ? colWidths[col] : 80
-                            }
-
-                            delegate: ItemDelegate {
-                            id: loggerCell
-
-                            required property int  row
-                            required property int  column
-                            required property var  loggerId
-                            required property var  name
-                            required property var  host
-                            required property var  modbusPort
-                            required property var  sensorCount
-                            required property var  online
-                            required property var  polling
-                            required property var  anyAlarm
-
-                            implicitHeight: 56
-                            padding: 0
-                            hoverEnabled: true
-
-                            onClicked: {
-                                if (loggerCell.column !== 5)
-                                    root.selectLogger(loggerCell.loggerId)
-                            }
-
-                            background: TableCellBackground {
-                                cellHovered: loggerCell.hovered
-                                rowIndex: loggerCell.row
-                            }
-
-                            contentItem: Item {
                                 Label {
-                                    anchors { fill: parent; leftMargin: 8; rightMargin: 8 }
-                                    visible: loggerCell.column < 4
-                                    verticalAlignment: Text.AlignVCenter
-                                    text: {
-                                        switch (loggerCell.column) {
-                                        case 0: return loggerCell.name || ""
-                                        case 1: return loggerCell.host || ""
-                                        case 2: return loggerCell.modbusPort !== undefined
-                                                       ? String(loggerCell.modbusPort) : ""
-                                        case 3: return loggerCell.sensorCount !== undefined
-                                                       ? String(loggerCell.sensorCount) : ""
-                                        default: return ""
-                                        }
-                                    }
-                                    horizontalAlignment: loggerCell.column >= 2
-                                                         ? Text.AlignRight : Text.AlignLeft
-                                    color: loggerCell.column >= 1 && loggerCell.column <= 3
-                                           ? AppColors.tableCellMuted
-                                           : AppColors.primaryText
-                                    elide: Text.ElideRight
+                                    text: loggerCell.online ? qsTr("Online") : qsTr("Offline")
+                                    color: loggerCell.online
+                                           ? AppColors.success
+                                           : AppColors.onSurfaceVariant
                                 }
-
-                                RowLayout {
-                                    anchors { fill: parent; leftMargin: 8; rightMargin: 8 }
-                                    visible: loggerCell.column === 4
-                                    spacing: 4
-
-                                    Label {
-                                        text: loggerCell.online ? qsTr("Online") : qsTr("Offline")
-                                        color: loggerCell.online
-                                               ? AppColors.success
-                                               : AppColors.onSurfaceVariant
-                                    }
-                                    Label {
-                                        text: "●"
-                                        visible: loggerCell.polling
-                                        color: AppColors.info
-                                        ToolTip.text: qsTr("Polling")
-                                        ToolTip.visible: hovered
-                                        ToolTip.delay: 500
-                                        property bool hovered: false
-                                        MouseArea {
-                                            anchors.fill: parent
-                                            hoverEnabled: true
-                                            onEntered: parent.hovered = true
-                                            onExited:  parent.hovered = false
-                                        }
-                                    }
-                                    Label {
-                                        text: "!"
-                                        visible: loggerCell.anyAlarm
-                                        color: AppColors.error
-                                        font.bold: true
+                                Label {
+                                    text: "●"
+                                    visible: loggerCell.polling
+                                    color: AppColors.info
+                                    ToolTip.text: qsTr("Polling")
+                                    ToolTip.visible: hovered
+                                    ToolTip.delay: 500
+                                    property bool hovered: false
+                                    MouseArea {
+                                        anchors.fill: parent
+                                        hoverEnabled: true
+                                        onEntered: parent.hovered = true
+                                        onExited:  parent.hovered = false
                                     }
                                 }
+                                Label {
+                                    text: "!"
+                                    visible: loggerCell.anyAlarm
+                                    color: AppColors.error
+                                    font.bold: true
+                                }
+                            }
 
-                                RowLayout {
-                                    anchors { fill: parent; leftMargin: 4; rightMargin: 4 }
-                                    visible: loggerCell.column === 5
-                                    spacing: 4
+                            RowLayout {
+                                anchors { fill: parent; leftMargin: 4; rightMargin: 4 }
+                                visible: loggerCell.column === 5
+                                spacing: 4
 
-                                    ToolButton {
-                                        implicitWidth: 32
-                                        implicitHeight: 32
-                                        ToolTip.text: qsTr("Edit")
-                                        ToolTip.visible: hovered
-                                        onClicked: {
-                                            const data = DashboardController.getLoggerFormData(loggerCell.loggerId)
-                                            formDialog.open("edit", data, loggerCell.loggerId)
-                                        }
-                                        contentItem: UiIcon {
-                                            name: "pencil"
-                                            size: 18
-                                            iconColor: AppColors.primaryText
-                                            anchors.centerIn: parent
-                                        }
+                                AppButton {
+                                    kind: AppButton.Neutral
+                                    forceDarkText: false
+                                    iconOnly: true
+                                    controlSize: 32
+                                    iconName: "pencil"
+                                    tooltipText: qsTr("Edit")
+                                    onClicked: {
+                                        const data = LoggerFormController.getLoggerFormData(loggerCell.loggerId)
+                                        formDialog.open("edit", data, loggerCell.loggerId)
                                     }
-                                    ToolButton {
-                                        implicitWidth: 32
-                                        implicitHeight: 32
-                                        ToolTip.text: qsTr("Delete")
-                                        ToolTip.visible: hovered
-                                        onClicked: {
-                                            confirmDelete.targetId   = loggerCell.loggerId
-                                            confirmDelete.targetCode = loggerCell.name
-                                            confirmDelete.open()
-                                        }
-                                        contentItem: UiIcon {
-                                            name: "trashCan"
-                                            size: 18
-                                            iconColor: AppColors.primaryText
-                                            anchors.centerIn: parent
-                                        }
+                                }
+                                AppButton {
+                                    kind: AppButton.Error
+                                    forceDarkText: false
+                                    iconOnly: true
+                                    controlSize: 32
+                                    iconName: "trashCan"
+                                    tooltipText: qsTr("Delete")
+                                    onClicked: {
+                                        confirmDelete.targetId   = loggerCell.loggerId
+                                        confirmDelete.targetCode = loggerCell.name
+                                        confirmDelete.open()
                                     }
                                 }
                             }
@@ -262,14 +213,12 @@ Item {
             }
         }
     }
-    }
 
     component LoggersTopBar: RowLayout {
         spacing: AppTheme.toolbarGap
 
         TextField {
             Layout.preferredWidth: 480
-            Layout.fillWidth: true
             Layout.maximumWidth: 480
             Layout.preferredHeight: 40
             Material.containerStyle: Material.Outlined
@@ -290,15 +239,19 @@ Item {
             }
         }
 
+        Item { Layout.fillWidth: true }
+
         Label {
             text: qsTr("%1 logger(s)").arg(loggerTable.rows)
             color: AppColors.textMuted
             font: AppTypography.bodyMedium
+            Layout.alignment: Qt.AlignVCenter
         }
 
         AppButton {
             kind: AppButton.Primary
             text: qsTr("Add Logger")
+            Layout.alignment: Qt.AlignVCenter
             onClicked: formDialog.open("add", {}, -1)
         }
     }

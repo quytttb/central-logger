@@ -1,3 +1,5 @@
+pragma ComponentBehavior: Bound
+
 import QtQuick
 import QtQuick.Controls.Material
 import QtQuick.Layouts
@@ -26,13 +28,13 @@ Item {
     Component.onCompleted: refresh()
 
     Connections {
-        target: DashboardController
+        target: LoggerFormController
         function onLoggerUpdated(id) { if (id === root.loggerId) root.refresh() }
         function onLoggerRemoved(id) { if (id === root.loggerId) root.goBack() }
     }
 
     function refresh() {
-        formData = loggerId >= 0 ? DashboardController.getLoggerFormData(loggerId) : ({});
+        formData = loggerId >= 0 ? LoggerFormController.getLoggerFormData(loggerId) : ({});
     }
 
     LoggerDetailViewModel {
@@ -144,176 +146,134 @@ Item {
             columnSpacing: root.isWide ? 16 : 0
             rowSpacing: root.isWide ? 0 : 16
 
-            Item {
-                id: sensorWrap
-                Layout.fillWidth: true
-                Layout.fillHeight: true
-                Layout.minimumWidth: 280
-                Layout.minimumHeight: root.isWide ? 220 : 200
+                Item {
+                    id: sensorWrap
+                    Layout.fillWidth: true
+                    Layout.fillHeight: true
+                    Layout.minimumWidth: 280
+                    Layout.minimumHeight: root.isWide ? 220 : 200
 
-                ElevatedPane {
-                    id: sensorPane
-                    anchors.fill: parent
-                    padding: 0
+                    ElevatedPane {
+                        id: sensorPane
+                        anchors.fill: parent
+                        padding: 0
 
-                    SectionHeader {
-                        Layout.fillWidth: true
-                        Layout.leftMargin: AppTheme.sectionSpacing
-                        Layout.rightMargin: AppTheme.sectionSpacing
-                        Layout.topMargin: AppTheme.sectionSpacing
-                        Layout.bottomMargin: AppTheme.toolbarGap
-                        title: qsTr("Sensors")
-                    }
+                        SectionHeader {
+                            Layout.fillWidth: true
+                            Layout.leftMargin: AppTheme.sectionSpacing
+                            Layout.rightMargin: AppTheme.sectionSpacing
+                            Layout.topMargin: AppTheme.sectionSpacing
+                            Layout.bottomMargin: AppTheme.toolbarGap
+                            title: qsTr("Sensors")
+                        }
 
-                    TableContentStack {
-                        Layout.fillWidth: true
-                        Layout.fillHeight: true
-                        hasData: sensorTableView.rows > 0
-                        emptyIconName: "sensors"
-                        emptyMessage: qsTr("No sensors in catalog. Fetch config from the device to load the sensor list.")
+                        AppTableView {
+                            id: sensorTableView
+                            Layout.fillWidth: true
+                            Layout.fillHeight: true
+                            model: detailVm.sensorTable
+                            reuseItems: false
+                            colWeights:  [0, 0.5, 0, 0, 0.5]
+                            colMinimums: [52, 72, 88, 52, 112]
+                            headerAlignRight: function(col) { return col === 0 || col === 2 || col === 3 }
+                            emptyIconName: "sensors"
+                            emptyMessage: qsTr("No sensors in catalog. Fetch config from the device to load the sensor list.")
 
-                        ColumnLayout {
-                            anchors.fill: parent
-                            spacing: 0
+                            delegate: ItemDelegate {
+                                id: sensorCell
+                                required property int row
+                                required property int column
+                                required property var sensorId
+                                required property var name
+                                required property var value
+                                required property var unit
+                                required property var displayStatus
+                                required property var attachDiTypeCodes
+                                required property var attachDiTypeLabels
+                                required property var alarmType
 
-                            HorizontalHeaderView {
-                                    Layout.fillWidth: true
-                                    Layout.preferredHeight: AppTheme.tableHeaderHeight
-                                    syncView: sensorTableView
-                                    textRole: "display"
+                                implicitHeight: 40
+                                padding: 0
+                                hoverEnabled: false
 
-                                    delegate: TableHeaderCell {
-                                        cornerRadius: AppTheme.cardRadius
-                                        roundTopLeft: column === 0
-                                        roundTopRight: column === sensorTableView.colWidths.length - 1
-                                        alignRight: column === 0 || column === 2 || column === 3
-                                    }
+                                background: TableCellBackground {
+                                    cellHovered: false
                                 }
 
-                                TableView {
-                                    id: sensorTableView
-                                    Layout.fillWidth: true
-                                    Layout.fillHeight: true
-                                    model: detailVm.sensorTable
-                                    clip: true
-                                    reuseItems: false
-
-                                    readonly property var colWeights:  [0, 0.5, 0, 0, 0.5]
-                                    readonly property var colMinimums: [52, 72, 88, 52, 112]
-                                    property var colWidths: []
-
-                                    function recomputeColumns() {
-                                        colWidths = AppTheme.distributeColumnWidths(
-                                            width, colWeights, colMinimums)
-                                        forceLayout()
-                                    }
-
-                                    Component.onCompleted: recomputeColumns()
-                                    onWidthChanged: recomputeColumns()
-
-                                    columnWidthProvider: function(col) {
-                                        return (col >= 0 && col < colWidths.length)
-                                               ? colWidths[col] : 80
-                                    }
-
-                                    delegate: ItemDelegate {
-                                        id: sensorCell
-                                        required property int row
-                                        required property int column
-                                        required property var sensorId
-                                        required property var name
-                                        required property var value
-                                        required property var unit
-                                        required property var displayStatus
-                                        required property var attachDiTypeCodes
-                                        required property var attachDiTypeLabels
-                                        required property var alarmType
-
-                                        implicitHeight: 40
-                                        padding: 0
-                                        hoverEnabled: true
-
-                                        background: TableCellBackground {
-                                            cellHovered: sensorCell.hovered
-                                            rowIndex: sensorCell.row
+                                contentItem: Item {
+                                    Label {
+                                        anchors {
+                                            left: parent.left;   leftMargin: sensorCell.column === 0 ? 16 : 8
+                                            right: parent.right; rightMargin: 8
+                                            verticalCenter: parent.verticalCenter
                                         }
-
-                                        contentItem: Item {
-                                            Label {
-                                                anchors {
-                                                    left: parent.left;   leftMargin: sensorCell.column === 0 ? 16 : 8
-                                                    right: parent.right; rightMargin: 8
-                                                    verticalCenter: parent.verticalCenter
-                                                }
-                                                visible: sensorCell.column !== 4
-                                                text: {
-                                                    switch (sensorCell.column) {
-                                                    case 0: return sensorCell.sensorId !== undefined ? String(sensorCell.sensorId) : ""
-                                                    case 1: return sensorCell.name || ""
-                                                    case 2: return sensorCell.value !== undefined ? String(sensorCell.value) : ""
-                                                    case 3: return sensorCell.unit || ""
-                                                    default: return ""
-                                                    }
-                                                }
-                                                horizontalAlignment: sensorCell.column === 0 || sensorCell.column === 2
-                                                                     ? Text.AlignRight : Text.AlignLeft
-                                                font.family: sensorCell.column === 0 || sensorCell.column === 2
-                                                             ? "monospace" : ""
-                                                font.weight: sensorCell.column === 2 ? Font.DemiBold : Font.Normal
-                                                color: sensorCell.column === 3 ? AppColors.tableHeaderText
-                                                       : sensorCell.column === 0 ? AppColors.tableCellMuted
-                                                       : AppColors.primaryText
-                                                elide: Text.ElideRight
-                                            }
-
-                                            SensorStatusColumn {
-                                                visible: sensorCell.column === 4
-                                                anchors {
-                                                    left: parent.left
-                                                    leftMargin: 8
-                                                    verticalCenter: parent.verticalCenter
-                                                }
-                                                displayStatus: sensorCell.displayStatus
-                                                alarmType: sensorCell.alarmType
-                                                attachDiTypeCodes: sensorCell.attachDiTypeCodes
-                                                attachDiTypeLabels: sensorCell.attachDiTypeLabels
+                                        visible: sensorCell.column !== 4
+                                        text: {
+                                            switch (sensorCell.column) {
+                                            case 0: return sensorCell.sensorId !== undefined ? String(sensorCell.sensorId) : ""
+                                            case 1: return sensorCell.name || ""
+                                            case 2: return sensorCell.value !== undefined ? String(sensorCell.value) : ""
+                                            case 3: return sensorCell.unit || ""
+                                            default: return ""
                                             }
                                         }
+                                        horizontalAlignment: sensorCell.column === 0 || sensorCell.column === 2
+                                                             ? Text.AlignRight : Text.AlignLeft
+                                        font.family: sensorCell.column === 0 || sensorCell.column === 2
+                                                     ? "monospace" : ""
+                                        font.weight: sensorCell.column === 2 ? Font.DemiBold : Font.Normal
+                                        color: sensorCell.column === 3 ? AppColors.tableHeaderText
+                                               : sensorCell.column === 0 ? AppColors.tableCellMuted
+                                               : AppColors.primaryText
+                                        elide: Text.ElideRight
+                                    }
+
+                                    SensorStatusColumn {
+                                        visible: sensorCell.column === 4
+                                        anchors {
+                                            left: parent.left
+                                            leftMargin: 8
+                                            verticalCenter: parent.verticalCenter
+                                        }
+                                        displayStatus: sensorCell.displayStatus
+                                        alarmType: sensorCell.alarmType
+                                        attachDiTypeCodes: sensorCell.attachDiTypeCodes
+                                        attachDiTypeLabels: sensorCell.attachDiTypeLabels
                                     }
                                 }
                             }
+                        }
                     }
                 }
-            }
 
-            Item {
-                id: chartWrap
-                Layout.fillWidth: true
-                Layout.fillHeight: true
-                Layout.minimumWidth: 280
-                Layout.preferredHeight: root.isWide ? -1 : 220
-                Layout.minimumHeight: 220
+                Item {
+                    id: chartWrap
+                    Layout.fillWidth: true
+                    Layout.fillHeight: true
+                    Layout.minimumWidth: 280
+                    Layout.preferredHeight: root.isWide ? -1 : 220
+                    Layout.minimumHeight: 220
 
-                ElevatedPane {
-                    id: chartPane
-                    anchors.fill: parent
-                    contentSpacing: AppTheme.toolbarGap
+                    ElevatedPane {
+                        id: chartPane
+                        anchors.fill: parent
+                        contentSpacing: AppTheme.toolbarGap
 
-                    SectionHeader {
-                        Layout.fillWidth: true
-                        title: qsTr("Analog trending (last %1 samples)").arg(20)
-                    }
+                        SectionHeader {
+                            Layout.fillWidth: true
+                            title: qsTr("Analog trending (last %1 samples)").arg(20)
+                        }
 
-                    TableContentStack {
-                        Layout.fillWidth: true
-                        Layout.fillHeight: true
-                        hasData: detailVm.trendingSeries.length > 0
-                        emptyIconName: "showChart"
-                        emptyMessage: detailVm.online
-                                    ? qsTr("Waiting for poll data…")
-                                    : qsTr("No trending history yet. Chart fills in after successful Modbus polls.")
+                        TableContentStack {
+                            Layout.fillWidth: true
+                            Layout.fillHeight: true
+                            hasData: detailVm.trendingSeries.length > 0
+                            emptyIconName: "showChart"
+                            emptyMessage: detailVm.online
+                                        ? qsTr("Waiting for poll data…")
+                                        : qsTr("No trending history yet. Chart fills in after successful Modbus polls.")
 
-                        ChartTimeSeriesPanel {
+                            ChartTimeSeriesPanel {
                                 id: trendingChart
                                 anchors.fill: parent
                                 multiSeries: true
@@ -347,23 +307,15 @@ Item {
     component LoggerDetailTopBar: RowLayout {
         spacing: 12
 
-        ToolButton {
-            implicitHeight: 36
+        AppButton {
+            kind: AppButton.Neutral
+            forceDarkText: false
+            controlSize: 36
+            iconSide: 20
+            iconName: "arrowLeft"
+            text: qsTr("Back")
             Layout.alignment: Qt.AlignVCenter
             onClicked: root.goBack()
-            contentItem: RowLayout {
-                spacing: 4
-                UiIcon {
-                    name: "arrowLeft"
-                    size: 20
-                    iconColor: AppColors.primaryText
-                }
-                Label {
-                    text: qsTr("Back")
-                    color: AppColors.primaryText
-                    font: AppTypography.labelLarge
-                }
-            }
         }
 
         ColumnLayout {
@@ -432,11 +384,15 @@ Item {
                 font: AppTypography.bodyMedium
             }
 
-            IconToolButton {
+            AppButton {
+                kind: AppButton.Neutral
+                forceDarkText: false
+                iconOnly: true
+                controlSize: 36
+                iconSide: 20
                 iconName: "download"
                 enabled: !detailVm.reportBusy && detailVm.hasApiToken
                          && detailVm.online && root.loggerId >= 0
-                iconColor: enabled ? AppColors.primaryText : AppColors.disabledContent
                 tooltipText: !detailVm.hasApiToken
                                 ? qsTr("Device REST token empty \u2014 scan QR on logger")
                                 : !detailVm.online

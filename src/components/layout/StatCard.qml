@@ -15,7 +15,7 @@ Pane {
 
     Material.theme: AppTheme.materialTheme
     Material.elevation: 0
-    padding: 16
+    padding: AppTheme.cardPadding
 
     background: Rectangle {
         color: AppColors.surfaceContainerLow

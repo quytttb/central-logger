@@ -91,7 +91,7 @@ void ModbusService::registerLogger(const LoggerRuntimeConfig &config)
     }
     state->timer->setInterval(config.pollIntervalMs > 0 ? config.pollIntervalMs : 2000);
 
-    if (config.enabled && !m_maintenance) {
+    if (config.enabled) {
         if (!state->timer->isActive()) {
             state->timer->start();
         }
@@ -100,7 +100,7 @@ void ModbusService::registerLogger(const LoggerRuntimeConfig &config)
             // a full interval to see status.
             QTimer::singleShot(0, this, [this, id = config.loggerId]() {
                 if (auto *s = stateFor(id)) {
-                    if (s->config.enabled && !m_maintenance) {
+                    if (s->config.enabled) {
                         startPollCycle(*s);
                     }
                 }
@@ -114,20 +114,6 @@ void ModbusService::registerLogger(const LoggerRuntimeConfig &config)
 void ModbusService::unregisterLogger(qint64 loggerId)
 {
     destroyState(loggerId);
-}
-
-void ModbusService::setMaintenanceMode(bool maintenance)
-{
-    if (m_maintenance == maintenance) return;
-    m_maintenance = maintenance;
-    for (auto *state : m_states) {
-        if (!state->timer) continue;
-        if (m_maintenance) {
-            state->timer->stop();
-        } else if (state->config.enabled && !state->timer->isActive()) {
-            state->timer->start();
-        }
-    }
 }
 
 void ModbusService::shutdown()
@@ -192,7 +178,7 @@ void ModbusService::onPollTimer()
     if (!timer) return;
     const qint64 loggerId = timer->property("loggerId").toLongLong();
     if (auto *state = stateFor(loggerId)) {
-        if (!state->config.enabled || m_maintenance) return;
+        if (!state->config.enabled) return;
         if (state->pollInFlight) return;
         startPollCycle(*state);
     }

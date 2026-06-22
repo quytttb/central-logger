@@ -1,3 +1,5 @@
+pragma ComponentBehavior: Bound
+
 import QtQuick
 import QtQuick.Controls.Material
 import QtQuick.Layouts
@@ -16,6 +18,14 @@ Item {
     Component.onCompleted: {
         DashboardController.reloadRecentEvents()
         DashboardController.refreshReadingsChart()
+    }
+
+    // Refresh chart only while Dashboard tab is open (replaces global C++ timer).
+    Timer {
+        interval: 30000
+        running: true
+        repeat: true
+        onTriggered: DashboardController.refreshReadingsChart()
     }
 
     Connections {
@@ -87,7 +97,12 @@ Item {
                         Layout.fillWidth: true
                         title: qsTr("Traffic Readings")
 
-                        IconToolButton {
+                        AppButton {
+                            kind: AppButton.Neutral
+                            forceDarkText: false
+                            iconOnly: true
+                            controlSize: 36
+                            iconSide: 20
                             iconName: "refresh"
                             tooltipText: qsTr("Refresh")
                             onClicked: DashboardController.refreshReadingsChart()
@@ -138,7 +153,12 @@ Item {
                         Layout.fillWidth: true
                         title: qsTr("Recent events")
 
-                        IconToolButton {
+                        AppButton {
+                            kind: AppButton.Neutral
+                            forceDarkText: false
+                            iconOnly: true
+                            controlSize: 36
+                            iconSide: 20
                             iconName: "refresh"
                             tooltipText: qsTr("Refresh")
                             onClicked: DashboardController.reloadRecentEvents()
@@ -155,18 +175,25 @@ Item {
                         ListView {
                             id: recentEventsList
                             anchors.fill: parent
+                            anchors.rightMargin: eventsScrollBar.visible ? eventsScrollBar.width + 4 : 0
                             clip: true
                             spacing: 6
                             model: DashboardController.recentEvents
                             boundsBehavior: Flickable.StopAtBounds
-
-                            ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
 
                             delegate: RecentEventListItem {
                                 onActivated: loggerId => root.selectLogger(loggerId)
                                 onDetailRequested: (title, body, loggerId) =>
                                     AppNotifier.openDetail(title, body, loggerId)
                             }
+                        }
+
+                        AppScrollBar {
+                            id: eventsScrollBar
+                            flickable: recentEventsList
+                            anchors.top: parent.top
+                            anchors.bottom: parent.bottom
+                            anchors.right: parent.right
                         }
                     }
                 }
@@ -178,8 +205,8 @@ Item {
         spacing: AppTheme.toolbarGap
 
         Rectangle {
-            width: 8
-            height: 8
+            Layout.preferredWidth: 8
+            Layout.preferredHeight: 8
             radius: 4
             color: AppColors.success
             Layout.alignment: Qt.AlignVCenter

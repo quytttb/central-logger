@@ -3,7 +3,7 @@
 #   .\packaging\windows\deploy.ps1 release patch
 param(
     [Parameter(Position = 0)]
-    [ValidateSet("release", "bump", "commit", "tag", "push-tag", "status", "cheatsheet", "")]
+    [ValidateSet("release", "bump", "commit", "tag", "push-tag", "status", "help", "cheatsheet", "")]
     [string]$Command = "",
 
     [Parameter(Position = 1)]
@@ -68,6 +68,12 @@ function Test-TagExists {
     return $LASTEXITCODE -eq 0
 }
 
+function Test-TagOnRemote {
+    param([string]$Tag)
+    $out = git ls-remote --tags $Remote "refs/tags/$Tag" 2>$null
+    return ($LASTEXITCODE -eq 0) -and ($out -match '\S')
+}
+
 function Show-GitHubUrls {
     try { $url = (git remote get-url $Remote 2>$null).Trim() } catch { return }
     if ($url -match 'github\.com[:/]([^/]+)/([^/.]+)') {
@@ -83,24 +89,32 @@ function Invoke-BumpVersion {
     $py = Get-Python
     Write-Host "== Bump version ($Level) =="
     & $py.Source $BumpScript bump $Level
-    if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+    if ($LASTEXITCODE -ne 0) { throw "bump failed" }
 }
 
 function Read-BumpChoice {
     $ver = Get-ProjectVersion
-    Write-Host ""
-    Write-Host "Chon muc bump — hien tai: $ver"
-    Write-Host "  1) PATCH  — bug fixes (0.0.X)"
-    Write-Host "  2) MINOR  — new features (0.X.0)"
-    Write-Host "  3) MAJOR  — breaking change (X.0.0)"
-    Write-Host "  0) Cancel"
-    Write-Host ""
-    switch (Read-Host "Select bump [0-3]") {
-        "1" { return "patch" }
-        "2" { return "minor" }
-        "3" { return "major" }
-        "0" { return $null }
-        default { Write-Error "Invalid choice." }
+    while ($true) {
+        Write-Host ""
+        Write-Host "Chon muc bump (version hien tai: $ver)"
+        Write-Host "  1) PATCH  — sua loi (vd. 0.1 -> 0.1.1)"
+        Write-Host "  2) MINOR  — tinh nang moi (vd. 0.1 -> 0.2.0)"
+        Write-Host "  3) MAJOR  — breaking (vd. 0.1 -> 1.0.0)"
+        Write-Host "  0) Quay lai menu"
+        Write-Host ""
+        $raw = (Read-Host "Nhap 1/2/3 hoac patch/minor/major [0-3]").Trim().ToLowerInvariant()
+        switch ($raw) {
+            "1" { return "patch" }
+            "2" { return "minor" }
+            "3" { return "major" }
+            "patch" { return "patch" }
+            "minor" { return "minor" }
+            "major" { return "major" }
+            "0" { return $null }
+            default {
+                Write-Host "Khong hop le: '$raw'. Chon 1-3 hoac patch/minor/major (khong nhap so version)." -ForegroundColor Yellow
+            }
+        }
     }
 }
 
@@ -163,16 +177,24 @@ function Invoke-DoRelease {
     if (-not $Level) {
         $Level = Read-BumpChoice
         if (-not $Level) { return }
-    } else {
-        Invoke-BumpVersion -Level $Level
     }
+    Invoke-BumpVersion -Level $Level
+
+    git diff --quiet -- $ReleaseFile 2>$null
+    $noUnstaged = $LASTEXITCODE -eq 0
+    git diff --cached --quiet -- $ReleaseFile 2>$null
+    $noStaged = $LASTEXITCODE -eq 0
+    if ($noUnstaged -and $noStaged) {
+        throw "$ReleaseFile chua doi sau bump — huy phat hanh."
+    }
+
     $ver = Get-ProjectVersion
     $tag = "v$ver"
     Write-Host ""
     Write-Host "Phat hanh: version $ver -> tag $tag -> push $Remote"
     Show-UnexpectedDirtyWarning
     if (-not (Test-Confirm "Tiep tuc (commit $ReleaseFile -> tag -> push)?")) {
-        Write-Host "Cancelled."
+        Write-Host "Da huy."
         return
     }
     Add-ReleaseFiles
@@ -187,86 +209,118 @@ function Invoke-DoRelease {
     Show-GitHubUrls
 }
 
-function Show-Status {
+function Write-StatusLine {
     $ver = Get-ProjectVersion
     $tag = Get-TagName
     $branch = Get-GitBranch
-    Write-Host ""
-    Write-Host "Version (CMake): $ver"
-    Write-Host "Tag (expected):  $tag"
-    Write-Host "Branch:          $branch"
-    Write-Host "Remote:          $Remote"
-    Write-Host ""
-    if (Test-TagExists $tag) {
-        Write-Host "Tag local $tag : co ($((git rev-parse --short $tag).Trim()))"
-    } else {
-        Write-Host "Tag local $tag : chua co"
-    }
-    if (git ls-remote --tags $Remote $tag 2>$null) {
-        Write-Host "Tag tren $Remote : co"
-    } else {
-        Write-Host "Tag tren $Remote : chua co"
-    }
-    Write-Host ""
-    git status -sb
-    Write-Host ""
-    Write-Host "Build installer local: .\packaging\windows\build_installer.ps1"
-    Show-GitHubUrls
+    $tagLocal = if (Test-TagExists $tag) { "local co" } else { "local chua co" }
+    $tagRemote = if (Test-TagOnRemote $tag) { "$Remote co" } else { "$Remote chua co" }
+    $dirty = ""
+    if (git status --porcelain 2>$null) { $dirty = " | working tree: dirty" }
+    Write-Host "  $ver -> $tag | branch $branch | tag $tagLocal, $tagRemote$dirty"
 }
 
-function Show-Cheatsheet {
+function Show-Help {
     $ver = Get-ProjectVersion
     $tag = Get-TagName
     Write-Host @"
 
---- Cheat sheet (git release) ---
+================================================================
+  Help — Deploy / Release (Central Logger)
+================================================================
 
-  Version: $ver  ->  tag $tag
+  Version hien tai: $ver  ->  tag git: $tag
+  Remote mac dinh: $Remote  (doi: `$env:DEPLOY_REMOTE = 'upstream')
 
-  .\packaging\windows\deploy.ps1 release patch
+-- Menu tuong tac (.\packaging\windows\deploy.ps1) -----------
 
+  1) Phat hanh day du
+     Tang SemVer -> commit CMakeLists.txt -> tag v{version}
+     -> push nhanh + tag len $Remote.
+     Kich hoat workflow GitHub Actions "Build Release".
+
+  2) Chi bump version — sua CMakeLists.txt, chua commit/tag/push.
+
+  3) Commit CMakeLists.txt — stage + commit version (co xac nhan).
+
+  4) Tao git tag annotated v{version} tren may (local).
+
+  5) Push tag len $Remote — CI build ban release (can tag local).
+
+  6) Help — in huong dan nay (khong thay doi git).
+
+  0) Thoat menu.
+
+  Dong trang thai tren menu: version, tag, branch, tag local/remote, dirty.
+
+-- Lenh CLI (khong menu) ---------------------------------------
+
+  .\packaging\windows\deploy.ps1
+  .\packaging\windows\deploy.ps1 release [patch|minor|major]
+  .\packaging\windows\deploy.ps1 bump {patch|minor|major}
+  .\packaging\windows\deploy.ps1 commit | tag | push-tag | status | help
+
+  (cheatsheet = alias cua help)
+
+-- Bump thu cong -----------------------------------------------
+
+  python packaging\linux\bump_version.py show
   python packaging\linux\bump_version.py bump patch
-  git add CMakeLists.txt; git commit -m "chore(release): release $tag"
+
+-- Git thu cong (tuong duong menu 1) ---------------------------
+
+  git add CMakeLists.txt
+  git commit -m "chore(release): release $tag"
   git tag -a $tag -m "Release $tag"
   git push $Remote HEAD
   git push $Remote $tag
 
-  Build installer local:
+-- Build lai tag da co -----------------------------------------
+
+  GitHub -> Actions -> "Build Release" -> Run workflow -> nhap $tag
+
+-- Build installer local ---------------------------------------
+
   .\packaging\windows\build_installer.ps1
+
+  Chi tiet: packaging\README.md
 
 "@
 }
 
 function Show-DeployMenu {
-    $ver = Get-ProjectVersion
-    $tag = Get-TagName
-    $branch = Get-GitBranch
-    Write-Host ""
-    Write-Host "========================================"
-    Write-Host "  Central Logger — Deploy / Release"
-    Write-Host "  Version: $ver  ->  tag $tag"
-    Write-Host "  Branch: $branch    Remote: $Remote"
-    Write-Host "========================================"
-    Write-Host ""
-    Write-Host "  1) Phat hanh day du — bump -> commit -> tag -> push $Remote"
-    Write-Host "  2) Chi bump version (CMakeLists.txt)"
-    Write-Host "  3) Commit CMakeLists.txt"
-    Write-Host "  4) Tao git tag annotated v{version}"
-    Write-Host "  5) Push tag len $Remote (kich hoat Build Release)"
-    Write-Host "  6) Trang thai"
-    Write-Host "  7) Cheat sheet"
-    Write-Host "  0) Thoat"
-    Write-Host ""
-    switch (Read-Host "Select option [0-7]") {
-        "1" { Invoke-DoRelease }
-        "2" { Invoke-DoBump }
-        "3" { Invoke-DoCommit }
-        "4" { Invoke-DoTag }
-        "5" { Invoke-DoPushTag }
-        "6" { Show-Status }
-        "7" { Show-Cheatsheet }
-        "0" { Write-Host "Bye." }
-        default { Write-Error "Invalid choice." }
+    while ($true) {
+        Write-Host ""
+        Write-Host "========================================"
+        Write-Host "  Central Logger — Deploy / Release"
+        Write-Host "========================================"
+        Write-StatusLine
+        Write-Host ""
+        Write-Host "  1) Phat hanh day du — bump -> commit -> tag -> push $Remote"
+        Write-Host "  2) Chi bump version (CMakeLists.txt)"
+        Write-Host "  3) Commit CMakeLists.txt"
+        Write-Host "  4) Tao git tag annotated v{version}"
+        Write-Host "  5) Push tag len $Remote (kich hoat Build Release)"
+        Write-Host "  6) Help — huong dan menu, CLI va quy trinh release"
+        Write-Host "  0) Thoat"
+        Write-Host ""
+        $choice = (Read-Host "Chon [0-6]").Trim()
+        try {
+            switch ($choice) {
+                "1" { Invoke-DoRelease }
+                "2" { Invoke-DoBump }
+                "3" { Invoke-DoCommit }
+                "4" { Invoke-DoTag }
+                "5" { Invoke-DoPushTag }
+                "6" { Show-Help }
+                "0" { Write-Host "Bye."; return }
+                default {
+                    Write-Host "Khong hop le: '$choice'. Nhap so 0-6." -ForegroundColor Yellow
+                }
+            }
+        } catch {
+            Write-Host $_.Exception.Message -ForegroundColor Red
+        }
     }
 }
 
@@ -290,8 +344,9 @@ if ($Command) {
         "commit" { Invoke-DoCommit }
         "tag" { Invoke-DoTag }
         "push-tag" { Invoke-DoPushTag }
-        "status" { Show-Status }
-        "cheatsheet" { Show-Cheatsheet }
+        "status" { Write-StatusLine }
+        "help" { Show-Help }
+        "cheatsheet" { Show-Help }
     }
     exit 0
 }

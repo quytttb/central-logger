@@ -58,6 +58,8 @@ QVariantList PollHistoryStore::seriesForLogger(qint64 loggerId) const
             edgeSensorId,
             QStringLiteral("Sensor #%1").arg(edgeSensorId));
         series.insert(QStringLiteral("label"), label);
+        series.insert(QStringLiteral("decimals"),
+                      m_sensorDecimals.value(loggerId).value(edgeSensorId, 4));
         series.insert(QStringLiteral("points"), points);
         result.append(series);
     }
@@ -75,16 +77,23 @@ void PollHistoryStore::updateSensorNames(qint64 loggerId, const QHash<int, QStri
     m_sensorNames[loggerId] = names;
 }
 
+void PollHistoryStore::updateSensorDecimals(qint64 loggerId, const QHash<int, int> &decimals)
+{
+    m_sensorDecimals[loggerId] = decimals;
+}
+
 void PollHistoryStore::remove(qint64 loggerId)
 {
     m_store.remove(loggerId);
     m_sensorNames.remove(loggerId);
+    m_sensorDecimals.remove(loggerId);
 }
 
 void PollHistoryStore::clear()
 {
     m_store.clear();
     m_sensorNames.clear();
+    m_sensorDecimals.clear();
 }
 
 int PollHistoryStore::pointCount(qint64 loggerId, int edgeSensorId) const

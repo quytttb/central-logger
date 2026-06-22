@@ -29,30 +29,32 @@ class SettingsController : public QObject
 
     Q_PROPERTY(QString theme              READ theme              WRITE setTheme              NOTIFY themeChanged)
     Q_PROPERTY(QString systemTimezone     READ systemTimezone     WRITE setSystemTimezone     NOTIFY systemTimezoneChanged)
-    Q_PROPERTY(int     dataRetentionDays  READ dataRetentionDays  WRITE setDataRetentionDays  NOTIFY dataRetentionDaysChanged)
-    Q_PROPERTY(bool    maintenanceMode    READ maintenanceMode    WRITE setMaintenanceMode    NOTIFY maintenanceModeChanged)
+    Q_PROPERTY(int     dataRetentionDays      READ dataRetentionDays      WRITE setDataRetentionDays      NOTIFY dataRetentionDaysChanged)
+    Q_PROPERTY(int     historyFlushIntervalS  READ historyFlushIntervalS  WRITE setHistoryFlushIntervalS  NOTIFY historyFlushIntervalSChanged)
     Q_PROPERTY(QString lastError          READ lastError                                       NOTIFY lastErrorChanged)
 
 public:
-    explicit SettingsController(QObject *parent = nullptr);
+    /// Parent required — Qt 6 uses the default ctor for QML_SINGLETON when
+    /// parent is optional, which would bypass create() and the main.cpp instance.
+    explicit SettingsController(QObject *parent);
 
     QString theme()             const { return m_settings.theme; }
     QString systemTimezone()    const { return m_settings.systemTimezone; }
-    int     dataRetentionDays() const { return m_settings.dataRetentionDays; }
-    bool    maintenanceMode()   const { return m_settings.maintenanceMode; }
+    int     dataRetentionDays()     const { return m_settings.dataRetentionDays; }
+    int     historyFlushIntervalS() const { return m_settings.historyFlushIntervalS; }
     QString lastError()         const { return m_lastError; }
 
     void setTheme(const QString &value);
     void setSystemTimezone(const QString &value);
     void setDataRetentionDays(int value);
-    void setMaintenanceMode(bool value);
+    void setHistoryFlushIntervalS(int value);
 
     /// QML singleton accessor + factory — see AppState.
     static SettingsController *instance();
     static void setInstance(SettingsController *controller);
     static SettingsController *create(QQmlEngine *, QJSEngine *);
 
-    void setDatabase(Data::Database *db) { m_db = db; }
+    void setDatabase(Data::Database *db);
 
     /// Format @p dt in the configured systemTimezone using "yyyy-MM-dd HH:mm:ss".
     /// Falls back to local time when the timezone name is invalid.
@@ -75,7 +77,7 @@ signals:
     void themeChanged();
     void systemTimezoneChanged();
     void dataRetentionDaysChanged();
-    void maintenanceModeChanged();
+    void historyFlushIntervalSChanged();
     void lastErrorChanged();
     void saved();
     void error(const QString &message);

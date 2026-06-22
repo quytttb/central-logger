@@ -1,8 +1,10 @@
+pragma ComponentBehavior: Bound
+
 import QtQuick
 import QtQuick.Controls.Material
 import QtQuick.Layouts
+import QtQuick.Window
 
-import CentralLogger.Core
 import CentralLogger.Components
 import CentralLogger.Theme
 
@@ -11,9 +13,12 @@ ApplicationWindow {
 
     width: 1280
     height: 800
+    minimumWidth: 1024
+    minimumHeight: 768
     visible: true
     visibility: Window.Maximized
     title: qsTr("Central Logger")
+    flags: Qt.Window | Qt.FramelessWindowHint | Qt.WindowSystemMenuHint
 
     Material.theme:   AppTheme.materialTheme
     Material.accent:  AppTheme.accent
@@ -22,6 +27,7 @@ ApplicationWindow {
 
     property string currentView:      "dashboard"
     property int    selectedLoggerId: -1
+    property Component activeTopBarToolbar: null
 
     readonly property int navigationRailWidth: AppTheme.railWidth
 
@@ -93,7 +99,7 @@ ApplicationWindow {
 
             AppTopBar {
                 Layout.fillWidth: true
-                toolbarSource: viewLoader.item ? viewLoader.item.topBarToolbar : null
+                toolbarSource: root.activeTopBarToolbar
             }
 
             Item {
@@ -111,11 +117,16 @@ ApplicationWindow {
                     id: viewLoader
                     anchors.fill: parent
                     asynchronous: false
+                    onItemChanged: {
+                        if (!item)
+                            root.activeTopBarToolbar = null
+                    }
                     sourceComponent: {
                         switch (root.currentView) {
                         case "dashboard":     return dashboardComp
                         case "loggers":       return loggersComp
                         case "logger-detail": return loggerDetailComp
+                        case "history":       return historyComp
                         case "settings":      return settingsComp
                         default:              return dashboardComp
                         }
@@ -126,6 +137,7 @@ ApplicationWindow {
                     id: dashboardComp
                     DashboardView {
                         anchors.fill: parent
+                        Component.onCompleted: root.activeTopBarToolbar = topBarToolbar
                         onSelectLogger: loggerId => root.selectLogger(loggerId)
                     }
                 }
@@ -134,6 +146,7 @@ ApplicationWindow {
                     id: loggersComp
                     LoggersView {
                         anchors.fill: parent
+                        Component.onCompleted: root.activeTopBarToolbar = topBarToolbar
                         onSelectLogger: loggerId => root.selectLogger(loggerId)
                     }
                 }
@@ -143,7 +156,16 @@ ApplicationWindow {
                     LoggerDetailView {
                         anchors.fill: parent
                         loggerId: root.selectedLoggerId
+                        Component.onCompleted: root.activeTopBarToolbar = topBarToolbar
                         onGoBack: root.navigate("loggers")
+                    }
+                }
+
+                Component {
+                    id: historyComp
+                    HistoryView {
+                        anchors.fill: parent
+                        Component.onCompleted: root.activeTopBarToolbar = topBarToolbar
                     }
                 }
 
@@ -151,6 +173,7 @@ ApplicationWindow {
                     id: settingsComp
                     SettingsView {
                         anchors.fill: parent
+                        Component.onCompleted: root.activeTopBarToolbar = topBarToolbar
                     }
                 }
             }

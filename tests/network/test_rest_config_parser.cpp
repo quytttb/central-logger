@@ -12,6 +12,7 @@ class TestRestConfigParser : public QObject
 private slots:
     void parsesRevisionAndSensorsAtRoot();
     void parsesParentIdAndDiType();
+    void parsesDecimalsWithDefaultAndClamp();
     void parsesSensorsNestedUnderConfig();
     void parsesModbusTcpUnitIdFromConfig();
     void skipsSensorsMissingId();
@@ -75,6 +76,26 @@ void TestRestConfigParser::parsesParentIdAndDiType()
     QCOMPARE(parsed.sensors[1].diType, QStringLiteral("02"));
     QCOMPARE(parsed.sensors[1].edgeSensorId, 3); // register_address should override id for DI/DO
     QCOMPARE(parsed.sensors[2].edgeSensorId, 12); // fallback to id when register_address is absent
+}
+
+void TestRestConfigParser::parsesDecimalsWithDefaultAndClamp()
+{
+    const QByteArray body = R"({
+        "revision": 1,
+        "sensors": [
+            {"sensor_id": 1, "sensor_type": "ANALOG", "name": "A", "decimals": 2},
+            {"sensor_id": 2, "sensor_type": "ANALOG", "name": "B"},
+            {"sensor_id": 3, "sensor_type": "ANALOG", "name": "C", "decimals": 9},
+            {"sensor_id": 4, "sensor_type": "ANALOG", "name": "D", "decimals": -1}
+        ]
+    })";
+    const auto parsed = RestConfigParser::parseConfigResponse(1, body);
+    QVERIFY(parsed.valid);
+    QCOMPARE(parsed.sensors.size(), 4);
+    QCOMPARE(parsed.sensors[0].decimals, 2); // explicit
+    QCOMPARE(parsed.sensors[1].decimals, 4); // default
+    QCOMPARE(parsed.sensors[2].decimals, 6); // clamped high
+    QCOMPARE(parsed.sensors[3].decimals, 0); // clamped low
 }
 
 void TestRestConfigParser::parsesModbusTcpUnitIdFromConfig()

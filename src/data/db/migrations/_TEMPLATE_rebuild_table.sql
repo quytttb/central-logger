@@ -1,0 +1,13 @@
+-- TEMPLATE: complex migration (comment-only — not executed by the app)
+--
+-- Use when ALTER TABLE is insufficient (rename PK, change column types, etc.).
+-- Copy to 00N_descriptive_name.sql and implement the steps below.
+--
+-- 1. CREATE TABLE new_<name> (...);
+-- 2. INSERT INTO new_<name> SELECT ... FROM <name>;
+-- 3. DROP TABLE <name>;
+-- 4. ALTER TABLE new_<name> RENAME TO <name>;
+-- 5. Recreate indexes and FK constraints.
+--
+-- Add C++ guards in Database::runMigrationStep() if PRAGMA table_info
+-- introspection is needed before running destructive steps.

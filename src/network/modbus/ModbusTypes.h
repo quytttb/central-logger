@@ -36,7 +36,7 @@ struct AnalogSample
 };
 
 /// Result of one full poll cycle for one logger. Emitted by ModbusService
-/// across thread boundary (QueuedConnection) to ModbusBridge.
+/// to ModbusDataDispatcher via Qt::QueuedConnection.
 struct PollSnapshot
 {
     qint64               loggerId = 0;

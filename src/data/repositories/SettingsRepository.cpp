@@ -21,7 +21,7 @@ AppSettings SettingsRepository::get(QString *errorOut) const
     AppSettings result;
     QSqlQuery q(m_db);
     if (!q.exec(QStringLiteral(
-            "SELECT theme, system_timezone, data_retention_days, maintenance_mode "
+            "SELECT theme, system_timezone, data_retention_days, history_flush_interval_s "
             "FROM app_settings WHERE id = 1"))) {
         setErr(errorOut, q);
         return result;
@@ -32,7 +32,10 @@ AppSettings SettingsRepository::get(QString *errorOut) const
     result.theme             = q.value(0).toString();
     result.systemTimezone    = q.value(1).toString();
     result.dataRetentionDays = q.value(2).toInt();
-    result.maintenanceMode   = q.value(3).toInt() != 0;
+    result.historyFlushIntervalS = q.value(3).toInt();
+    if (result.historyFlushIntervalS <= 0) {
+        result.historyFlushIntervalS = 5;
+    }
     return result;
 }
 
@@ -44,12 +47,12 @@ bool SettingsRepository::update(const AppSettings &settings, QString *errorOut)
         "  theme = :theme,"
         "  system_timezone = :tz,"
         "  data_retention_days = :retention,"
-        "  maintenance_mode = :maintenance "
+        "  history_flush_interval_s = :history_flush "
         "WHERE id = 1"));
     q.bindValue(QStringLiteral(":theme"),       settings.theme);
     q.bindValue(QStringLiteral(":tz"),          settings.systemTimezone);
     q.bindValue(QStringLiteral(":retention"),   settings.dataRetentionDays);
-    q.bindValue(QStringLiteral(":maintenance"), settings.maintenanceMode ? 1 : 0);
+    q.bindValue(QStringLiteral(":history_flush"), settings.historyFlushIntervalS);
     if (!q.exec()) {
         setErr(errorOut, q);
         return false;

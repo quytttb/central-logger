@@ -3,7 +3,6 @@
 #include "DesktopService.h"
 #include "core/charts/ChartPresentation.h"
 
-#include <QDateTime>
 #include <QFileInfo>
 
 #include "AppState.h"

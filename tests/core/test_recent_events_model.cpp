@@ -1,4 +1,5 @@
 #include "core/DashboardController.h"
+#include "core/LoggerFormController.h"
 #include "core/events/RecentEventsModel.h"
 #include "data/db/Database.h"
 #include "data/models/SystemEvent.h"
@@ -13,6 +14,7 @@
 #include <QVariantMap>
 
 using CentralLogger::Core::DashboardController;
+using CentralLogger::Core::LoggerFormController;
 using CentralLogger::Core::RecentEventsModel;
 using CentralLogger::Data::Database;
 using CentralLogger::Data::EventRepository;
@@ -20,6 +22,19 @@ using CentralLogger::Data::SystemEvent;
 using CentralLogger::Network::PollSnapshot;
 
 namespace {
+
+/// CRUD moved to LoggerFormController; seed loggers through it while keeping
+/// the dashboard models (recentEvents / snapshots) under test in sync.
+qint64 addSeedLogger(DashboardController &dash, Database &db,
+                     const QString &code, const QString &name,
+                     const QString &host, int modbusPort, int apiPort,
+                     const QString &token)
+{
+    LoggerFormController form(nullptr);
+    form.setDatabase(&db);
+    form.setDashboardController(&dash);
+    return form.addLogger(code, name, host, modbusPort, apiPort, token);
+}
 
 QString uniqueConnection(const char *suffix)
 {
@@ -118,7 +133,7 @@ void TestRecentEventsModel::rolesExposeLoggerNameViaJoin()
 
     DashboardController ctrl(nullptr);
     ctrl.setDatabase(&db);
-    const qint64 loggerId = ctrl.addLogger(QStringLiteral("TRAM-RX"),
+    const qint64 loggerId = addSeedLogger(ctrl, db, QStringLiteral("TRAM-RX"),
                                            QStringLiteral("Trạm RX"),
                                            QStringLiteral("h"),
                                            5020, 8080, {});
@@ -209,7 +224,7 @@ void TestRecentEventsModel::dashboardCrudReloadsModel()
     model->reload();
     QCOMPARE(model->rowCount(), 0);
 
-    const qint64 id = ctrl.addLogger(QStringLiteral("TRAM-EV"),
+    const qint64 id = addSeedLogger(ctrl, db, QStringLiteral("TRAM-EV"),
                                      QStringLiteral("Trạm Ev"),
                                      QStringLiteral("h"),
                                      5020, 8080, {});
@@ -227,7 +242,7 @@ void TestRecentEventsModel::dashboardOnlineTransitionLogsEvent()
 
     DashboardController ctrl(nullptr);
     ctrl.setDatabase(&db);
-    const qint64 id = ctrl.addLogger(QStringLiteral("TRAM-ON"),
+    const qint64 id = addSeedLogger(ctrl, db, QStringLiteral("TRAM-ON"),
                                      QStringLiteral("Trạm On"),
                                      QStringLiteral("h"),
                                      5020, 8080, {});
@@ -261,7 +276,7 @@ void TestRecentEventsModel::dashboardOfflineTransitionLogsWarningEvent()
 
     DashboardController ctrl(nullptr);
     ctrl.setDatabase(&db);
-    const qint64 id = ctrl.addLogger(QStringLiteral("TRAM-OFF"),
+    const qint64 id = addSeedLogger(ctrl, db, QStringLiteral("TRAM-OFF"),
                                      QStringLiteral("Trạm Off"),
                                      QStringLiteral("h"),
                                      5020, 8080, {});
@@ -288,7 +303,7 @@ void TestRecentEventsModel::dashboardSkipsFirstSnapshotAndDoesNotSpamRepeats()
 
     DashboardController ctrl(nullptr);
     ctrl.setDatabase(&db);
-    const qint64 id = ctrl.addLogger(QStringLiteral("TRAM-NS"),
+    const qint64 id = addSeedLogger(ctrl, db, QStringLiteral("TRAM-NS"),
                                      QStringLiteral("Trạm NS"),
                                      QStringLiteral("h"),
                                      5020, 8020, {});
@@ -346,7 +361,7 @@ void TestRecentEventsModel::logEventReloadsModel()
     DashboardController ctrl(nullptr);
     ctrl.setDatabase(&db);
 
-    const qint64 id = ctrl.addLogger(QStringLiteral("TRAM-LR"),
+    const qint64 id = addSeedLogger(ctrl, db, QStringLiteral("TRAM-LR"),
                                      QStringLiteral("Trạm LR"),
                                      QStringLiteral("h"),
                                      5020, 8080, {});

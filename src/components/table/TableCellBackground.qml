@@ -1,18 +1,13 @@
 import QtQuick
-import QtQuick.Controls.Material
 
 import CentralLogger.Theme
 
-// M3 table row/cell background for TableView ItemDelegate (multi-column).
+// M3 table cell background: hover highlight + row divider (no zebra — avoids corner bleed on rounded panes).
 Rectangle {
     required property bool cellHovered
-    required property int  rowIndex
 
     anchors.fill: parent
-
-    color: cellHovered
-           ? AppColors.hoverFill
-           : (rowIndex % 2 === 1 ? AppColors.surfaceContainer : "transparent")
+    color: cellHovered ? AppColors.hoverFill : "transparent"
 
     Rectangle {
         anchors.bottom: parent.bottom

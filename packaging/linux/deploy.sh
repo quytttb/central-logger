@@ -24,7 +24,10 @@ _ensure_repo() {
 
 _run_bump() {
   local level="$1"
-  python3 "${BUMP_SCRIPT}" bump "${level}"
+  if ! python3 "${BUMP_SCRIPT}" bump "${level}"; then
+    echo "Bump version thất bại." >&2
+    return 1
+  fi
 }
 
 _current_version() {
@@ -74,6 +77,13 @@ _tag_exists() {
   git rev-parse "$1" >/dev/null 2>&1
 }
 
+_tag_on_remote() {
+  local tag="$1"
+  local out
+  out="$(git ls-remote --tags "${REMOTE}" "refs/tags/${tag}" 2>/dev/null || true)"
+  [[ -n "${out}" ]]
+}
+
 _github_urls() {
   local url
   url="$(git remote get-url "${REMOTE}" 2>/dev/null || true)"
@@ -86,28 +96,39 @@ _github_urls() {
 }
 
 _prompt_bump() {
-  local ver="$(_current_version)"
-  echo ""
-  echo "Chọn mức bump — hiện tại: ${ver}"
-  echo "  1) PATCH  — bug fixes (0.0.X)"
-  echo "  2) MINOR  — new features (0.X.0)"
-  echo "  3) MAJOR  — breaking change (X.0.0)"
-  echo "  0) Cancel"
-  echo ""
-  local choice
-  read -rp "Select bump [0-3]: " choice
-  case "${choice}" in
-    1) _run_bump patch ;;
-    2) _run_bump minor ;;
-    3) _run_bump major ;;
-    0) echo "Cancelled."; return 1 ;;
-    *) echo "Invalid choice." >&2; return 1 ;;
-  esac
+  local ver choice level
+  ver="$(_current_version)"
+  while true; do
+    echo ""
+    echo "Chọn mức bump (version hiện tại: ${ver})"
+    echo "  1) PATCH  — sửa lỗi (vd. 0.1 → 0.1.1)"
+    echo "  2) MINOR  — tính năng mới (vd. 0.1 → 0.2.0)"
+    echo "  3) MAJOR  — breaking (vd. 0.1 → 1.0.0)"
+    echo "  0) Quay lại menu"
+    echo ""
+    read -rp "Nhập 1/2/3 hoặc patch/minor/major [0-3]: " choice
+    choice="${choice,,}"
+    case "${choice}" in
+      1|patch) level=patch ;;
+      2|minor) level=minor ;;
+      3|major) level=major ;;
+      0) return 1 ;;
+      *)
+        echo "Không hợp lệ: «${choice}». Chọn 1–3 hoặc patch/minor/major (không nhập số version)." >&2
+        continue
+        ;;
+    esac
+    if ! _run_bump "${level}"; then
+      ver="$(_current_version)"
+      continue
+    fi
+    return 0
+  done
 }
 
 _do_bump() {
   if [[ $# -eq 0 ]]; then
-    _prompt_bump || return 1
+    _prompt_bump
   else
     _run_bump "$1"
   fi
@@ -165,9 +186,16 @@ _do_push_tag() {
 _do_release() {
   local level="${1:-}"
   if [[ -z "${level}" ]]; then
-    _prompt_bump || return 1
+    _prompt_bump || return 0
+  elif ! _run_bump "${level}"; then
+    return 1
+  fi
+  if ! git diff --quiet -- "${RELEASE_FILE}" 2>/dev/null || \
+     ! git diff --cached --quiet -- "${RELEASE_FILE}" 2>/dev/null; then
+    :
   else
-    _run_bump "${level}"
+    echo "${RELEASE_FILE} chưa đổi sau bump — hủy phát hành." >&2
+    return 1
   fi
   local tag
   tag="$(_tag_name)"
@@ -175,8 +203,8 @@ _do_release() {
   echo "Phát hành: version $(_current_version) → tag ${tag} → push ${REMOTE}"
   _git_unexpected_dirty_warning
   if ! _confirm "Tiếp tục (commit ${RELEASE_FILE} → tag → push)?"; then
-    echo "Cancelled."
-    return 1
+    echo "Đã hủy."
+    return 0
   fi
   _stage_release_files
   git commit -m "chore(release): release ${tag}" || {
@@ -195,95 +223,162 @@ _do_release() {
   _github_urls
 }
 
-_do_status() {
-  local ver tag branch
+_status_line() {
+  local ver tag branch tag_local tag_remote dirty
   ver="$(_current_version)"
   tag="$(_tag_name)"
   branch="$(_git_branch)"
-  echo ""
-  echo "Version (CMake): ${ver}"
-  echo "Tag (expected):  ${tag}"
-  echo "Branch:          ${branch}"
-  echo "Remote:          ${REMOTE}"
-  echo ""
   if _tag_exists "${tag}"; then
-    echo "Tag local ${tag}: có ($(git rev-parse --short "${tag}"))"
+    tag_local="local có"
   else
-    echo "Tag local ${tag}: chưa có"
+    tag_local="local chưa có"
   fi
-  if git ls-remote --tags "${REMOTE}" "${tag}" 2>/dev/null | grep -q .; then
-    echo "Tag trên ${REMOTE}: có"
+  if _tag_on_remote "${tag}"; then
+    tag_remote="${REMOTE} có"
   else
-    echo "Tag trên ${REMOTE}: chưa có"
+    tag_remote="${REMOTE} chưa có"
   fi
-  echo ""
-  git status -sb
-  echo ""
-  echo "Build .deb local: ./packaging/linux/cpack_deb.sh"
-  _github_urls
+  dirty=""
+  if [[ -n "$(git status --porcelain 2>/dev/null)" ]]; then
+    dirty=" | working tree: dirty"
+  fi
+  echo "  ${ver} → ${tag} | branch ${branch} | tag ${tag_local}, ${tag_remote}${dirty}"
 }
 
-_show_cheatsheet() {
+_show_help() {
   local ver tag
   ver="$(_current_version)"
   tag="$(_tag_name)"
   cat <<EOF
 
---- Cheat sheet (git release) ---
+══════════════════════════════════════════════════════════════
+  Help — Deploy / Release (Central Logger)
+══════════════════════════════════════════════════════════════
 
-  Version hiện tại: ${ver}  →  tag ${tag}
+  Version hiện tại: ${ver}  →  tag git: ${tag}
+  Remote mặc định: ${REMOTE}  (đổi: DEPLOY_REMOTE=upstream)
 
-  ./packaging/linux/deploy.sh release patch
+── Menu tương tác (./packaging/linux/deploy.sh) ──────────────
+
+  1) Phát hành đầy đủ
+     Tăng SemVer (patch/minor/major) → commit CMakeLists.txt
+     → tạo tag v{version} → push nhánh + tag lên ${REMOTE}.
+     Kích hoạt workflow GitHub Actions "Build Release"
+     (.deb Linux + CentralLoggerSetup.exe + GitHub Release).
+
+  2) Chỉ bump version
+     Sửa số VERSION trong CMakeLists.txt; chưa commit/tag/push.
+     Dùng khi muốn kiểm tra diff trước khi phát hành.
+
+  3) Commit CMakeLists.txt
+     Stage + commit file version với message chuẩn release.
+     Hỏi xác nhận; bỏ qua nếu file không đổi.
+
+  4) Tạo git tag
+     Tag annotated v{version} trỏ commit hiện tại (local).
+     Không push; tag trùng tên sẽ báo lỗi.
+
+  5) Push tag
+     Đẩy tag lên ${REMOTE} để CI build bản release.
+     Cần tag local đã tồn tại (chạy 4 hoặc option 1 trước).
+
+  6) Help — in hướng dẫn này (không thay đổi git).
+
+  0) Thoát menu.
+
+  Dòng trạng thái trên menu: version, tag, branch, tag local/remote,
+  working tree dirty (nếu có thay đổi chưa commit).
+
+── Lệnh CLI (không menu) ─────────────────────────────────────
+
+  ./packaging/linux/deploy.sh
+      Mở menu tương tác.
+
+  ./packaging/linux/deploy.sh release [patch|minor|major]
+      Giống menu 1; thiếu mức bump thì hỏi tương tác.
+
+  ./packaging/linux/deploy.sh bump {patch|minor|major}
+      Giống menu 2.
+
+  ./packaging/linux/deploy.sh commit
+      Giống menu 3.
+
+  ./packaging/linux/deploy.sh tag
+      Giống menu 4.
+
+  ./packaging/linux/deploy.sh push-tag
+      Giống menu 5.
+
+  ./packaging/linux/deploy.sh status
+      In một dòng trạng thái (giống header menu).
+
+  ./packaging/linux/deploy.sh help
+      In help (giống menu 6). Alias: cheatsheet
+
+── Bump version thủ công ──────────────────────────────────────
+
+  python3 packaging/linux/bump_version.py show
+      In version đọc từ CMakeLists.txt.
 
   python3 packaging/linux/bump_version.py bump patch
-  git add CMakeLists.txt && git commit -m "chore(release): release ${tag}"
+      PATCH: 0.0.X  |  minor: 0.X.0  |  major: X.0.0
+
+── Quy trình git thủ công (tương đương menu 1) ───────────────
+
+  python3 packaging/linux/bump_version.py bump patch
+  git add CMakeLists.txt
+  git commit -m "chore(release): release ${tag}"
   git tag -a ${tag} -m "Release ${tag}"
   git push ${REMOTE} HEAD
   git push ${REMOTE} ${tag}
 
-  Re-build khi tag đã có:
-  GitHub → Actions → Build Release → Run workflow → nhập ${tag}
+── Build lại khi tag đã có (không đổi git) ───────────────────
 
-  Build gói local:
+  GitHub → Actions → workflow "Build Release"
+  → Run workflow → nhập tag (vd. ${tag})
+
+── Build gói cài đặt trên máy (không qua git tag) ─────────────
+
   ./packaging/linux/cpack_deb.sh
+      Tạo .deb local trong dist/ (cần Qt 6.11, CMAKE_PREFIX_PATH).
+
+  Chi tiết: packaging/README.md
 
 EOF
 }
 
 _show_menu() {
-  local ver tag branch
-  ver="$(_current_version)"
-  tag="$(_tag_name)"
-  branch="$(_git_branch)"
-  echo ""
-  echo "========================================"
-  echo "  Central Logger — Deploy / Release"
-  echo "  Version: ${ver}  →  tag ${tag}"
-  echo "  Branch: ${branch}    Remote: ${REMOTE}"
-  echo "========================================"
-  echo ""
-  echo "  1) Phát hành đầy đủ — bump → commit → tag → push ${REMOTE}"
-  echo "  2) Chỉ bump version (CMakeLists.txt)"
-  echo "  3) Commit CMakeLists.txt"
-  echo "  4) Tạo git tag annotated v{version}"
-  echo "  5) Push tag lên ${REMOTE} (kích hoạt Build Release)"
-  echo "  6) Trạng thái — version, tag, git status"
-  echo "  7) Cheat sheet lệnh git (chỉ in)"
-  echo "  0) Thoát"
-  echo ""
   local choice
-  read -rp "Select option [0-7]: " choice
-  case "${choice}" in
-    1) _do_release ;;
-    2) _prompt_bump ;;
-    3) _do_commit ;;
-    4) _do_tag ;;
-    5) _do_push_tag ;;
-    6) _do_status ;;
-    7) _show_cheatsheet ;;
-    0) echo "Bye." ;;
-    *) echo "Invalid choice." >&2; return 1 ;;
-  esac
+  while true; do
+    echo ""
+    echo "========================================"
+    echo "  Central Logger — Deploy / Release"
+    echo "========================================"
+    _status_line
+    echo ""
+    echo "  1) Phát hành đầy đủ — bump → commit → tag → push ${REMOTE}"
+    echo "  2) Chỉ bump version (CMakeLists.txt)"
+    echo "  3) Commit CMakeLists.txt"
+    echo "  4) Tạo git tag annotated v{version}"
+    echo "  5) Push tag lên ${REMOTE} (kích hoạt Build Release)"
+    echo "  6) Help — hướng dẫn menu, CLI và quy trình release"
+    echo "  0) Thoát"
+    echo ""
+    read -rp "Chọn [0-6]: " choice
+    case "${choice}" in
+      1) _do_release || true ;;
+      2) _do_bump || true ;;
+      3) _do_commit || true ;;
+      4) _do_tag || true ;;
+      5) _do_push_tag || true ;;
+      6) _show_help ;;
+      0) echo "Bye."; break ;;
+      *)
+        echo "Không hợp lệ: «${choice}». Nhập số 0–6." >&2
+        continue
+        ;;
+    esac
+  done
 }
 
 _ensure_repo
@@ -302,10 +397,10 @@ if [[ $# -gt 0 ]]; then
     commit) _do_commit ;;
     tag) _do_tag ;;
     push-tag) _do_push_tag ;;
-    status) _do_status ;;
-    cheatsheet) _show_cheatsheet ;;
+    status) _status_line ;;
+    help|cheatsheet) _show_help ;;
     *)
-      echo "Usage: $0  OR  $0 {release|bump|commit|tag|push-tag|status|cheatsheet} [patch|minor|major]" >&2
+      echo "Usage: $0  OR  $0 {release|bump|commit|tag|push-tag|status|help} [patch|minor|major]" >&2
       exit 1
       ;;
   esac

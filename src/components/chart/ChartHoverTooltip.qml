@@ -1,3 +1,5 @@
+pragma ComponentBehavior: Bound
+
 import QtQuick
 import QtQuick.Controls.Material
 import QtQuick.Layouts
@@ -115,20 +117,21 @@ Item {
                 model: root.valueRows
 
                 RowLayout {
+                    id: valueRow
                     required property var modelData
                     spacing: 6
 
                     Rectangle {
-                        visible: modelData.color !== undefined
-                        width: visible ? 8 : 0
-                        height: 8
+                        visible: valueRow.modelData.color !== undefined
+                        Layout.preferredWidth: visible ? 8 : 0
+                        Layout.preferredHeight: 8
                         radius: 4
-                        color: visible ? modelData.color : "transparent"
+                        color: visible ? valueRow.modelData.color : "transparent"
                         Layout.alignment: Qt.AlignVCenter
                     }
 
                     Label {
-                        text: modelData.text
+                        text: valueRow.modelData.text
                         font: AppTypography.labelSmall
                         color: AppColors.primaryText
                     }

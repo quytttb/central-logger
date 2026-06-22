@@ -56,7 +56,7 @@ public:
 
 signals:
     /// Emitted at the end of every poll cycle (success or failure). Wire to
-    /// ModbusBridge::applySnapshot via Qt::QueuedConnection.
+    /// ModbusDataDispatcher::onPollFinished via Qt::QueuedConnection.
     void pollFinished(const CentralLogger::Network::PollSnapshot &snapshot);
 
 public slots:
@@ -66,10 +66,6 @@ public slots:
 
     void registerLogger(const CentralLogger::Network::LoggerRuntimeConfig &config);
     void unregisterLogger(qint64 loggerId);
-
-    /// Pauses scheduling without dropping connections. Used by
-    /// SettingsController.maintenanceMode.
-    void setMaintenanceMode(bool maintenance);
 
     /// Stops timers + closes clients. Call before quitting the worker thread.
     void shutdown();
@@ -106,7 +102,6 @@ private:
     void finishCycle(LoggerState &state, bool success, const QString &errorMessage = {});
 
     QHash<qint64, LoggerState *> m_states;
-    bool m_maintenance = false;
 };
 
 } // namespace CentralLogger::Network

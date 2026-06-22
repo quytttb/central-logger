@@ -48,6 +48,8 @@ Base URL: `http://<host>:<api_port>/api/v1`
 
 Response **phải** đủ để Central cập nhật `logger_sensor`: `sensor_id`, `sensor_type` (`ANALOG`|`DI`|`DO`), `name`, `unit`, ngưỡng (nếu edge trả về trong payload config/catalog).
 
+**`decimals` (tùy chọn, ANALOG):** số chữ số thập phân hiển thị cho giá trị analog. Integer, range **0–6**, **default 4** khi vắng mặt. Central clamp vào [0,6], lưu `logger_sensor.decimals`, và dùng cho bảng sensor live (Detail), History, CSV export, và tooltip biểu đồ trending. DI/DO bỏ qua (hiển thị ON/OFF). Field này **additive**, backward-compatible: firmware cũ không gửi → Central dùng 4.
+
 **Không có trong snapshot:** `rest_api_token` — [provision QR](provision-qr-v1.md).
 
 **Không gửi khi POST:** `logger_serial`, `cloud_enabled`, `cloud_endpoint` — edge trả **422** (`extra=forbid`).

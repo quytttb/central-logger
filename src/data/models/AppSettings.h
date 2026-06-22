@@ -9,7 +9,7 @@ struct AppSettings
     QString theme = QStringLiteral("dark");
     QString systemTimezone = QStringLiteral("Asia/Ho_Chi_Minh");
     int     dataRetentionDays = 30;
-    bool    maintenanceMode = false;
+    int     historyFlushIntervalS = 5;
 };
 
 } // namespace CentralLogger::Data

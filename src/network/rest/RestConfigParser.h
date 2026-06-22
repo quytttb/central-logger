@@ -9,6 +9,8 @@
 #include <QString>
 #include <QVector>
 
+#include <algorithm>
+
 namespace CentralLogger::Network::RestConfigParser {
 
 /// Result of parsing a `GET /config` response. `revision` is -1 when the
@@ -95,6 +97,8 @@ inline QVector<Data::LoggerSensor> readSensors(qint64 loggerId, const QJsonArray
         s.unit         = readStr(obj, "unit");
         s.minThreshold = readOptDouble(obj, "min_threshold");
         s.maxThreshold = readOptDouble(obj, "max_threshold");
+        // Display precision (ANALOG). Edge field optional → default 4, clamp 0–6.
+        s.decimals     = std::clamp(readInt(obj, "decimals", 4), 0, 6);
         const auto activeVal = obj.value(QLatin1String("active"));
         s.active             = activeVal.isBool() ? activeVal.toBool() : true;
         const int parentId   = readInt(obj, "parent_id", -1);

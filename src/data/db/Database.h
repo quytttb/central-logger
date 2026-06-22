@@ -42,11 +42,20 @@ public:
 
     static QString defaultConnectionName() { return QStringLiteral("central_logger"); }
 
+    /// Current `PRAGMA user_version` baked into the application.
+    static int schemaVersion();
+
+    /// WAL + related pragmas for concurrent read (UI) / write (history worker).
+    static bool applyPerformancePragmas(QSqlDatabase db, QString *errorOut = nullptr);
+
 private:
     bool ensureParentDirectory(const QString &databasePath, QString *errorOut);
     bool applyInitialSchema(QString *errorOut);
-    bool ensureCurrentSchema(QString *errorOut);
+    bool readEffectiveSchemaVersion(int *versionOut, QString *errorOut);
     bool migrateSchemaIfNeeded(int currentVersion, QString *errorOut);
+    bool backupDatabase(const QString &databasePath, QString *errorOut);
+    bool runMigrationStep(int version, QSqlQuery &query, QString *errorOut);
+    int  inferSchemaVersion(int declaredVersion) const;
     bool isFreshDatabase() const;
 
     QSqlDatabase m_db;

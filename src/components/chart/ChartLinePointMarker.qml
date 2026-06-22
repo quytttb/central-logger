@@ -11,6 +11,7 @@ Item {
     height: 12
 
     property color pointColor: AppColors.primaryText
+    property bool active: false
 
     Rectangle {
         anchors.centerIn: parent

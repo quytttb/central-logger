@@ -97,6 +97,10 @@ $RECYCLE.BIN/
 *.swo
 .cache/
 
+# --- Python (packaging scripts) ---
+__pycache__/
+*.pyc
+
 # --- Installer / Packaging ---
 packaging/windows/installer_build/packages/*/data/
 packaging/windows/installer_build/CentralLoggerSetup.exe

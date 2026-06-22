@@ -1,8 +1,6 @@
 pragma Singleton
 import QtQuick
 
-import CentralLogger.Core
-
 // Central singleton for application-level toast and detail-dialog notifications.
 //
 // AppNotifier.show(summary, semantic, options?)

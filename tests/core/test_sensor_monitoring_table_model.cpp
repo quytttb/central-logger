@@ -1,4 +1,5 @@
 #include "core/DashboardController.h"
+#include "core/LoggerFormController.h"
 #include "core/sensors/SensorMonitoringTableModel.h"
 #include "core/sensors/SensorSnapshotCache.h"
 #include "data/db/Database.h"
@@ -11,6 +12,7 @@
 #include <QVector>
 
 using CentralLogger::Core::DashboardController;
+using CentralLogger::Core::LoggerFormController;
 using CentralLogger::Core::SensorLiveRow;
 using CentralLogger::Core::SensorMonitoringTableModel;
 using CentralLogger::Core::SensorSnapshotCache;
@@ -28,6 +30,19 @@ QString uniqueConnectionName(const char *suffix)
     return QStringLiteral("sensor_table_%1_%2")
         .arg(QString::fromLatin1(suffix))
         .arg(++counter);
+}
+
+/// CRUD moved to LoggerFormController; seed loggers through it while the
+/// dashboard snapshot table under test stays in sync.
+qint64 addSeedLogger(DashboardController &dash, Database &db,
+                     const QString &code, const QString &name,
+                     const QString &host, int modbusPort, int apiPort,
+                     const QString &token)
+{
+    LoggerFormController form(nullptr);
+    form.setDatabase(&db);
+    form.setDashboardController(&dash);
+    return form.addLogger(code, name, host, modbusPort, apiPort, token);
 }
 
 SensorLiveRow makeRow(int id,
@@ -202,7 +217,7 @@ void TestSensorMonitoringTableModel::cacheStoresAndReturnsRows()
     QCOMPARE(rows.size(), 1);
     QCOMPARE(rows.first().edgeSensorId, 5);
     QCOMPARE(rows.first().name, QStringLiteral("Temp"));
-    QCOMPARE(rows.first().value, QStringLiteral("19.50"));
+    QCOMPARE(rows.first().value, QStringLiteral("19.5000"));
 
     cache.remove(1);
     QVERIFY(!cache.has(1));
@@ -232,7 +247,7 @@ void TestSensorMonitoringTableModel::dashboardOnSnapshotAppliedRefreshesTable()
     DashboardController ctrl(nullptr);
     ctrl.setDatabase(&db);
 
-    const qint64 loggerId = ctrl.addLogger(QStringLiteral("TRAM-T7"),
+    const qint64 loggerId = addSeedLogger(ctrl, db, QStringLiteral("TRAM-T7"),
                                            QStringLiteral("Test"),
                                            QStringLiteral("h"),
                                            5020, 8080, {});
@@ -264,7 +279,7 @@ void TestSensorMonitoringTableModel::dashboardOnSnapshotAppliedRefreshesTable()
     QCOMPARE(table->rowCount(), 1);
     QCOMPARE(table->data(table->index(0, SensorMonitoringTableModel::ValueColumn))
                  .toString(),
-             QStringLiteral("22.75"));
+             QStringLiteral("22.7500"));
 
     // Switching to a different logger clears the rows even though the
     // cache still keeps the old logger's data.

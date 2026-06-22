@@ -1,4 +1,5 @@
 #include "core/DashboardController.h"
+#include "core/LoggerFormController.h"
 #include "core/LoggerDetailViewModel.h"
 #include "core/LoggerListModel.h"
 #include "core/sensors/SensorMonitoringTableModel.h"
@@ -16,6 +17,7 @@
 
 using CentralLogger::Core::DashboardController;
 using CentralLogger::Core::LoggerDetailViewModel;
+using CentralLogger::Core::LoggerFormController;
 using CentralLogger::Core::LoggerListModel;
 using CentralLogger::Core::SensorMonitoringTableModel;
 using CentralLogger::Data::Database;
@@ -32,6 +34,19 @@ QString uniqueConnectionName(const char *suffix)
     return QStringLiteral("vm_detail_%1_%2")
         .arg(QString::fromLatin1(suffix))
         .arg(++counter);
+}
+
+/// CRUD moved to LoggerFormController; seed loggers through it while the
+/// dashboard models under test stay in sync.
+qint64 addSeedLogger(DashboardController &dash, Database &db,
+                     const QString &code, const QString &name,
+                     const QString &host, int modbusPort, int apiPort,
+                     const QString &token)
+{
+    LoggerFormController form(nullptr);
+    form.setDatabase(&db);
+    form.setDashboardController(&dash);
+    return form.addLogger(code, name, host, modbusPort, apiPort, token);
 }
 
 PollSnapshot makeSnapshot(qint64 loggerId)
@@ -95,7 +110,7 @@ void TestLoggerDetailViewModel::setLoggerIdLoadsCacheBaseline()
     DashboardController ctrl(nullptr);
     ctrl.setDatabase(&db);
 
-    const qint64 loggerId = ctrl.addLogger(QStringLiteral("TRAM-T8"),
+    const qint64 loggerId = addSeedLogger(ctrl, db, QStringLiteral("TRAM-T8"),
                                            QStringLiteral("Test"),
                                            QStringLiteral("h"),
                                            5020, 8080, {});
@@ -131,7 +146,7 @@ void TestLoggerDetailViewModel::setLoggerIdLoadsCacheBaseline()
     QCOMPARE(vm.sensorTable()
                  ->data(vm.sensorTable()->index(0, M::ValueColumn))
                  .toString(),
-             QStringLiteral("21.00"));
+             QStringLiteral("21.0000"));
 }
 
 void TestLoggerDetailViewModel::snapshotForActiveLoggerRefreshesTable()
@@ -142,7 +157,7 @@ void TestLoggerDetailViewModel::snapshotForActiveLoggerRefreshesTable()
     DashboardController ctrl(nullptr);
     ctrl.setDatabase(&db);
 
-    const qint64 loggerId = ctrl.addLogger(QStringLiteral("TRAM-T8B"),
+    const qint64 loggerId = addSeedLogger(ctrl, db, QStringLiteral("TRAM-T8B"),
                                            QStringLiteral("Test"),
                                            QStringLiteral("h"),
                                            5020, 8080, {});
@@ -172,7 +187,7 @@ void TestLoggerDetailViewModel::snapshotForActiveLoggerRefreshesTable()
     QCOMPARE(vm.sensorTable()
                  ->data(vm.sensorTable()->index(0, M::ValueColumn))
                  .toString(),
-             QStringLiteral("33.50"));
+             QStringLiteral("33.5000"));
 }
 
 void TestLoggerDetailViewModel::snapshotForOtherLoggerIgnored()
@@ -183,9 +198,9 @@ void TestLoggerDetailViewModel::snapshotForOtherLoggerIgnored()
     DashboardController ctrl(nullptr);
     ctrl.setDatabase(&db);
 
-    const qint64 a = ctrl.addLogger(QStringLiteral("TRAM-A"), QStringLiteral("A"),
+    const qint64 a = addSeedLogger(ctrl, db, QStringLiteral("TRAM-A"), QStringLiteral("A"),
                                     QStringLiteral("h"), 5020, 8080, {});
-    const qint64 b = ctrl.addLogger(QStringLiteral("TRAM-B"), QStringLiteral("B"),
+    const qint64 b = addSeedLogger(ctrl, db, QStringLiteral("TRAM-B"), QStringLiteral("B"),
                                     QStringLiteral("h"), 5020, 8080, {});
     QVERIFY(a > 0 && b > 0);
 
@@ -222,7 +237,7 @@ void TestLoggerDetailViewModel::liveStateMirrorsListModelFlags()
     DashboardController ctrl(nullptr);
     ctrl.setDatabase(&db);
 
-    const qint64 loggerId = ctrl.addLogger(QStringLiteral("TRAM-LIVE"),
+    const qint64 loggerId = addSeedLogger(ctrl, db, QStringLiteral("TRAM-LIVE"),
                                            QStringLiteral("Live"),
                                            QStringLiteral("h"),
                                            5020, 8080, {});
@@ -273,7 +288,7 @@ void TestLoggerDetailViewModel::listModelExposesRtuConnectedRole()
 
     DashboardController ctrl(nullptr);
     ctrl.setDatabase(&db);
-    const qint64 loggerId = ctrl.addLogger(QStringLiteral("TRAM-RTU"),
+    const qint64 loggerId = addSeedLogger(ctrl, db, QStringLiteral("TRAM-RTU"),
                                            QStringLiteral("RTU"),
                                            QStringLiteral("h"),
                                            5020, 8080, {});

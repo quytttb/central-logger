@@ -1,3 +1,5 @@
+pragma ComponentBehavior: Bound
+
 import QtQuick
 import QtQuick.Controls.Material
 import QtQuick.Layouts
@@ -60,7 +62,7 @@ Pane {
         radius: AppTheme.listItemRadius
         color: hoverHandler.hovered
                ? AppColors.hoverFill
-               : AppColors.eventLevelBackground(displayLevel)
+               : AppColors.eventLevelBackground(root.displayLevel)
     }
 
     HoverHandler { id: hoverHandler }
@@ -74,15 +76,15 @@ Pane {
                 return
             }
             if (root._isAudit) {
-                if (loggerId !== undefined && loggerId !== null && loggerId > 0)
-                    root.activated(loggerId)
+                if (root.loggerId !== undefined && root.loggerId !== null && root.loggerId > 0)
+                    root.activated(root.loggerId)
                 else
-                    root.detailRequested(eventType || "", message || "", -1)
+                    root.detailRequested(root.eventType || "", root.message || "", -1)
             } else {
                 root.detailRequested(
-                    eventType || "",
-                    message   || "",
-                    (loggerId !== undefined && loggerId !== null && loggerId > 0) ? loggerId : -1
+                    root.eventType || "",
+                    root.message   || "",
+                    (root.loggerId !== undefined && root.loggerId !== null && root.loggerId > 0) ? root.loggerId : -1
                 )
             }
         }
@@ -93,10 +95,10 @@ Pane {
         spacing: AppTheme.toolbarGap
 
         Rectangle {
-            width: 8
+            Layout.preferredWidth: 8
             Layout.fillHeight: true
             radius: 4
-            color: levelColor
+            color: root.levelColor
         }
 
         ColumnLayout {
@@ -108,21 +110,21 @@ Pane {
                 spacing: AppTheme.toolbarGap
 
                 Label {
-                    text: eventType || ""
+                    text: root.eventType || ""
                     font: AppTypography.titleMediumBold
-                    color: levelColor
+                    color: root.levelColor
                 }
                 Label {
-                    text: loggerName && loggerName.length > 0 ? "\u00B7 " + loggerName : ""
+                    text: root.loggerName && root.loggerName.length > 0 ? "\u00B7 " + root.loggerName : ""
                     visible: text.length > 0
                     color: AppColors.textSubtle
                 }
                 Item { Layout.fillWidth: true }
                 Label {
                     text: {
-                        if (!createdAt || isNaN(createdAt.getTime()))
+                        if (!root.createdAt || isNaN(root.createdAt.getTime()))
                             return ""
-                        return SettingsController.formatTimestamp(createdAt)
+                        return SettingsController.formatTimestamp(root.createdAt)
                     }
                     color: AppColors.textFaint
                     font: AppTypography.labelMedium

@@ -1,3 +1,5 @@
+pragma ComponentBehavior: Bound
+
 import QtQuick
 import QtQuick.Controls.Material
 import QtQuick.Layouts
@@ -6,8 +8,8 @@ import CentralLogger.Core
 import CentralLogger.Components
 import CentralLogger.Theme
 
-// Vertical-slice form for app_settings (row 1): timezone, retention,
-// maintenance. Theme is controlled exclusively from the rail (ThemeToggle).
+// Vertical-slice form for app_settings (row 1): timezone, retention.
+// Theme is controlled exclusively from the rail (ThemeToggle).
 // Form state mirrors SettingsController so cancel = re-load.
 Item {
     id: root
@@ -24,18 +26,27 @@ Item {
 
     property string draftTimezone: SettingsController.systemTimezone
     property int    draftRetention: SettingsController.dataRetentionDays
-    property bool   draftMaintenance: SettingsController.maintenanceMode
+    property int    draftHistoryFlush: SettingsController.historyFlushIntervalS
 
     readonly property bool dirty:
-           draftTimezone    !== SettingsController.systemTimezone
-        || draftRetention   !== SettingsController.dataRetentionDays
-        || draftMaintenance !== SettingsController.maintenanceMode
+           draftTimezone !== SettingsController.systemTimezone
+        || retentionSpin.value !== SettingsController.dataRetentionDays
+        || historyFlushSpin.value !== SettingsController.historyFlushIntervalS
 
     function syncFromController() {
         draftTimezone    = SettingsController.systemTimezone;
         draftRetention   = SettingsController.dataRetentionDays;
-        draftMaintenance = SettingsController.maintenanceMode;
+        draftHistoryFlush = SettingsController.historyFlushIntervalS;
+        retentionSpin.value = draftRetention;
+        historyFlushSpin.value = draftHistoryFlush;
+        const tzIdx = root.timezones.indexOf(draftTimezone);
+        if (tzIdx >= 0)
+            timezoneCombo.currentIndex = tzIdx;
+        else
+            timezoneCombo.editText = draftTimezone;
     }
+
+    Component.onCompleted: syncFromController()
 
     Connections {
         target: SettingsController
@@ -99,18 +110,46 @@ Item {
 
                     Label { text: qsTr("Data retention (days)") }
                     SpinBox {
+                        id: retentionSpin
                         Layout.fillWidth: true
                         Material.containerStyle: Material.Outlined
                         from: 1
                         to: 3650
-                        value: root.draftRetention
+                        editable: true
+                        live: true
                         onValueModified: root.draftRetention = value
                     }
 
-                    Label { text: qsTr("Maintenance mode") }
-                    Switch {
-                        checked: root.draftMaintenance
-                        onToggled: root.draftMaintenance = checked
+                    ColumnLayout {
+                        Layout.fillWidth: true
+                        spacing: 4
+
+                        Label {
+                            text: qsTr("History update interval (seconds)")
+                            wrapMode: Text.WordWrap
+                            Layout.fillWidth: true
+                        }
+
+                        Label {
+                            Layout.fillWidth: true
+                            text: qsTr(
+                                "How often new readings are flushed to the database and the History table auto-refreshes.")
+                            color: AppColors.textMuted
+                            font: AppTypography.labelSmall
+                            wrapMode: Text.WordWrap
+                        }
+                    }
+                    SpinBox {
+                        id: historyFlushSpin
+                        Layout.fillWidth: true
+                        Layout.alignment: Qt.AlignTop
+                        Layout.topMargin: 2
+                        Material.containerStyle: Material.Outlined
+                        from: 1
+                        to: 3600
+                        editable: true
+                        live: true
+                        onValueModified: root.draftHistoryFlush = value
                     }
                 }
 
@@ -144,10 +183,14 @@ Item {
             text: qsTr("Save")
             enabled: root.dirty
             onClicked: {
-                SettingsController.systemTimezone    = root.draftTimezone;
-                SettingsController.dataRetentionDays = root.draftRetention;
-                SettingsController.maintenanceMode   = root.draftMaintenance;
-                SettingsController.save();
+                root.forceActiveFocus();
+                SettingsController.systemTimezone        = root.draftTimezone;
+                SettingsController.dataRetentionDays     = retentionSpin.value;
+                SettingsController.historyFlushIntervalS = historyFlushSpin.value;
+                if (!SettingsController.save()) {
+                    SettingsController.load();
+                    root.syncFromController();
+                }
             }
         }
     }

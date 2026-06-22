@@ -49,13 +49,13 @@ Dialog {
     Material.roundedScale: Material.ExtraLargeScale
 
     function applyLoadedConfigToFields() {
-        const devicePoll = DashboardController.probedPollInterval();
+        const devicePoll = LoggerFormController.probedPollInterval();
         if (devicePoll > 0)
             pollIntervalSpin.value = devicePoll;
-        const edgeName = DashboardController.probedStationName();
+        const edgeName = LoggerFormController.probedStationName();
         if (edgeName.length > 0)
             nameField.text = edgeName;
-        const edgeUnit = DashboardController.probedModbusUnitId();
+        const edgeUnit = LoggerFormController.probedModbusUnitId();
         if (edgeUnit > 0)
             modbusUnitIdSpin.value = edgeUnit;
     }
@@ -63,9 +63,9 @@ Dialog {
     function invalidateConfig() {
         if (root._suppressInvalidate)
             return;
-        if (!root.configLoaded && !DashboardController.hasProbedConfig())
+        if (!root.configLoaded && !LoggerFormController.hasProbedConfig())
             return;
-        DashboardController.clearProbedConfig();
+        LoggerFormController.clearProbedConfig();
         root.configLoaded = false;
         root.configLoadError = "";
         root.probeStatus = "";
@@ -99,20 +99,20 @@ Dialog {
         root.saveInProgress = false;
         root.probeStatus = "";
         root.probeMessage = "";
-        DashboardController.clearProbedConfig();
-        DashboardController.clearLastError();
+        LoggerFormController.clearProbedConfig();
+        LoggerFormController.clearLastError();
         visible = true;
         root._suppressInvalidate = false;
 
         if (root.mode === "edit" && root.loggerId >= 0) {
             root.configLoading = true;
-            DashboardController.loadConfigForForm(root.loggerId);
+            LoggerFormController.loadConfigForForm(root.loggerId);
         }
     }
 
     readonly property bool hostValid:
            hostField.text.trim().length === 0
-        || DashboardController.isValidHost(hostField.text.trim())
+        || LoggerFormController.isValidHost(hostField.text.trim())
 
     readonly property bool canSave:
            nameField.text.trim().length > 0
@@ -139,7 +139,7 @@ Dialog {
     }
 
     Connections {
-        target: DashboardController
+        target: LoggerFormController
         function onProbeConfigResult(ok, errorMessage) {
             root.configLoading = false;
             if (ok) {
@@ -226,6 +226,7 @@ Dialog {
                 from: 1; to: 65535
                 value: 5020
                 editable: true
+                live: true
             }
             Label {
                 text: qsTr("Modbus port")
@@ -264,6 +265,7 @@ Dialog {
                 from: 1; to: 247
                 value: 1
                 editable: true
+                live: true
             }
             Label {
                 text: qsTr("Modbus unit ID")
@@ -299,6 +301,7 @@ Dialog {
                 from: 1; to: 3600
                 value: 2
                 editable: true
+                live: true
                 enabled: root.configLoaded
             }
             Label {
@@ -316,6 +319,7 @@ Dialog {
                 from: 1; to: 60
                 value: 2
                 editable: true
+                live: true
             }
             Label {
                 text: qsTr("Timeout (s)")
@@ -339,6 +343,7 @@ Dialog {
                 from: 1; to: 65535
                 value: 8080
                 editable: true
+                live: true
                 onValueChanged: if (root.visible) root.invalidateConfig()
             }
             Label {
@@ -381,7 +386,7 @@ Dialog {
                     root.configLoadError = "";
                     root.probeStatus = "";
                     root.probeMessage = "";
-                    DashboardController.probeConfig(
+                    LoggerFormController.probeConfig(
                         hostField.text.trim(),
                         apiPortSpin.value,
                         apiTokenField.text.trim());
@@ -462,7 +467,7 @@ Dialog {
                 root.forceActiveFocus();
                 root.saveInProgress = true;
                 root.configLoadError = "";
-                DashboardController.saveLoggerFromForm(
+                LoggerFormController.saveLoggerFromForm(
                     root.mode === "add",
                     root.loggerId,
                     nameField.text,

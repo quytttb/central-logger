@@ -1,3 +1,5 @@
+pragma ComponentBehavior: Bound
+
 import QtQuick
 import QtQuick.Controls.Material
 import QtQuick.Layouts
@@ -18,11 +20,11 @@ Pane {
 
     background: Rectangle {
         radius: AppTheme.cardRadius
-        color: semantic === "warning"
+        color: root.semantic === "warning"
                ? AppColors.warningContainer
                : AppColors.errorContainer
         border.width: 1
-        border.color: semantic === "warning"
+        border.color: root.semantic === "warning"
                         ? AppColors.warning
                         : AppColors.outlineVariant
     }
@@ -34,16 +36,19 @@ Pane {
             Layout.fillWidth: true
             text: root.message
             wrapMode: Text.WordWrap
-            color: semantic === "warning"
+            color: root.semantic === "warning"
                    ? AppColors.primaryText
                    : AppColors.errorContainerFg
-            font: semantic === "warning" ? AppTypography.bodyMedium : AppTypography.labelMedium
+            font: root.semantic === "warning" ? AppTypography.bodyMedium : AppTypography.labelMedium
         }
 
-        IconToolButton {
+        AppButton {
             visible: root.dismissible
+            kind: AppButton.Neutral
+            forceDarkText: false
+            iconOnly: true
+            controlSize: 32
             iconName: "close"
-            iconColor: semantic === "warning" ? AppColors.primaryText : AppColors.error
             tooltipText: qsTr("Dismiss")
             onClicked: {
                 root.dismissed()

@@ -31,8 +31,6 @@ SQLite (Database connection, main)      ModbusService → QModbusTcpClient[*]
 * `DashboardController::reloadLoggers()` and `addLogger` / `updateLogger` /
   `removeLogger` push the current set of enabled loggers to the worker via
   `ModbusService::syncLoggers(QVector<LoggerRuntimeConfig>)`.
-* `SettingsController::maintenanceMode` pauses scheduling without dropping
-  the TCP connections.
 
 ## REST (Task 5)
 

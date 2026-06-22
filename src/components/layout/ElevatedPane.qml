@@ -13,7 +13,7 @@ Pane {
 
     Material.theme: AppTheme.materialTheme
     Material.elevation: 0
-    padding: AppTheme.sectionSpacing
+    padding: AppTheme.cardPadding
 
     implicitWidth: 0
     implicitHeight: 0

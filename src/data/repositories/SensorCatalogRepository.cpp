@@ -7,6 +7,8 @@
 #include <QVariant>
 #include <QtDebug>
 
+#include <algorithm>
+
 namespace CentralLogger::Data {
 
 namespace {
@@ -57,6 +59,7 @@ LoggerSensor rowToModel(const QSqlQuery &q)
     s.unit          = q.value(QStringLiteral("unit")).toString();
     s.minThreshold  = readOptDouble(q.value(QStringLiteral("min_threshold")));
     s.maxThreshold  = readOptDouble(q.value(QStringLiteral("max_threshold")));
+    s.decimals      = q.value(QStringLiteral("decimals")).toInt();
     s.active        = q.value(QStringLiteral("active")).toInt() != 0;
     const QVariant parentV = q.value(QStringLiteral("parent_edge_sensor_id"));
     if (!parentV.isNull()) {
@@ -120,11 +123,11 @@ bool SensorCatalogRepository::upsert(LoggerSensor &sensor, QString *errorOut)
     q.prepare(QStringLiteral(
         "INSERT INTO logger_sensor ("
         "  logger_id, edge_sensor_id, sensor_type, name, unit,"
-        "  min_threshold, max_threshold, active,"
+        "  min_threshold, max_threshold, decimals, active,"
         "  parent_edge_sensor_id, di_type, all_parent_ids"
         ") VALUES ("
         "  :logger_id, :edge_sensor_id, :sensor_type, :name, :unit,"
-        "  :min_threshold, :max_threshold, :active,"
+        "  :min_threshold, :max_threshold, :decimals, :active,"
         "  :parent_edge_sensor_id, :di_type, :all_parent_ids"
         ") "
         // M-5: sensor_type is part of the UNIQUE conflict key and cannot
@@ -135,6 +138,7 @@ bool SensorCatalogRepository::upsert(LoggerSensor &sensor, QString *errorOut)
         "  unit                  = excluded.unit,"
         "  min_threshold         = excluded.min_threshold,"
         "  max_threshold         = excluded.max_threshold,"
+        "  decimals              = excluded.decimals,"
         "  active                = excluded.active,"
         "  parent_edge_sensor_id = excluded.parent_edge_sensor_id,"
         "  di_type               = excluded.di_type,"
@@ -146,6 +150,7 @@ bool SensorCatalogRepository::upsert(LoggerSensor &sensor, QString *errorOut)
     q.bindValue(QStringLiteral(":unit"),           sensor.unit);
     q.bindValue(QStringLiteral(":min_threshold"),  optDouble(sensor.minThreshold));
     q.bindValue(QStringLiteral(":max_threshold"),  optDouble(sensor.maxThreshold));
+    q.bindValue(QStringLiteral(":decimals"),       std::clamp(sensor.decimals, 0, 6));
     q.bindValue(QStringLiteral(":active"),         sensor.active ? 1 : 0);
     q.bindValue(QStringLiteral(":parent_edge_sensor_id"),
                 sensor.parentEdgeSensorId.has_value()

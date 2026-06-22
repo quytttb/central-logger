@@ -36,7 +36,7 @@ Source layout under `src/components/` (import unchanged: `import CentralLogger.C
 
 | Folder | Contents |
 |--------|----------|
-| `shell/` | `AppButton`, `IconToolButton`, `NavItem`, `AppNavigationRail`, `AppTopBar`, `UiIcon`, `MaterialIcons`, `ThemeToggle` |
+| `shell/` | `AppButton`, `NavItem`, `AppNavigationRail`, `AppTopBar`, `UiIcon`, `MaterialIcons`, `ThemeToggle` |
 | `layout/` | `ElevatedPane`, `SectionHeader`, `StatCard`, `InlineBanner`, `EmptyStatePlaceholder`, `TableContentStack`, `AppNotifier` (singleton), `AppToastHost`, `MessageDetailDialog`, `FormNotice` |
 | `table/` | `TableHeaderCell`, `TableCellBackground` |
 | `chart/` | `ChartGraphsView`, `ChartGraphsTheme`, `ChartTimeSeriesPanel`, `ChartHoverTooltip`, … |
@@ -47,7 +47,7 @@ Source layout under `src/components/` (import unchanged: `import CentralLogger.C
 |-----------|--------|
 | `ElevatedPane` | M3 outlined surface — `surfaceContainerLow`, `cardRadius`, `elevatedBorder`; default padding `AppTheme.sectionSpacing` |
 | `SectionHeader` | `titleMedium` + optional trailing actions (refresh icons) |
-| `IconToolButton` | Flat 36×36 icon button with tooltip |
+| `AppButton` | Single M3 button for all actions: `kind` (Primary/Secondary/Tonal/Neutral/Error/Text), `iconName` + `text` (either or both), `iconOnly`, `controlSize`, `iconSide`, `tooltipText`, `enabled`. Icon-only buttons use `iconOnly: true` + a filled `kind` (e.g. `Neutral`) so every button keeps a background. Excludes rail buttons (`RailCircleButton`/`NavItem`). |
 | `NavItem` | Rail pill 56×32; `accentContainer` / `onAccentContainer` when active |
 | `StatCard` | KPI card; label uses `AppTypography.overline` |
 | `TableHeaderCell`, `TableCellBackground` | Table chrome |

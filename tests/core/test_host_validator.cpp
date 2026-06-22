@@ -2,7 +2,7 @@
 
 #include <QTest>
 
-using namespace CentralLogger::Core;
+using namespace CentralLogger::Utils;
 
 class TestHostValidator : public QObject
 {

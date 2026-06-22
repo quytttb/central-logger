@@ -104,7 +104,7 @@ erDiagram
         string theme "default dark"
         string system_timezone "default Asia/Ho_Chi_Minh"
         int data_retention_days "default 30"
-        bool maintenance_mode "default false"
+        int history_flush_interval_s "default 5"
     }
 ```
 
@@ -234,7 +234,7 @@ Cấu hình toàn cục — luôn một dòng `id = 1`.
 | `theme` | `dark` |
 | `system_timezone` | `Asia/Ho_Chi_Minh` |
 | `data_retention_days` | `30` |
-| `maintenance_mode` | `0` |
+| `history_flush_interval_s` | `5` |
 
 ---
 
@@ -329,15 +329,51 @@ flowchart TB
 
 ---
 
-## 5. Khởi tạo database
+## 5. Khởi tạo và nâng cấp database
+
+### DB mới
 
 Lần chạy app đầu tiên (file DB chưa tồn tại):
 
-1. Tạo file SQLite tại đường dẫn cấu hình  
-2. Thực thi [`src/data/db/schema/001_initial.sql`](src/data/db/schema/001_initial.sql) — `CREATE TABLE`, index, seed `app_settings` (`id=1`)  
-3. Sẵn sàng sử dụng  
+1. Tạo file SQLite tại đường dẫn cấu hình (`~/.central-logger/central-logger.db`)
+2. Thực thi [`src/data/db/schema/001_initial.sql`](src/data/db/schema/001_initial.sql) — `CREATE TABLE`, index, seed `app_settings` (`id=1`)
+3. Gán `PRAGMA user_version = 5` (version hiện tại)
 
-**Nâng cấp schema sau này (tuỳ chọn):** khi đã phát hành bản production và cần thêm cột/bảng, thêm script `002_*.sql` và tăng `schema_version` trong app. Giai đoạn đầu chỉ cần `001_initial.sql`.
+### DB đã tồn tại
+
+[`Database::open()`](src/data/db/Database.cpp) đọc `PRAGMA user_version`, suy luận version khi `user_version = 0` (introspect cột qua `PRAGMA table_info`), rồi chạy migration v2→v5 nếu cần.
+
+| Version | Script |
+|---------|--------|
+| 2 | [`migrations/002_logger_sensor_attach_di.sql`](src/data/db/migrations/002_logger_sensor_attach_di.sql) |
+| 3 | [`migrations/003_logger_sensor_all_parents.sql`](src/data/db/migrations/003_logger_sensor_all_parents.sql) |
+| 4 | [`migrations/004_app_settings_history_flush.sql`](src/data/db/migrations/004_app_settings_history_flush.sql) |
+| 5 | [`migrations/005_drop_maintenance_mode.sql`](src/data/db/migrations/005_drop_maintenance_mode.sql) |
+
+**Trước migrate:** copy file DB → `{path}.bak` (ghi đè bản cũ), sau `PRAGMA wal_checkpoint(FULL)`.
+
+**Lỗi migrate / DB mới hơn app:** app hiện [`FatalStartup.qml`](src/app/qml/FatalStartup.qml) + [`AlertDialog`](src/components/layout/AlertDialog.qml), thoát khi user đóng dialog.
+
+### Thêm migration mới
+
+1. Cập nhật `001_initial.sql` cho DB mới (schema đích).
+2. Thêm `src/data/db/migrations/00N_*.sql` + đăng ký resource trong [`src/data/CMakeLists.txt`](src/data/CMakeLists.txt).
+3. Tăng `kSchemaVersion` trong `Database.cpp`.
+4. Thêm test upgrade trong [`tests/data/test_database_migrations.cpp`](tests/data/test_database_migrations.cpp).
+
+### Migration phức tạp (rename / đổi PK / rebuild table)
+
+Khi `ALTER TABLE` không đủ, dùng pattern SQLite:
+
+1. `CREATE TABLE new_* (...)`  
+2. `INSERT INTO new_* SELECT ... FROM old`  
+3. `DROP TABLE old`  
+4. `ALTER TABLE new_* RENAME TO old`  
+5. Tạo lại index / FK  
+
+Xem template comment [`migrations/_TEMPLATE_rebuild_table.sql`](src/data/db/migrations/_TEMPLATE_rebuild_table.sql). Bước cần introspection có thể gọi `runMigrationStep()` trong C++ (guard `PRAGMA table_info`).
+
+**Checklist release:** bump version, test upgrade từ version trước, cập nhật doc này.
 
 ---
 
@@ -345,7 +381,7 @@ Lần chạy app đầu tiên (file DB chưa tồn tại):
 
 | Lớp | Trách nhiệm |
 |-----|-------------|
-| `Database` | `QSqlDatabase` (`QSQLITE`, `Qt6::Sql`), `init()` chạy `001_initial.sql` nếu DB trống; ghi DB từ main/DB thread (Modbus worker queued) |
+| `Database` | `QSqlDatabase` (`QSQLITE`, `Qt6::Sql`): DB mới → `001_initial.sql`; DB cũ → migration v2–v5 + backup `.bak`; fatal lỗi → `FatalStartup.qml` |
 | `LoggerRepository` | CRUD `logger_info`, `status`, `last_seen` |
 | `SensorCatalogRepository` | CRUD `logger_sensor`, auto-create, upsert REST |
 | `SensorReadingRepository` | Batch insert readings, purge retention |

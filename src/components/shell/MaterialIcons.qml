@@ -14,6 +14,8 @@ QtObject {
     readonly property string whiteBalanceSunny:   "\uE518"  // light_mode
     readonly property string weatherNight:        "\uE51C"  // dark_mode
     readonly property string windowMinimize:      "\uE931"  // minimize
+    readonly property string windowMaximize:      "\uE3C6"  // crop_square
+    readonly property string windowRestore:       "\uE3E0"  // filter_none
     readonly property string windowClose:         "\uE5CD"  // close
     readonly property string viewDashboard:       "\uE871"  // dashboard
     readonly property string server:              "\uF56E"  // loggers (sidebar Edge Loggers)
@@ -44,6 +46,7 @@ QtObject {
     readonly property string error:             "\uE000"  // error
     readonly property string info:              "\uE88E"  // info (same glyph as informationOutline)
     readonly property string sensors:           "\uE51F"  // sensors
+    readonly property string history:           "\uE889"  // history
 
     function glyph(name) {
         switch (name) {
@@ -53,6 +56,8 @@ QtObject {
         case "whiteBalanceSunny":   return whiteBalanceSunny
         case "weatherNight":        return weatherNight
         case "windowMinimize":      return windowMinimize
+        case "windowMaximize":      return windowMaximize
+        case "windowRestore":       return windowRestore
         case "windowClose":         return windowClose
         case "viewDashboard":       return viewDashboard
         case "server":              return server
@@ -83,6 +88,7 @@ QtObject {
         case "error":               return error
         case "info":                return info
         case "sensors":             return sensors
+        case "history":             return history
         default:                    return close
         }
     }

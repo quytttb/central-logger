@@ -16,6 +16,9 @@ struct LoggerSensor
     QString              unit;
     std::optional<double> minThreshold;
     std::optional<double> maxThreshold;
+    /// Display precision for ANALOG values (synced from edge GET /config
+    /// `decimals`; range 0–6, default 4). Ignored for DI/DO (shown ON/OFF).
+    int                  decimals = 4;
     bool                 active = true;
     /// Edge PK of primary parent analog (from GET /config `parent_id`); null = top-level.
     std::optional<int>   parentEdgeSensorId;

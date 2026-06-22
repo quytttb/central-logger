@@ -1,4 +1,4 @@
--- Central Logger — SQLite schema (user_version = 3)
+-- Central Logger — SQLite schema (user_version = 6)
 -- Reference: docs/thiet_ke_db.md
 -- Engine: SQLite (QSQLITE) — see docs/adr/0001-db.md
 
@@ -35,6 +35,7 @@ CREATE TABLE IF NOT EXISTS logger_sensor (
     unit            TEXT    NOT NULL DEFAULT '',
     min_threshold          REAL,
     max_threshold          REAL,
+    decimals               INTEGER NOT NULL DEFAULT 4,
     active                 INTEGER NOT NULL DEFAULT 1,
     parent_edge_sensor_id  INTEGER,
     di_type                TEXT,
@@ -78,7 +79,7 @@ CREATE TABLE IF NOT EXISTS app_settings (
     theme               TEXT    NOT NULL DEFAULT 'dark',
     system_timezone     TEXT    NOT NULL DEFAULT 'Asia/Ho_Chi_Minh',
     data_retention_days INTEGER NOT NULL DEFAULT 30,
-    maintenance_mode    INTEGER NOT NULL DEFAULT 0
+    history_flush_interval_s INTEGER NOT NULL DEFAULT 5
 );
 
 INSERT OR IGNORE INTO app_settings (id) VALUES (1);

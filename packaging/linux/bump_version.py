@@ -4,9 +4,11 @@
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import re
 import sys
+import time
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent.parent
@@ -15,10 +17,23 @@ _VERSION_RE = re.compile(r"(?m)^(project\(central_logger VERSION )([0-9.]+)")
 
 
 def _parse_version(raw: str) -> tuple[int, int, int]:
-    parts = raw.strip().split(".")
-    if len(parts) != 3 or not all(p.isdigit() for p in parts):
-        raise ValueError(f"expected X.Y.Z with non-negative integers, got {raw!r}")
-    return int(parts[0]), int(parts[1]), int(parts[2])
+    """Parse SemVer; CMake may use X.Y — missing parts are treated as 0 (0.1 → 0.1.0)."""
+    text = raw.strip()
+    if not text:
+        raise ValueError(f"expected version like X.Y or X.Y.Z, got {raw!r}")
+    parts = text.split(".")
+    if len(parts) > 3:
+        raise ValueError(f"expected at most 3 components, got {raw!r}")
+    if not all(p.isdigit() for p in parts):
+        raise ValueError(f"expected non-negative integers, got {raw!r}")
+    nums = [int(p) for p in parts]
+    while len(nums) < 3:
+        nums.append(0)
+    return nums[0], nums[1], nums[2]
+
+
+def _format_version(major: int, minor: int, patch: int) -> str:
+    return f"{major}.{minor}.{patch}"
 
 
 def read_version() -> str:
@@ -51,7 +66,7 @@ def bump(level: str) -> str:
         patch += 1
     else:
         raise ValueError(f"unknown bump level: {level!r}")
-    new_version = f"{major}.{minor}.{patch}"
+    new_version = _format_version(major, minor, patch)
     write_version(new_version)
     return new_version
 
@@ -66,7 +81,7 @@ def main() -> int:
     bump_p.add_argument("level", choices=("major", "minor", "patch"))
 
     set_p = sub.add_parser("set", help="set exact VERSION (CI / tag sync)")
-    set_p.add_argument("version", nargs="?", help="X.Y.Z (or VERSION env)")
+    set_p.add_argument("version", nargs="?", help="X.Y or X.Y.Z (or VERSION env)")
 
     args = parser.parse_args()
     try:
@@ -81,7 +96,35 @@ def main() -> int:
             print("set requires version argument or VERSION env", file=sys.stderr)
             return 1
         write_version(version)
-        print(f"CMakeLists.txt → VERSION {version}")
+        # #region agent log
+        try:
+            with open(
+                ROOT / ".cursor" / "debug-e498c9.log",
+                "a",
+                encoding="utf-8",
+            ) as _dbg:
+                _dbg.write(
+                    json.dumps(
+                        {
+                            "sessionId": "e498c9",
+                            "hypothesisId": "H1",
+                            "location": "bump_version.py:set",
+                            "message": "before success print",
+                            "data": {
+                                "version": version,
+                                "stdout_encoding": getattr(
+                                    sys.stdout, "encoding", None
+                                ),
+                            },
+                            "timestamp": int(time.time() * 1000),
+                        }
+                    )
+                    + "\n"
+                )
+        except OSError:
+            pass
+        # #endregion
+        print(f"CMakeLists.txt -> VERSION {version}")
         return 0
     except (ValueError, RuntimeError) as exc:
         print(exc, file=sys.stderr)

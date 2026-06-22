@@ -21,3 +21,15 @@ target_link_libraries(test_retention_purge
 )
 
 add_test(NAME test_retention_purge COMMAND test_retention_purge)
+
+qt_add_executable(test_database_migrations
+    test_database_migrations.cpp
+)
+
+target_link_libraries(test_database_migrations
+    PRIVATE
+        data
+        Qt6::Test
+)
+
+add_test(NAME test_database_migrations COMMAND test_database_migrations)

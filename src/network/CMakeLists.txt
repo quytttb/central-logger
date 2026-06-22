@@ -6,8 +6,12 @@ qt_add_library(network STATIC
     modbus/ModbusTypes.h
     modbus/ModbusBridge.h
     modbus/ModbusBridge.cpp
+    modbus/ModbusDataDispatcher.h
+    modbus/ModbusDataDispatcher.cpp
     modbus/ModbusService.h
     modbus/ModbusService.cpp
+    workers/HistoryWriterWorker.h
+    workers/HistoryWriterWorker.cpp
     rest/RestConfigParser.h
     rest/RestConfigService.h
     rest/RestConfigService.cpp

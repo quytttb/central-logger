@@ -11,9 +11,11 @@ qt_add_qml_module(app
     VERSION 1.0
     QML_FILES
         qml/Main.qml
+        qml/FatalStartup.qml
         qml/views/DashboardView.qml
         qml/views/LoggersView.qml
         qml/views/LoggerDetailView.qml
+        qml/views/HistoryView.qml
         qml/views/SettingsView.qml
     DEPENDENCIES
         central_logger_core

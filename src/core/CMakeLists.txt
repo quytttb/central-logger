@@ -17,6 +17,8 @@ qt_add_qml_module(central_logger_core
         LoggerListModel.cpp
         DashboardController.h
         DashboardController.cpp
+        LoggerFormController.h
+        LoggerFormController.cpp
         LoggerDetailViewModel.h
         LoggerDetailViewModel.cpp
         LoggerSearchProxyModel.h
@@ -38,16 +40,22 @@ qt_add_qml_module(central_logger_core
         charts/ChartPresentation.cpp
         charts/PollHistoryStore.h
         charts/PollHistoryStore.cpp
+        history/HistoryTableModel.h
+        history/HistoryTableModel.cpp
+        history/HistoryViewModel.h
+        history/HistoryViewModel.cpp
 )
 
 target_include_directories(central_logger_core
     PUBLIC
         ${CMAKE_CURRENT_SOURCE_DIR}/..
+        ${CMAKE_CURRENT_SOURCE_DIR}/history
 )
 
 target_link_libraries(central_logger_core
     PUBLIC
         Qt6::Core
+        Qt6::Concurrent
         Qt6::Gui
         Qt6::Network
         Qt6::Qml

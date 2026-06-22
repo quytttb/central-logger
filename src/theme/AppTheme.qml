@@ -32,6 +32,7 @@ QtObject {
 
     // M3 shape — 1 dp ≈ 1 px (Qt Material roundedScale is inconsistent when background is custom).
     readonly property int cardRadius:         12          // pane / card chrome
+    readonly property int cardPadding:        16          // interior inset for cards / panes
     readonly property int chipRadius:           12          // chips, badges
     readonly property int listItemRadius:        8          // dense list rows, tooltips
     readonly property int buttonHeight:       40
@@ -51,43 +52,43 @@ QtObject {
 
         let sumMin = 0
         let flexWeight = 0
-        for (let i = 0; i < n; ++i) {
-            sumMin += minimums[i]
-            if (weights[i] > 0)
-                flexWeight += weights[i]
+        for (let col = 0; col < n; ++col) {
+            sumMin += minimums[col]
+            if (weights[col] > 0)
+                flexWeight += weights[col]
         }
 
         const widths = []
         if (totalWidth <= sumMin) {
-            for (let i = 0; i < n; ++i)
-                widths.push(totalWidth * minimums[i] / sumMin)
+            for (let col = 0; col < n; ++col)
+                widths.push(totalWidth * minimums[col] / sumMin)
         } else if (flexWeight <= 0) {
-            for (let i = 0; i < n; ++i)
-                widths.push(minimums[i])
+            for (let col = 0; col < n; ++col)
+                widths.push(minimums[col])
         } else {
             const extra = totalWidth - sumMin
-            for (let i = 0; i < n; ++i) {
-                if (weights[i] <= 0)
-                    widths.push(minimums[i])
+            for (let col = 0; col < n; ++col) {
+                if (weights[col] <= 0)
+                    widths.push(minimums[col])
                 else
-                    widths.push(minimums[i] + extra * weights[i] / flexWeight)
+                    widths.push(minimums[col] + extra * weights[col] / flexWeight)
             }
         }
 
         let sum = 0
-        for (let i = 0; i < n; ++i) {
-            widths[i] = Math.floor(widths[i])
-            sum += widths[i]
+        for (let col = 0; col < n; ++col) {
+            widths[col] = Math.floor(widths[col])
+            sum += widths[col]
         }
         let drift = totalWidth - sum
-        for (let i = 0; drift > 0 && i < n; ++i) {
-            if (weights[i] > 0) {
-                widths[i] += 1
+        for (let col = 0; drift > 0 && col < n; ++col) {
+            if (weights[col] > 0) {
+                widths[col] += 1
                 --drift
             }
         }
-        for (let i = 0; drift > 0 && i < n; ++i) {
-            widths[i] += 1
+        for (let col = 0; drift > 0 && col < n; ++col) {
+            widths[col] += 1
             --drift
         }
 

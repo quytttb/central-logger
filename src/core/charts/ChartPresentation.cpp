@@ -253,11 +253,12 @@ QVariantMap snapTrendingChart(const QVariantList &trendingSeries,
         const QVariantMap pt = pts.at(idx).toMap();
         if (caption.isEmpty())
             caption = pt.value(kTimeKey).toString();
+        const int decimals = qBound(0, series.value(QStringLiteral("decimals"), 4).toInt(), 6);
         QVariantMap row;
         row.insert(QStringLiteral("text"),
                    QStringLiteral("%1: %2")
                        .arg(series.value(QStringLiteral("label")).toString())
-                       .arg(QString::number(pt.value(kYKey).toDouble(), 'f', 2)));
+                       .arg(QString::number(pt.value(kYKey).toDouble(), 'f', decimals)));
         row.insert(QStringLiteral("seriesIndex"), valueRows.size());
         valueRows.append(row);
 

@@ -24,8 +24,9 @@ qt_add_qml_module(central_logger_components
         shell/AppTopBar.qml
         shell/MaterialIcons.qml
         shell/UiIcon.qml
-        shell/IconToolButton.qml
+        shell/RailCircleButton.qml
         shell/ThemeToggle.qml
+        shell/WindowControls.qml
         # layout
         layout/StatCard.qml
         layout/ElevatedPane.qml
@@ -33,11 +34,16 @@ qt_add_qml_module(central_logger_components
         layout/InlineBanner.qml
         layout/EmptyStatePlaceholder.qml
         layout/TableContentStack.qml
+        layout/AppScrollBar.qml
         layout/AppNotifier.qml
         layout/AppToastHost.qml
         layout/MessageDetailDialog.qml
+        layout/AlertDialog.qml
         layout/FormNotice.qml
+        layout/DatePickerPopup.qml
+        layout/DateField.qml
         # table
+        table/AppTableView.qml
         table/TableHeaderCell.qml
         table/TableCellBackground.qml
         # chart

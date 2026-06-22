@@ -1,4 +1,5 @@
 #include "core/DashboardController.h"
+#include "core/LoggerFormController.h"
 #include "core/LoggerListModel.h"
 #include "data/db/Database.h"
 #include "data/models/LoggerSensor.h"
@@ -22,6 +23,27 @@ QString uniqueConnectionName(const char *suffix)
         .arg(++counter);
 }
 
+/// Wires a DashboardController + LoggerFormController over one in-memory DB,
+/// matching the production composition in main.cpp. CRUD lives on the form
+/// controller; the dashboard owns the loggers model it refreshes.
+struct Harness {
+    Database db;
+    DashboardController dash{nullptr};
+    LoggerFormController form{nullptr};
+
+    explicit Harness(const char *suffix)
+    {
+        const bool opened = db.open(uniqueConnectionName(suffix),
+                                    QStringLiteral(":memory:"));
+        Q_ASSERT(opened);
+        Q_UNUSED(opened);
+        dash.setDatabase(&db);
+        form.setDatabase(&db);
+        form.setDashboardController(&dash);
+        dash.reloadLoggers();
+    }
+};
+
 } // namespace
 
 class TestDashboardController : public QObject
@@ -44,26 +66,21 @@ private slots:
 
 void TestDashboardController::addLoggerInsertsAndUpdatesModel()
 {
-    Database db;
-    QVERIFY(db.open(uniqueConnectionName("add"), QStringLiteral(":memory:")));
+    Harness h("add");
 
-    DashboardController ctrl(nullptr);
-    ctrl.setDatabase(&db);
-    ctrl.reloadLoggers();
+    QCOMPARE(h.dash.loggers()->rowCount(), 0);
 
-    QCOMPARE(ctrl.loggers()->rowCount(), 0);
-
-    const qint64 id = ctrl.addLogger(QStringLiteral("TRAM-001"),
-                                     QStringLiteral("Trạm test"),
-                                     QStringLiteral("192.168.1.10"),
-                                     5020, 8080,
-                                     QStringLiteral("token"));
-    QVERIFY2(id > 0, qPrintable(ctrl.lastError()));
-    QCOMPARE(ctrl.loggers()->rowCount(), 1);
-    QVERIFY(ctrl.lastError().isEmpty());
+    const qint64 id = h.form.addLogger(QStringLiteral("TRAM-001"),
+                                       QStringLiteral("Trạm test"),
+                                       QStringLiteral("192.168.1.10"),
+                                       5020, 8080,
+                                       QStringLiteral("token"));
+    QVERIFY2(id > 0, qPrintable(h.form.lastError()));
+    QCOMPARE(h.dash.loggers()->rowCount(), 1);
+    QVERIFY(h.form.lastError().isEmpty());
 
     // Event row recorded.
-    EventRepository events(db.connection());
+    EventRepository events(h.db.connection());
     const auto recent = events.listRecent();
     QVERIFY(!recent.isEmpty());
     QCOMPARE(recent.first().eventType, QStringLiteral("Info"));
@@ -71,85 +88,69 @@ void TestDashboardController::addLoggerInsertsAndUpdatesModel()
 
 void TestDashboardController::addLoggerRejectsDuplicateStationCode()
 {
-    Database db;
-    QVERIFY(db.open(uniqueConnectionName("dupe"), QStringLiteral(":memory:")));
+    Harness h("dupe");
 
-    DashboardController ctrl(nullptr);
-    ctrl.setDatabase(&db);
+    QVERIFY(h.form.addLogger(QStringLiteral("TRAM-DUP"), QStringLiteral("A"),
+                             QStringLiteral("h"), 5020, 8080, {}) > 0);
 
-    QVERIFY(ctrl.addLogger(QStringLiteral("TRAM-DUP"), QStringLiteral("A"),
-                           QStringLiteral("h"), 5020, 8080, {}) > 0);
-
-    const qint64 second = ctrl.addLogger(QStringLiteral("TRAM-DUP"), QStringLiteral("B"),
-                                         QStringLiteral("h"), 5020, 8080, {});
+    const qint64 second = h.form.addLogger(QStringLiteral("TRAM-DUP"), QStringLiteral("B"),
+                                           QStringLiteral("h"), 5020, 8080, {});
     QCOMPARE(second, qint64(-1));
-    QVERIFY(ctrl.lastError().contains(QStringLiteral("TRAM-DUP")));
-    QCOMPARE(ctrl.loggers()->rowCount(), 1);
+    QVERIFY(h.form.lastError().contains(QStringLiteral("TRAM-DUP")));
+    QCOMPARE(h.dash.loggers()->rowCount(), 1);
 }
 
 void TestDashboardController::addLoggerValidation()
 {
-    Database db;
-    QVERIFY(db.open(uniqueConnectionName("valid"), QStringLiteral(":memory:")));
+    Harness h("valid");
 
-    DashboardController ctrl(nullptr);
-    ctrl.setDatabase(&db);
+    QCOMPARE(h.form.addLogger(QStringLiteral("  "), QStringLiteral("A"),
+                              QStringLiteral("h"), 5020, 8080, {}), qint64(-1));
+    QVERIFY(!h.form.lastError().isEmpty());
 
-    QCOMPARE(ctrl.addLogger(QStringLiteral("  "), QStringLiteral("A"),
-                            QStringLiteral("h"), 5020, 8080, {}), qint64(-1));
-    QVERIFY(!ctrl.lastError().isEmpty());
+    QCOMPARE(h.form.addLogger(QStringLiteral("X"), QStringLiteral("A"),
+                              QStringLiteral("h"), 0, 8080, {}), qint64(-1));
+    QVERIFY(h.form.lastError().contains(QStringLiteral("Modbus port")));
 
-    QCOMPARE(ctrl.addLogger(QStringLiteral("X"), QStringLiteral("A"),
-                            QStringLiteral("h"), 0, 8080, {}), qint64(-1));
-    QVERIFY(ctrl.lastError().contains(QStringLiteral("Modbus port")));
-
-    QCOMPARE(ctrl.addLogger(QStringLiteral("X"), QStringLiteral("A"),
-                            QStringLiteral(""), 5020, 8080, {}), qint64(-1));
+    QCOMPARE(h.form.addLogger(QStringLiteral("X"), QStringLiteral("A"),
+                              QStringLiteral(""), 5020, 8080, {}), qint64(-1));
 }
 
 void TestDashboardController::addLoggerRejectsInvalidHost()
 {
-    Database db;
-    QVERIFY(db.open(uniqueConnectionName("host"), QStringLiteral(":memory:")));
+    Harness h("host");
 
-    DashboardController ctrl(nullptr);
-    ctrl.setDatabase(&db);
-
-    QCOMPARE(ctrl.addLogger(QStringLiteral("TRAM-H"), QStringLiteral("A"),
-                            QStringLiteral("not a valid host!!!"), 5020, 8080, {}),
+    QCOMPARE(h.form.addLogger(QStringLiteral("TRAM-H"), QStringLiteral("A"),
+                              QStringLiteral("not a valid host!!!"), 5020, 8080, {}),
              qint64(-1));
-    QVERIFY(ctrl.lastError().contains(QStringLiteral("IPv4")));
+    QVERIFY(h.form.lastError().contains(QStringLiteral("IPv4")));
 
-    QCOMPARE(ctrl.addLogger(QStringLiteral("TRAM-H"), QStringLiteral("A"),
-                            QStringLiteral("192.168.1"), 5020, 8080, {}),
+    QCOMPARE(h.form.addLogger(QStringLiteral("TRAM-H"), QStringLiteral("A"),
+                              QStringLiteral("192.168.1"), 5020, 8080, {}),
              qint64(-1));
 
-    QVERIFY(ctrl.addLogger(QStringLiteral("TRAM-H"), QStringLiteral("A"),
-                         QStringLiteral("logger.local"), 5020, 8080, {}) > 0);
+    QVERIFY(h.form.addLogger(QStringLiteral("TRAM-H"), QStringLiteral("A"),
+                             QStringLiteral("logger.local"), 5020, 8080, {}) > 0);
 }
 
 void TestDashboardController::updateLoggerRoundTrip()
 {
-    Database db;
-    QVERIFY(db.open(uniqueConnectionName("upd"), QStringLiteral(":memory:")));
+    Harness h("upd");
 
-    DashboardController ctrl(nullptr);
-    ctrl.setDatabase(&db);
-
-    const qint64 id = ctrl.addLogger(QStringLiteral("TRAM-U"), QStringLiteral("Old"),
-                                     QStringLiteral("h1"), 5020, 8080,
-                                     QStringLiteral("t1"));
+    const qint64 id = h.form.addLogger(QStringLiteral("TRAM-U"), QStringLiteral("Old"),
+                                       QStringLiteral("h1"), 5020, 8080,
+                                       QStringLiteral("t1"));
     QVERIFY(id > 0);
 
-    QVERIFY(ctrl.updateLogger(id,
-                              QStringLiteral("TRAM-U"),
-                              QStringLiteral("New"),
-                              QStringLiteral("h2"),
-                              5030, 9090,
-                              QStringLiteral("t2"),
-                              QStringLiteral("note edited")));
+    QVERIFY(h.form.updateLogger(id,
+                                QStringLiteral("TRAM-U"),
+                                QStringLiteral("New"),
+                                QStringLiteral("h2"),
+                                5030, 9090,
+                                QStringLiteral("t2"),
+                                QStringLiteral("note edited")));
 
-    const auto data = ctrl.getLoggerFormData(id);
+    const auto data = h.form.getLoggerFormData(id);
     QCOMPARE(data.value(QStringLiteral("name")).toString(),   QStringLiteral("New"));
     QCOMPARE(data.value(QStringLiteral("host")).toString(),   QStringLiteral("h2"));
     QCOMPARE(data.value(QStringLiteral("modbusPort")).toInt(), 5030);
@@ -160,40 +161,32 @@ void TestDashboardController::updateLoggerRoundTrip()
 
 void TestDashboardController::removeLoggerCascadesCatalog()
 {
-    Database db;
-    QVERIFY(db.open(uniqueConnectionName("rm"), QStringLiteral(":memory:")));
+    Harness h("rm");
 
-    DashboardController ctrl(nullptr);
-    ctrl.setDatabase(&db);
-
-    const qint64 id = ctrl.addLogger(QStringLiteral("TRAM-RM"), QStringLiteral("A"),
-                                     QStringLiteral("h"), 5020, 8080, {});
+    const qint64 id = h.form.addLogger(QStringLiteral("TRAM-RM"), QStringLiteral("A"),
+                                       QStringLiteral("h"), 5020, 8080, {});
     QVERIFY(id > 0);
 
-    SensorCatalogRepository catalog(db.connection());
+    SensorCatalogRepository catalog(h.db.connection());
     QVERIFY(catalog.ensureExists(id, 1, QStringLiteral("ANALOG")) > 0);
     QCOMPARE(catalog.listByLoggerId(id).size(), 1);
 
-    QVERIFY(ctrl.removeLogger(id));
-    QCOMPARE(ctrl.loggers()->rowCount(), 0);
+    QVERIFY(h.form.removeLogger(id));
+    QCOMPARE(h.dash.loggers()->rowCount(), 0);
     QCOMPARE(catalog.listByLoggerId(id).size(), 0);
 }
 
 void TestDashboardController::getLoggerFormDataMatchesInsert()
 {
-    Database db;
-    QVERIFY(db.open(uniqueConnectionName("form"), QStringLiteral(":memory:")));
+    Harness h("form");
 
-    DashboardController ctrl(nullptr);
-    ctrl.setDatabase(&db);
-
-    const qint64 id = ctrl.addLogger(QStringLiteral("TRAM-F"), QStringLiteral("Form"),
-                                     QStringLiteral("10.0.0.1"), 5021, 8081,
-                                     QStringLiteral("secret"),
-                                     QStringLiteral("hello"));
+    const qint64 id = h.form.addLogger(QStringLiteral("TRAM-F"), QStringLiteral("Form"),
+                                       QStringLiteral("10.0.0.1"), 5021, 8081,
+                                       QStringLiteral("secret"),
+                                       QStringLiteral("hello"));
     QVERIFY(id > 0);
 
-    const auto data = ctrl.getLoggerFormData(id);
+    const auto data = h.form.getLoggerFormData(id);
     QCOMPARE(data.value(QStringLiteral("id")).toLongLong(),    id);
     QCOMPARE(data.value(QStringLiteral("stationCode")).toString(), QStringLiteral("TRAM-F"));
     QCOMPARE(data.value(QStringLiteral("host")).toString(),    QStringLiteral("10.0.0.1"));
@@ -201,30 +194,26 @@ void TestDashboardController::getLoggerFormDataMatchesInsert()
     QCOMPARE(data.value(QStringLiteral("note")).toString(),    QStringLiteral("hello"));
     QVERIFY(!data.contains(QStringLiteral("enabled")));
 
-    QVERIFY(ctrl.getLoggerFormData(9999).isEmpty());
+    QVERIFY(h.form.getLoggerFormData(9999).isEmpty());
 }
 
 void TestDashboardController::findAllWithSensorCountsCountsRows()
 {
-    Database db;
-    QVERIFY(db.open(uniqueConnectionName("count"), QStringLiteral(":memory:")));
+    Harness h("count");
 
-    DashboardController ctrl(nullptr);
-    ctrl.setDatabase(&db);
-
-    const qint64 a = ctrl.addLogger(QStringLiteral("CNT-A"), QStringLiteral("A"),
-                                    QStringLiteral("h"), 5020, 8080, {});
-    const qint64 b = ctrl.addLogger(QStringLiteral("CNT-B"), QStringLiteral("B"),
-                                    QStringLiteral("h"), 5020, 8080, {});
+    const qint64 a = h.form.addLogger(QStringLiteral("CNT-A"), QStringLiteral("A"),
+                                      QStringLiteral("h"), 5020, 8080, {});
+    const qint64 b = h.form.addLogger(QStringLiteral("CNT-B"), QStringLiteral("B"),
+                                      QStringLiteral("h"), 5020, 8080, {});
     QVERIFY(a > 0 && b > 0);
 
-    SensorCatalogRepository catalog(db.connection());
+    SensorCatalogRepository catalog(h.db.connection());
     QVERIFY(catalog.ensureExists(a, 1, QStringLiteral("ANALOG")) > 0);
     QVERIFY(catalog.ensureExists(a, 2, QStringLiteral("ANALOG")) > 0);
     QVERIFY(catalog.ensureExists(b, 1, QStringLiteral("ANALOG")) > 0);
 
-    ctrl.reloadLoggers();
-    auto *model = ctrl.loggers();
+    h.dash.reloadLoggers();
+    auto *model = h.dash.loggers();
     QCOMPARE(model->rowCount(), 2);
 
     const int sensorRole = LoggerListModel::SensorCountRole;
@@ -243,13 +232,13 @@ void TestDashboardController::buildEditPatchDiffsCorrectly()
     edited.insert(QStringLiteral("station_name"), QStringLiteral("Saigon"));
     edited.insert(QStringLiteral("poll_interval"), 5);
 
-    QVariantMap patch = DashboardController::buildEditPatch(original, edited);
+    QVariantMap patch = LoggerFormController::buildEditPatch(original, edited);
     QCOMPARE(patch.size(), 1);
     QCOMPARE(patch.value(QStringLiteral("station_name")).toString(), QStringLiteral("Saigon"));
     QVERIFY(!patch.contains(QStringLiteral("poll_interval")));
 
     edited.insert(QStringLiteral("poll_interval"), 10);
-    patch = DashboardController::buildEditPatch(original, edited);
+    patch = LoggerFormController::buildEditPatch(original, edited);
     QCOMPARE(patch.size(), 2);
     QCOMPARE(patch.value(QStringLiteral("poll_interval")).toInt(), 10);
 }
@@ -265,7 +254,7 @@ void TestDashboardController::buildEditPatchOmitsUnchangedStationCode()
     edited.insert(QStringLiteral("station_name"), QStringLiteral("Plant A"));
     edited.insert(QStringLiteral("poll_interval"), 5);
 
-    const QVariantMap patch = DashboardController::buildEditPatch(original, edited);
+    const QVariantMap patch = LoggerFormController::buildEditPatch(original, edited);
     QVERIFY(!patch.contains(QStringLiteral("station_code")));
     QVERIFY(patch.isEmpty());
 }
@@ -280,7 +269,7 @@ void TestDashboardController::buildEditPatchNeverPostsStationCode()
     edited.insert(QStringLiteral("station_code"), QStringLiteral("EDGE-02"));
     edited.insert(QStringLiteral("station_name"), QStringLiteral("Plant B"));
 
-    const QVariantMap patch = DashboardController::buildEditPatch(original, edited);
+    const QVariantMap patch = LoggerFormController::buildEditPatch(original, edited);
     QVERIFY(!patch.contains(QStringLiteral("station_code")));
     QCOMPARE(patch.value(QStringLiteral("station_name")).toString(), QStringLiteral("Plant B"));
 }

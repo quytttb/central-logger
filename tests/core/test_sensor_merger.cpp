@@ -23,7 +23,8 @@ LoggerSensor makeCatalog(qint64 loggerId,
                          const QString &unit = {},
                          std::optional<double> minT = std::nullopt,
                          std::optional<double> maxT = std::nullopt,
-                         bool active = true)
+                         bool active = true,
+                         int decimals = 4)
 {
     LoggerSensor s;
     s.id = edgeSensorId + 100;
@@ -35,6 +36,7 @@ LoggerSensor makeCatalog(qint64 loggerId,
     s.minThreshold = minT;
     s.maxThreshold = maxT;
     s.active = active;
+    s.decimals = decimals;
     return s;
 }
 
@@ -101,12 +103,38 @@ private slots:
     void inactiveCatalogYieldsWaitStatus();
     void wrongLoggerIdReturnsEmpty();
     void alarmFlagWithoutThresholdYieldsGenericAlarm();
+    void thresholdBoundaryAtMinWithAlarmBit();
     void rtuDisconnectedYieldsErr();
     void hr1ZeroDoesNotForceErrWhenValid();
     void attachDiErrorCodeShowsLabel();
     void attachDiPriority02Over03();
     void attachDiCustomCode();
+    void analogValueUsesPerSensorDecimals();
 };
+
+void TestSensorMerger::analogValueUsesPerSensorDecimals()
+{
+    constexpr qint64 loggerId = 3;
+    QVector<LoggerSensor> catalog{
+        // 1 decimal place
+        makeCatalog(loggerId, 1, "ANALOG", QStringLiteral("Temp"),
+                    QStringLiteral("C"), std::nullopt, std::nullopt, true, 1),
+        // 0 decimal places
+        makeCatalog(loggerId, 2, "ANALOG", QStringLiteral("Count"),
+                    QStringLiteral(""), std::nullopt, std::nullopt, true, 0),
+    };
+
+    auto snap = makeSnapshot(loggerId);
+    snap.analogs = {
+        makeAnalog(1, 25.567f),
+        makeAnalog(2, 42.4f),
+    };
+
+    const auto rows = SensorMerger::buildRows(loggerId, snap, catalog);
+    QCOMPARE(rows.size(), 2);
+    QCOMPARE(findRow(rows, 1)->value, QStringLiteral("25.6"));
+    QCOMPARE(findRow(rows, 2)->value, QStringLiteral("42"));
+}
 
 void TestSensorMerger::mergeAnalogDiCatalogMatch()
 {
@@ -132,7 +160,7 @@ void TestSensorMerger::mergeAnalogDiCatalogMatch()
     QCOMPARE(temp->name, QStringLiteral("Temp1"));
     QCOMPARE(temp->sensorType, QStringLiteral("ANALOG"));
     QCOMPARE(temp->unit, QStringLiteral("C"));
-    QCOMPARE(temp->value, QStringLiteral("25.50"));
+    QCOMPARE(temp->value, QStringLiteral("25.5000"));
     QCOMPARE(temp->displayStatus, QStringLiteral("OK"));
     QVERIFY(temp->valid);
 
@@ -161,7 +189,7 @@ void TestSensorMerger::snapshotOnlyWithoutCatalog()
     QCOMPARE(rows[0].edgeSensorId, 42);
     QCOMPARE(rows[0].sensorType, QStringLiteral("UNKNOWN"));
     QCOMPARE(rows[0].name, QStringLiteral("Sensor #42"));
-    QCOMPARE(rows[0].value, QStringLiteral("12.50"));
+    QCOMPARE(rows[0].value, QStringLiteral("12.5000"));
     QCOMPARE(rows[0].displayStatus, QStringLiteral("OK"));
 }
 
@@ -304,6 +332,27 @@ void TestSensorMerger::alarmFlagWithoutThresholdYieldsGenericAlarm()
     QCOMPARE(rows2.size(), 1);
     QCOMPARE(rows2[0].displayStatus, QStringLiteral("ALARM"));
     QCOMPARE(rows2[0].alarmType, QStringLiteral("max"));
+}
+
+void TestSensorMerger::thresholdBoundaryAtMinWithAlarmBit()
+{
+    constexpr qint64 loggerId = 6;
+    QVector<LoggerSensor> catalog{
+        makeCatalog(loggerId, 1, "ANALOG", QStringLiteral("Temp"), QStringLiteral("C"),
+                    /*minT*/ 10.0, /*maxT*/ 60.0),
+    };
+
+    auto snap = makeSnapshot(loggerId);
+    snap.analogs = { makeAnalog(1, 10.0f, kFlagValid | kFlagAlarm) };
+
+    const auto rows = SensorMerger::buildRows(loggerId, snap, catalog);
+    QCOMPARE(rows.size(), 1);
+    QCOMPARE(rows[0].displayStatus, QStringLiteral("ALARM"));
+    QCOMPARE(rows[0].alarmType, QStringLiteral("min"));
+
+    snap.analogs = { makeAnalog(1, 60.0f, kFlagValid | kFlagAlarm) };
+    const auto rowsMax = SensorMerger::buildRows(loggerId, snap, catalog);
+    QCOMPARE(rowsMax[0].alarmType, QStringLiteral("max"));
 }
 
 void TestSensorMerger::rtuDisconnectedYieldsErr()
