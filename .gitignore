@@ -102,6 +102,6 @@ __pycache__/
 *.pyc
 
 # --- Installer / Packaging ---
-packaging/windows/installer_build/packages/*/data/
+/packaging/windows/installer_build/packages/*/data/
 packaging/windows/installer_build/CentralLoggerSetup.exe
 packaging/windows/convert_tool/build/

@@ -30,7 +30,6 @@ jobs:
     outputs:
       tag: ${{ steps.meta.outputs.tag }}
       version: ${{ steps.meta.outputs.version }}
-      ref: ${{ steps.meta.outputs.ref }}
     steps:
       - name: Resolve tag and version
         id: meta
@@ -48,7 +47,6 @@ jobs:
           VERSION="${TAG#v}"
           echo "tag=${TAG}" >> "${GITHUB_OUTPUT}"
           echo "version=${VERSION}" >> "${GITHUB_OUTPUT}"
-          echo "ref=refs/tags/${TAG}" >> "${GITHUB_OUTPUT}"
 
   build-deb:
     needs: prepare
@@ -56,8 +54,6 @@ jobs:
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v6
-        with:
-          ref: ${{ needs.prepare.outputs.ref }}
 
       - name: Sync CMake project version
         env:
@@ -108,8 +104,6 @@ jobs:
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v6
-        with:
-          ref: ${{ needs.prepare.outputs.ref }}
 
       - name: Exclude Windows Store Python stub from PATH
         shell: pwsh
