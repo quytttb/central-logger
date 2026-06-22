@@ -75,7 +75,10 @@ Item {
                 function recomputeColumns() {
                     colWidths = AppTheme.distributeColumnWidths(
                         width - vScrollBar.gutter, root.colWeights, root.colMinimums)
-                    forceLayout()
+                    // Defer to the next event loop tick: width/gutter changes can fire
+                    // mid-layout, and an immediate forceLayout() during an ongoing
+                    // layout warns and is dropped. Qt.callLater also coalesces bursts.
+                    Qt.callLater(forceLayout)
                 }
 
                 Component.onCompleted: recomputeColumns()

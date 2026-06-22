@@ -220,7 +220,7 @@ Item {
                                         horizontalAlignment: sensorCell.column === 0 || sensorCell.column === 2
                                                              ? Text.AlignRight : Text.AlignLeft
                                         font.family: sensorCell.column === 0 || sensorCell.column === 2
-                                                     ? "monospace" : ""
+                                                     ? AppTypography.monoFamily : ""
                                         font.weight: sensorCell.column === 2 ? Font.DemiBold : Font.Normal
                                         color: sensorCell.column === 3 ? AppColors.tableHeaderText
                                                : sensorCell.column === 0 ? AppColors.tableCellMuted

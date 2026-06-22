@@ -8,6 +8,7 @@
 #include "data/repositories/SqlHelper.h"
 #include "network/rest/RestConfigParser.h"
 #include "network/rest/RestConfigService.h"
+#include "utils/AppConstants.h"
 #include "utils/HostValidator.h"
 
 #include <QEventLoop>
@@ -81,9 +82,11 @@ qint64 LoggerFormController::addLogger(const QString &stationCode,
   info.name = nm;
   info.host = hst;
   info.modbusPort = modbusPort;
-  info.modbusUnitId = modbusUnitId > 0 ? modbusUnitId : 1;
-  info.centralPollIntervalS = pollIntervalS > 0 ? pollIntervalS : 2;
-  info.timeoutS = timeoutS > 0 ? static_cast<double>(timeoutS) : 2.0;
+  info.modbusUnitId = modbusUnitId > 0 ? modbusUnitId : Defaults::kDefaultModbusUnitId;
+  info.centralPollIntervalS =
+      pollIntervalS > 0 ? pollIntervalS : Defaults::kDefaultPollIntervalSec;
+  info.timeoutS = timeoutS > 0 ? static_cast<double>(timeoutS)
+                               : static_cast<double>(Defaults::kDefaultTimeoutSec);
   info.enabled = true;
   info.apiPort = apiPort;
   info.apiToken = apiToken;
@@ -531,7 +534,7 @@ void LoggerFormController::saveLoggerFromForm(
   const QVariantMap originalMap = m_probedConfigObject.toVariantMap();
   QVariantMap editedMap = originalMap;
   editedMap.insert(QStringLiteral("station_name"), nm);
-  const int pollS = pollIntervalS > 0 ? pollIntervalS : 2;
+  const int pollS = pollIntervalS > 0 ? pollIntervalS : Defaults::kDefaultPollIntervalSec;
   editedMap.insert(QStringLiteral("poll_interval"), pollS);
   // station_code: Central DB only (from probe on add); never in edge POST
   // patch.
@@ -560,9 +563,10 @@ void LoggerFormController::saveLoggerFromForm(
     info.name = nm;
     info.host = hst;
     info.modbusPort = modbusPort;
-    info.modbusUnitId = modbusUnitId > 0 ? modbusUnitId : 1;
+    info.modbusUnitId = modbusUnitId > 0 ? modbusUnitId : Defaults::kDefaultModbusUnitId;
     info.centralPollIntervalS = pollS;
-    info.timeoutS = timeoutS > 0 ? static_cast<double>(timeoutS) : 2.0;
+    info.timeoutS = timeoutS > 0 ? static_cast<double>(timeoutS)
+                                 : static_cast<double>(Defaults::kDefaultTimeoutSec);
     info.enabled = true;
     info.apiPort = apiPort;
     info.apiToken = apiToken;

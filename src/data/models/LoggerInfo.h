@@ -1,5 +1,7 @@
 #pragma once
 
+#include "utils/AppConstants.h"
+
 #include <QDateTime>
 #include <QString>
 
@@ -11,12 +13,12 @@ struct LoggerInfo
     QString   stationCode;
     QString   name;
     QString   host;
-    int       modbusPort = 5020;
-    int       modbusUnitId = 1;
-    int       centralPollIntervalS = 2;
-    double    timeoutS = 2.0;
+    int       modbusPort = Defaults::kDefaultModbusPort;
+    int       modbusUnitId = Defaults::kDefaultModbusUnitId;
+    int       centralPollIntervalS = Defaults::kDefaultPollIntervalSec;
+    double    timeoutS = Defaults::kDefaultTimeoutSec;
     bool      enabled = true;
-    int       apiPort = 8080;
+    int       apiPort = Defaults::kDefaultApiPort;
     QString   apiToken;            // may be empty
     int       lastRevision = -1;
     QString   status = QStringLiteral("offline");

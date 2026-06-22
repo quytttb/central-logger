@@ -17,6 +17,7 @@
 #include "network/modbus/ModbusBridge.h"
 #include "network/modbus/ModbusService.h"
 #include "network/modbus/ModbusTypes.h"
+#include "utils/AppConstants.h"
 #include "utils/charts/ChartDisplayLimits.h"
 
 #include <QDateTime>
@@ -35,11 +36,14 @@ namespace {
 
 DashboardController *g_instance = nullptr;
 
+// Retention purge cadence — hourly (Task 16 / FE-016).
+constexpr int kPurgeIntervalMs = 3600 * 1000;
+
 } // namespace
 
 DashboardController::DashboardController(QObject *parent) : QObject(parent) {
   // Hourly retention purge timer — Task 16 (FE-016).
-  m_purgeTimer.setInterval(3600 * 1000);
+  m_purgeTimer.setInterval(kPurgeIntervalMs);
   connect(&m_purgeTimer, &QTimer::timeout, this,
           &DashboardController::purgeOldData);
   m_purgeTimer.start();
@@ -219,9 +223,12 @@ void DashboardController::syncModbusRegistry() {
     c.modbusPort = info.modbusPort;
     c.unitId = info.modbusUnitId;
     c.pollIntervalMs =
-        (info.centralPollIntervalS > 0 ? info.centralPollIntervalS : 2) * 1000;
-    c.timeoutMs =
-        static_cast<int>(info.timeoutS > 0 ? info.timeoutS * 1000.0 : 2000.0);
+        (info.centralPollIntervalS > 0 ? info.centralPollIntervalS
+                                       : Defaults::kDefaultPollIntervalSec)
+        * Defaults::kMsPerSecond;
+    c.timeoutMs = static_cast<int>(
+        info.timeoutS > 0 ? info.timeoutS * Defaults::kMsPerSecond
+                          : Defaults::kDefaultTimeoutMs);
     c.enabled = info.enabled;
     configs.append(c);
   }

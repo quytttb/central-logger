@@ -51,7 +51,7 @@ Item {
                 default:        return "error"
                 }
             }
-            size: 16
+            size: AppTheme.iconSizeSm
             iconColor: root._fgColor
             Layout.alignment: Qt.AlignTop
             Layout.topMargin: 1

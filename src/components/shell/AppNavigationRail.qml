@@ -16,7 +16,7 @@ Item {
 
     Rectangle {
         anchors.fill: parent
-        color: AppColors.surface
+        color: AppColors.navRail
 
         Rectangle {
             anchors.right: parent.right

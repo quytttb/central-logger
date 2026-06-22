@@ -125,7 +125,7 @@ Item {
                         visible: valueRow.modelData.color !== undefined
                         Layout.preferredWidth: visible ? 8 : 0
                         Layout.preferredHeight: 8
-                        radius: 4
+                        radius: width / 2
                         color: visible ? valueRow.modelData.color : "transparent"
                         Layout.alignment: Qt.AlignVCenter
                     }

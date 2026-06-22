@@ -2,6 +2,7 @@
 
 #include "data/db/Database.h"
 #include "data/repositories/SettingsRepository.h"
+#include "utils/AppConstants.h"
 
 #include <QDateTime>
 #include <QJSEngine>
@@ -62,7 +63,7 @@ void SettingsController::setDataRetentionDays(int value)
 
 void SettingsController::setHistoryFlushIntervalS(int value)
 {
-    value = qBound(1, value, 3600);
+    value = qBound(Defaults::kMinIntervalSec, value, Defaults::kMaxIntervalSec);
     if (m_settings.historyFlushIntervalS == value) return;
     m_settings.historyFlushIntervalS = value;
     emit historyFlushIntervalSChanged();

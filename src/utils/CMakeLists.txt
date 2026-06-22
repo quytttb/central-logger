@@ -2,6 +2,7 @@
 # Rule: no QObject, no QML, no business logic; linkable from any upper layer.
 
 qt_add_library(utils STATIC
+    AppConstants.h
     DateTimeUtils.h
     DateTimeUtils.cpp
     HostValidator.h

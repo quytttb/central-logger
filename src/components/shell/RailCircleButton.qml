@@ -32,7 +32,7 @@ Item {
         UiIcon {
             anchors.centerIn: parent
             name: root.iconName
-            size: 20
+            size: AppTheme.iconSizeMd
             iconColor: root.iconColor
         }
     }

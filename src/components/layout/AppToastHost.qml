@@ -71,7 +71,7 @@ Popup {
                     default:        return "info"
                     }
                 }
-                size: 20
+                size: AppTheme.iconSizeMd
                 iconColor: {
                     switch (AppNotifier.toastSemantic) {
                     case "success": return AppColors.success
@@ -111,7 +111,7 @@ Popup {
                 UiIcon {
                     anchors.centerIn: parent
                     name: "close"
-                    size: 18
+                    size: AppTheme.iconSizeSm
                     iconColor: AppColors.textMuted
                 }
 

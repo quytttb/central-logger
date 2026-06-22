@@ -14,6 +14,11 @@ namespace CentralLogger::Network {
 
 namespace {
 
+// Abort a connection attempt stuck in ConnectingState after this multiple of
+// the configured timeout (C-2 fix), with a hard fallback when timeout is unset.
+constexpr int kConnectTimeoutMultiplier = 2;
+constexpr int kConnectTimeoutFallbackMs = 4000;
+
 QVector<quint16> regsFromUnit(const QModbusDataUnit &unit)
 {
     QVector<quint16> out;
@@ -89,7 +94,8 @@ void ModbusService::registerLogger(const LoggerRuntimeConfig &config)
         connect(state->timer, &QTimer::timeout, this, &ModbusService::onPollTimer);
         state->timer->setProperty("loggerId", QVariant::fromValue(config.loggerId));
     }
-    state->timer->setInterval(config.pollIntervalMs > 0 ? config.pollIntervalMs : 2000);
+    state->timer->setInterval(config.pollIntervalMs > 0 ? config.pollIntervalMs
+                                                        : Defaults::kDefaultPollIntervalMs);
 
     if (config.enabled) {
         if (!state->timer->isActive()) {
@@ -225,8 +231,8 @@ void ModbusService::startPollCycle(LoggerState &state)
         // C-2 fix: guard against TCP stalling in ConnectingState indefinitely.
         // After 2× timeoutMs we abort the connection attempt and finish the cycle.
         const int connectTimeoutMs = state.config.timeoutMs > 0
-                                     ? state.config.timeoutMs * 2
-                                     : 4000;
+                                     ? state.config.timeoutMs * kConnectTimeoutMultiplier
+                                     : kConnectTimeoutFallbackMs;
         QTimer::singleShot(connectTimeoutMs, this, [this, id = state.config.loggerId]() {
             auto *s = stateFor(id);
             if (!s || !s->pollInFlight) return;

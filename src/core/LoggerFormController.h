@@ -1,6 +1,7 @@
 #pragma once
 
 #include "network/rest/RestConfigParser.h"
+#include "utils/AppConstants.h"
 
 #include <QJsonObject>
 #include <QObject>
@@ -64,9 +65,9 @@ public slots:
                      int apiPort,
                      const QString &apiToken,
                      const QString &note = QString(),
-                     int modbusUnitId = 1,
-                     int pollIntervalS = 2,
-                     int timeoutS = 2);
+                     int modbusUnitId = Defaults::kDefaultModbusUnitId,
+                     int pollIntervalS = Defaults::kDefaultPollIntervalSec,
+                     int timeoutS = Defaults::kDefaultTimeoutSec);
 
     bool updateLogger(qint64 id,
                       const QString &stationCode,
@@ -76,9 +77,9 @@ public slots:
                       int apiPort,
                       const QString &apiToken,
                       const QString &note = QString(),
-                      int modbusUnitId = 1,
-                      int pollIntervalS = 2,
-                      int timeoutS = 2);
+                      int modbusUnitId = Defaults::kDefaultModbusUnitId,
+                      int pollIntervalS = Defaults::kDefaultPollIntervalSec,
+                      int timeoutS = Defaults::kDefaultTimeoutSec);
 
     bool removeLogger(qint64 id);
 

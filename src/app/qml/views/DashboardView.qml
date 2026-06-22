@@ -207,7 +207,7 @@ Item {
         Rectangle {
             Layout.preferredWidth: 8
             Layout.preferredHeight: 8
-            radius: 4
+            radius: width / 2
             color: AppColors.success
             Layout.alignment: Qt.AlignVCenter
         }

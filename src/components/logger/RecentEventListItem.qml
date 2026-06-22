@@ -97,7 +97,7 @@ Pane {
         Rectangle {
             Layout.preferredWidth: 8
             Layout.fillHeight: true
-            radius: 4
+            radius: AppTheme.radiusTiny
             color: root.levelColor
         }
 

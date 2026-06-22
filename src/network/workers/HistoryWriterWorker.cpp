@@ -2,6 +2,7 @@
 
 #include "data/db/Database.h"
 #include "network/modbus/ModbusBridge.h"
+#include "utils/AppConstants.h"
 
 #include <QElapsedTimer>
 #include <QSqlError>
@@ -18,7 +19,8 @@ HistoryWriterWorker::HistoryWriterWorker(QObject *parent)
 
 void HistoryWriterWorker::setFlushIntervalSeconds(int seconds)
 {
-    const int clampedMs = qBound(1, seconds, 3600) * 1000;
+    const int clampedMs = qBound(Defaults::kMinIntervalSec, seconds,
+                                 Defaults::kMaxIntervalSec) * Defaults::kMsPerSecond;
     m_flushIntervalMs.store(clampedMs, std::memory_order_relaxed);
     QMutexLocker lock(&m_mutex);
     m_condition.wakeAll();

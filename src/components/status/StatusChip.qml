@@ -99,7 +99,7 @@ Item {
                 Layout.alignment: Qt.AlignVCenter
                 Layout.preferredWidth: 10
                 Layout.preferredHeight: 10
-                radius: 5
+                radius: width / 2
                 color: root.indicatorActive ? root.indicatorActiveColor
                                             : root.indicatorInactiveColor
             }
@@ -108,7 +108,7 @@ Item {
                 visible: !root.indicatorMode && root.statusIconName.length > 0
                 Layout.alignment: Qt.AlignVCenter
                 name: root.statusIconName
-                size: 16
+                size: AppTheme.iconSizeSm
                 iconColor: root.chipTextColor
             }
 

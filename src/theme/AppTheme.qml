@@ -30,7 +30,18 @@ QtObject {
     readonly property int dialogMaxWidth:              880
     readonly property int dialogNarrowMaxWidth:        520
 
+    // Motion — standard animation durations (ms). Use instead of inline duration literals.
+    readonly property int motionFast:           120         // hover / micro state changes
+    readonly property int motionStandard:       150         // common transitions
+    readonly property int motionPulse:         1000         // looping status pulses
+
+    // Icon sizing scale (px). Snap odd sizes (14/18) to the nearest step.
+    readonly property int iconSizeSm:           16
+    readonly property int iconSizeMd:           20
+    readonly property int iconSizeLg:           24
+
     // M3 shape — 1 dp ≈ 1 px (Qt Material roundedScale is inconsistent when background is custom).
+    readonly property int radiusTiny:          4           // small accent bars / square chips
     readonly property int cardRadius:         12          // pane / card chrome
     readonly property int cardPadding:        16          // interior inset for cards / panes
     readonly property int chipRadius:           12          // chips, badges

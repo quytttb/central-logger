@@ -3,6 +3,8 @@
 #include "ModbusPollPlan.h"
 #include "ModbusTypes.h"
 
+#include "utils/AppConstants.h"
+
 #include <QHash>
 #include <QObject>
 #include <QString>
@@ -20,10 +22,10 @@ struct LoggerRuntimeConfig
 {
     qint64  loggerId       = 0;
     QString host;
-    int     modbusPort     = 5020;
-    int     unitId         = 1;
-    int     pollIntervalMs = 2000;
-    int     timeoutMs      = 2000;
+    int     modbusPort     = Defaults::kDefaultModbusPort;
+    int     unitId         = Defaults::kDefaultModbusUnitId;
+    int     pollIntervalMs = Defaults::kDefaultPollIntervalMs;
+    int     timeoutMs      = Defaults::kDefaultTimeoutMs;
     bool    enabled        = true;
 
     bool operator==(const LoggerRuntimeConfig &other) const

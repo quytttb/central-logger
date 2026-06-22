@@ -41,6 +41,6 @@ ScrollBar {
             AppColors.primaryText,
             control.pressed ? 0.5 : (control.hovered ? 0.38 : 0.24))
 
-        Behavior on color { ColorAnimation { duration: 120 } }
+        Behavior on color { ColorAnimation { duration: AppTheme.motionFast } }
     }
 }

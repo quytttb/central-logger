@@ -231,7 +231,7 @@ Item {
 
             UiIcon {
                 name: "magnify"
-                size: 18
+                size: AppTheme.iconSizeSm
                 iconColor: AppColors.iconSubtle
                 anchors.verticalCenter: parent.verticalCenter
                 anchors.left: parent.left

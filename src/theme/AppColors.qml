@@ -54,7 +54,10 @@ QtObject {
     readonly property color tableCellMuted: withAlpha(primaryText, 0.8)
     readonly property color tableHeaderText: withAlpha(primaryText, 0.7)
 
-    readonly property color surface:              isDark ? "#121212" : "#E1E4E8"
+    readonly property color surface:              isDark ? "#111318" : "#E1E4E8"
+
+    /// Navigation rail surface — slightly raised from the main canvas.
+    readonly property color navRail:              isDark ? "#1E2024" : "#E1E4E8"
     readonly property color surfaceContainerLow:  isDark ? "#282828" : "#FFFFFF"
     readonly property color surfaceContainer:     isDark ? "#323232" : "#F0F2F5"
     readonly property color surfaceContainerHigh: isDark ? "#3D3D3D" : "#E8EBEF"

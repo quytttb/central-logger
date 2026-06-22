@@ -59,7 +59,7 @@ ItemDelegate {
             UiIcon {
                 anchors.centerIn: parent
                 name: root.iconName
-                size: 24
+                size: AppTheme.iconSizeLg
                 iconColor: root.active
                          ? root.activeForegroundColor
                          : AppColors.onSurfaceVariant

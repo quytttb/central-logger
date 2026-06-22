@@ -13,7 +13,7 @@ Text {
     id: root
 
     property string name:      ""
-    property int    size:      24
+    property int    size:      AppTheme.iconSizeLg
     property color  iconColor: AppColors.primaryText
 
     text:                    MaterialIcons.glyph(root.name)

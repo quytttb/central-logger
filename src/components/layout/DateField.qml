@@ -78,7 +78,7 @@ Item {
 
     UiIcon {
         name: "schedule"
-        size: 18
+        size: AppTheme.iconSizeSm
         iconColor: AppColors.iconSubtle
         anchors.verticalCenter: parent.verticalCenter
         anchors.right: parent.right
