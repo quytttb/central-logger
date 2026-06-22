@@ -34,7 +34,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 120
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Read version
         id: meta
@@ -74,7 +74,7 @@ jobs:
           packaging/linux/cpack_deb.sh
 
       - name: Upload .deb artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: central-logger-dev-deb-${{ github.sha }}
           path: dist/central-logger-app_${{ steps.meta.outputs.version }}_amd64.deb
@@ -86,7 +86,7 @@ jobs:
     runs-on: windows-latest
     timeout-minutes: 120
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Exclude Windows Store Python stub from PATH
         shell: pwsh
@@ -134,7 +134,7 @@ jobs:
         run: ${{ github.workspace }}/packaging/windows/build_installer.ps1
 
       - name: Upload installer artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: central-logger-dev-exe-${{ github.sha }}
           path: packaging/windows/installer_build/CentralLoggerSetup.exe
