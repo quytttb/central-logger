@@ -53,7 +53,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 120
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v4
 
       - name: Sync CMake project version
         env:
@@ -91,7 +91,7 @@ jobs:
           packaging/linux/cpack_deb.sh
 
       - name: Upload .deb artifact
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v4
         with:
           name: deb-package
           path: dist/central-logger-app_${{ needs.prepare.outputs.version }}_amd64.deb
@@ -103,7 +103,7 @@ jobs:
     runs-on: windows-latest
     timeout-minutes: 120
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v4
 
       - name: Exclude Windows Store Python stub from PATH
         shell: pwsh
@@ -117,7 +117,7 @@ jobs:
           cmakeVersion: "~3.28.0"
           ninjaVersion: latest
 
-      - uses: actions/setup-python@v6
+      - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
 
@@ -160,7 +160,7 @@ jobs:
         run: ${{ github.workspace }}/packaging/windows/build_installer.ps1
 
       - name: Upload installer artifact
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v4
         with:
           name: exe-package
           path: packaging/windows/installer_build/CentralLoggerSetup.exe
@@ -174,7 +174,7 @@ jobs:
       contents: write
     steps:
       - name: Download build artifacts
-        uses: actions/download-artifact@v6
+        uses: actions/download-artifact@v4
         with:
           path: release-assets
           merge-multiple: true
