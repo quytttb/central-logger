@@ -84,6 +84,10 @@ if (Test-Path $OUTPUT_INSTALLER) {
 
 & "$IFW_DIR\bin\binarycreator.exe" --offline-only -c "$INSTALLER_BUILD_DIR\config\config.xml" -p "$INSTALLER_BUILD_DIR\packages" "$OUTPUT_INSTALLER"
 
+if ($LASTEXITCODE -ne 0 -or -not (Test-Path $OUTPUT_INSTALLER)) {
+    Write-Error "binarycreator that bai (exit code $LASTEXITCODE). Kiem tra config.xml / control script o tren."
+}
+
 Write-Host "==========================================================" -ForegroundColor Green
 Write-Host "DONG GOI THANH CONG!" -ForegroundColor Green
 Write-Host "File cai dat da duoc tao tai:" -ForegroundColor Green

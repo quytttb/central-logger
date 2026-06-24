@@ -1,67 +1,63 @@
 /**
- * Control script for Central Logger installer.
+ * Control script for the Central Logger installer.
  *
  * Problem solved: Qt IFW refuses to install into a directory that already
- * contains an existing installation (components.xml present). This script
- * detects that situation and runs the embedded uninstaller first, so the
- * user can upgrade without manually removing the old version.
+ * contains an installation (it shows "The directory you selected already
+ * exists and contains an installation"). This script detects a previous
+ * version when the Target Directory page is shown and runs the embedded
+ * maintenance tool in unattended "purge" mode first, so the user can
+ * upgrade in place instead of being blocked.
  */
-
-var gUninstallRan = false;
 
 function Controller()
 {
-    // When the installer reaches the TargetDirectory page and the user
-    // clicks Next, check whether we need to uninstall the previous version.
-    installer.targetDirectorySelected.connect(onTargetDirectorySelected);
 }
 
-function onTargetDirectorySelected(path)
+Controller.prototype.TargetDirectoryPageCallback = function()
 {
-    var componentsXml = path + "/components.xml";
-    if (!installer.fileExists(componentsXml)) {
-        return; // Fresh install — nothing to do.
+    if (systemInfo.productType !== "windows") {
+        return;
     }
 
-    if (gUninstallRan) {
-        return; // Already handled in this session.
+    var targetDir = installer.value("TargetDir");
+    if (!targetDir) {
+        return;
+    }
+
+    var maintenanceTool = targetDir + "/"
+        + installer.value("MaintenanceToolName") + ".exe";
+
+    // Fresh install — nothing to remove.
+    if (!installer.fileExists(maintenanceTool)) {
+        return;
     }
 
     var answer = QMessageBox.question(
-        "uninstall.confirm",
+        "cl.upgrade.confirm",
         qsTr("Existing Installation Found"),
-        qsTr("An existing installation of Central Logger was found in:\n\n%1\n\nIt must be removed before the new version can be installed. Do you want to uninstall it now and continue?").arg(path),
-        QMessageBox.Yes | QMessageBox.No
-    );
+        qsTr("An existing installation of Central Logger was found in:\n\n%1\n\n"
+             + "It must be removed before the new version can be installed. "
+             + "Do you want to uninstall it now and continue?").arg(targetDir),
+        QMessageBox.Yes | QMessageBox.No);
 
+    // User declined: leave the old install untouched. IFW's own check will
+    // then ask the user to pick a different directory or cancel.
     if (answer !== QMessageBox.Yes) {
-        // User declined — abort so they can clean up manually.
-        installer.interrupt();
         return;
     }
 
-    var maintenanceTool = path + "/maintenancetool.exe";
-    if (!installer.fileExists(maintenanceTool)) {
+    // Run the maintenance tool unattended. Piping "yes" to stdin confirms
+    // the purge command; execute() blocks until it finishes.
+    var result = installer.execute(maintenanceTool, ["purge"], "yes");
+    var exitCode = result[result.length - 1];
+
+    if (exitCode !== 0 || installer.fileExists(maintenanceTool)) {
         QMessageBox.warning(
-            "uninstall.notfound",
-            qsTr("Uninstaller Not Found"),
-            qsTr("Could not find maintenancetool.exe in %1.\nPlease uninstall the old version manually from Windows Settings, then run this installer again.").arg(path)
-        );
-        installer.interrupt();
-        return;
-    }
-
-    // Run the maintenance tool in unattended uninstall mode and wait for it.
-    var exitCode = installer.execute(maintenanceTool, ["purge", "--confirm-command"]);
-    if (exitCode[0] !== 0) {
-        QMessageBox.critical(
-            "uninstall.failed",
+            "cl.upgrade.failed",
             qsTr("Uninstall Failed"),
-            qsTr("The previous version could not be removed automatically (exit code %1).\nPlease uninstall Central Logger manually from Windows Settings, then run this installer again.").arg(exitCode[0])
-        );
-        installer.interrupt();
-        return;
+            qsTr("The previous version could not be removed automatically.\n"
+                 + "Please uninstall Central Logger manually (run "
+                 + "maintenancetool.exe in %1 or use Windows Settings), "
+                 + "then run this installer again.").arg(targetDir));
     }
-
-    gUninstallRan = true;
-}
+};
