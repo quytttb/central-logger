@@ -12,6 +12,5 @@
     <InstallerApplicationIcon>app_icon</InstallerApplicationIcon>
     <InstallerWindowIcon>window_icon.png</InstallerWindowIcon>
     <Logo>logo.png</Logo>
-    <RequireAdminRights>true</RequireAdminRights>
     <ControlScript>controlscript.qs</ControlScript>
 </Installer>
