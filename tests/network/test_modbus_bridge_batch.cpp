@@ -39,7 +39,6 @@ void TestModbusBridgeBatch::applyBatch_insertsMultipleSnapshotsInOneTransaction(
     const qint64 loggerId = info.id;
 
     ModbusBridge bridge;
-    bridge.setDatabase(&db);
 
     PollSnapshot snap1;
     snap1.loggerId   = loggerId;
@@ -56,7 +55,7 @@ void TestModbusBridgeBatch::applyBatch_insertsMultipleSnapshotsInOneTransaction(
     snap2.measuredAt = snap1.measuredAt.addSecs(1);
     snap2.analogs[0].value = 13.0f;
 
-    bridge.applyBatch({ snap1, snap2 });
+    bridge.applyBatch({ snap1, snap2 }, db.connection());
 
     SensorCatalogRepository catalog(db.connection());
     const auto sensors = catalog.listByLoggerId(loggerId);
