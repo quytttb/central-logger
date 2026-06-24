@@ -120,3 +120,18 @@ target_link_libraries(test_chart_presentation
 )
 
 add_test(NAME test_chart_presentation COMMAND test_chart_presentation)
+
+# Regression + contract tests for saveLoggerFromForm (REST + DB interaction).
+qt_add_executable(test_logger_form_save
+    test_logger_form_save.cpp
+)
+
+target_link_libraries(test_logger_form_save
+    PRIVATE
+        central_logger_core
+        data
+        network
+        Qt6::Test
+)
+
+add_test(NAME test_logger_form_save COMMAND test_logger_form_save)
