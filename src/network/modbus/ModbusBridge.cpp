@@ -100,14 +100,14 @@ void ModbusBridge::applyLiveSnapshot(const PollSnapshot &snapshot)
     emit snapshotApplied(snapshot, sensorCount);
 }
 
-QVector<Data::SensorReading> ModbusBridge::buildReadings(const PollSnapshot &snapshot) const
+QVector<Data::SensorReading> ModbusBridge::buildReadings(const PollSnapshot &snapshot,
+                                                         QSqlDatabase db) const
 {
     QVector<Data::SensorReading> batch;
     if (!snapshot.success) {
         return batch;
     }
 
-    const QSqlDatabase db = sqlConnection();
     if (!db.isValid() || !db.isOpen()) {
         return batch;
     }
@@ -171,14 +171,14 @@ QVector<Data::SensorReading> ModbusBridge::buildReadings(const PollSnapshot &sna
     return batch;
 }
 
-void ModbusBridge::applyBatch(const QList<PollSnapshot> &batch)
+void ModbusBridge::applyBatch(const QList<PollSnapshot> &batch, QSqlDatabase db)
 {
     if (batch.isEmpty()) {
         return;
     }
 
-    const QSqlDatabase db = sqlConnection();
     if (!db.isValid() || !db.isOpen()) {
+        qWarning() << "ModbusBridge::applyBatch: invalid or closed database connection";
         return;
     }
 
@@ -187,7 +187,7 @@ void ModbusBridge::applyBatch(const QList<PollSnapshot> &batch)
         if (!snapshot.success) {
             continue;
         }
-        readings += buildReadings(snapshot);
+        readings += buildReadings(snapshot, db);
     }
 
     if (readings.isEmpty()) {

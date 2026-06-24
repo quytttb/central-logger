@@ -172,7 +172,7 @@ void HistoryWriterWorker::flushBatch(QList<PollSnapshot> &batch)
     if (batch.isEmpty() || !m_db.isOpen()) {
         return;
     }
-    m_bridge->applyBatch(batch);
+    m_bridge->applyBatch(batch, m_db);
     batch.clear();
 }
 

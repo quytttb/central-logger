@@ -31,10 +31,13 @@ public slots:
     /// are persisted asynchronously via applyBatch on the writer thread.
     void applyLiveSnapshot(const CentralLogger::Network::PollSnapshot &snapshot);
 
+public:
     /// History pipeline: batch-insert sensor_reading rows for many snapshots
-    /// inside a single transaction. Thread-safe when using a dedicated
-    /// QSqlDatabase connection (see HistoryWriterWorker).
-    void applyBatch(const QList<CentralLogger::Network::PollSnapshot> &batch);
+    /// inside a single transaction. Caller must pass the dedicated
+    /// QSqlDatabase connection that belongs to the calling thread
+    /// (e.g. HistoryWriterWorker::m_db) — never the main-thread connection.
+    void applyBatch(const QList<CentralLogger::Network::PollSnapshot> &batch,
+                    QSqlDatabase db);
 
 signals:
     void snapshotApplied(const CentralLogger::Network::PollSnapshot &snapshot,
@@ -42,7 +45,8 @@ signals:
 
 private:
     QSqlDatabase sqlConnection() const;
-    QVector<Data::SensorReading> buildReadings(const PollSnapshot &snapshot) const;
+    QVector<Data::SensorReading> buildReadings(const PollSnapshot &snapshot,
+                                               QSqlDatabase db) const;
 
     Data::Database *m_db = nullptr;
     QSqlDatabase      m_standaloneConn;
