@@ -11,11 +11,13 @@
 #include "utils/AppConstants.h"
 #include "utils/HostValidator.h"
 
+#include <QDebug>
 #include <QEventLoop>
 #include <QJSEngine>
 #include <QJsonObject>
 #include <QQmlEngine>
 #include <QSqlDatabase>
+#include <QSqlError>
 #include <QTimer>
 
 namespace CentralLogger::Core {
@@ -286,12 +288,16 @@ bool LoggerFormController::isValidHost(const QString &host) const {
 
 void LoggerFormController::probeConfig(const QString &host, int apiPort,
                                        const QString &token) {
+  qInfo().noquote() << "[probe] begin host=" << host.trimmed()
+                    << "apiPort=" << apiPort;
   if (!m_restConfig) {
+    qWarning().noquote() << "[probe] aborted: REST service not available";
     emit probeConfigResult(false,
                            QStringLiteral("REST service not available."));
     return;
   }
   if (!HostValidator::isValidHost(host)) {
+    qWarning().noquote() << "[probe] aborted: invalid host" << host.trimmed();
     emit probeConfigResult(
         false, QStringLiteral("Host phải là IPv4 hoặc hostname hợp lệ"));
     return;
@@ -482,16 +488,27 @@ void LoggerFormController::saveLoggerFromForm(
     bool isAdd, qint64 loggerId, const QString &name, const QString &host,
     int modbusPort, int apiPort, const QString &apiToken, int modbusUnitId,
     int pollIntervalS, int timeoutS) {
+  qInfo().noquote() << "[save] begin isAdd=" << isAdd
+                    << "loggerId=" << loggerId
+                    << "name=" << name.trimmed()
+                    << "host=" << host.trimmed()
+                    << "modbusPort=" << modbusPort << "apiPort=" << apiPort
+                    << "probedRevision=" << m_probedRevision;
+
   if (m_formSaveInProgress) {
+    qWarning().noquote() << "[save] aborted: save already in progress";
     emit formSaveFinished(false, loggerId,
                           QStringLiteral("Save already in progress."));
     return;
   }
   if (!ensureDatabase()) {
+    qWarning().noquote() << "[save] aborted: database not open";
     emit formSaveFinished(false, loggerId, m_lastError);
     return;
   }
   if (m_probedRevision < 0) {
+    qWarning().noquote()
+        << "[save] aborted: no probed config (m_probedRevision < 0)";
     setError(QStringLiteral("Load config from the device first (Connect)."));
     emit formSaveFinished(false, loggerId, m_lastError);
     return;
@@ -517,6 +534,8 @@ void LoggerFormController::saveLoggerFromForm(
   if (isAdd) {
     code = probedStationCode().trimmed();
     if (code.isEmpty()) {
+      qWarning().noquote()
+          << "[save] aborted: device config has no station_code";
       setError(QStringLiteral(
           "Device config has no station code. Connect again, then save."));
       emit formSaveFinished(false, loggerId, m_lastError);
@@ -525,8 +544,10 @@ void LoggerFormController::saveLoggerFromForm(
   } else {
     code = existingRow->stationCode;
   }
+  qInfo().noquote() << "[save] stationCode=" << code;
 
   if (!validateCommon(code, nm, hst, modbusPort, apiPort)) {
+    qWarning().noquote() << "[save] aborted: validation failed —" << m_lastError;
     emit formSaveFinished(false, loggerId, m_lastError);
     return;
   }
@@ -541,12 +562,16 @@ void LoggerFormController::saveLoggerFromForm(
   const QVariantMap patchMap = buildEditPatch(originalMap, editedMap);
   const QJsonObject patchJson = QJsonObject::fromVariantMap(patchMap);
   const bool needsPost = !patchJson.isEmpty();
+  qInfo().noquote() << "[save] needsPost=" << needsPost
+                    << "patchKeys=" << patchMap.keys();
 
   m_formSaveInProgress = true;
   setError({});
 
   QSqlDatabase conn = m_db->connection();
   if (!conn.transaction()) {
+    qWarning().noquote() << "[save] aborted: conn.transaction() failed —"
+                         << conn.lastError().text();
     m_formSaveInProgress = false;
     setError(QStringLiteral("Could not start database transaction."));
     emit formSaveFinished(false, loggerId, m_lastError);
@@ -573,6 +598,7 @@ void LoggerFormController::saveLoggerFromForm(
     info.lastRevision = m_probedRevision;
 
     if (!repo.insert(info, &err)) {
+      qWarning().noquote() << "[save] aborted: insert failed —" << err;
       conn.rollback();
       m_formSaveInProgress = false;
       setError(Data::humanizeSqlError(err, code));
@@ -580,6 +606,7 @@ void LoggerFormController::saveLoggerFromForm(
       return;
     }
     savedId = info.id;
+    qInfo().noquote() << "[save] inserted row id=" << savedId;
   } else {
     Data::LoggerInfo info = *existingRow;
     info.stationCode = code;
@@ -597,6 +624,7 @@ void LoggerFormController::saveLoggerFromForm(
     info.lastRevision = m_probedRevision;
 
     if (!repo.update(info, &err)) {
+      qWarning().noquote() << "[save] aborted: update failed —" << err;
       conn.rollback();
       m_formSaveInProgress = false;
       setError(Data::humanizeSqlError(err, code));
@@ -636,6 +664,8 @@ void LoggerFormController::saveLoggerFromForm(
     Data::LoggerInfo info = *row;
     info.lastRevision = appliedRevision;
     if (!repo.update(info, &err)) {
+      qWarning().noquote()
+          << "[save] aborted: lastRevision update failed —" << err;
       conn.rollback();
       m_formSaveInProgress = false;
       setError(err);
@@ -646,6 +676,8 @@ void LoggerFormController::saveLoggerFromForm(
 
   QString catalogErr;
   if (!upsertProbedCatalog(savedId, &catalogErr)) {
+    qWarning().noquote() << "[save] aborted: catalog upsert failed —"
+                         << catalogErr;
     conn.rollback();
     m_formSaveInProgress = false;
     setError(catalogErr);
@@ -654,12 +686,16 @@ void LoggerFormController::saveLoggerFromForm(
   }
 
   if (!conn.commit()) {
+    qWarning().noquote() << "[save] aborted: commit failed —"
+                         << conn.lastError().text();
     conn.rollback();
     m_formSaveInProgress = false;
     setError(QStringLiteral("Could not commit database transaction."));
     emit formSaveFinished(false, savedId, m_lastError);
     return;
   }
+  qInfo().noquote() << "[save] committed OK savedId=" << savedId
+                    << "restApplyFailed=" << restApplyFailed;
 
   m_formSaveInProgress = false;
   setError({});
@@ -670,6 +706,11 @@ void LoggerFormController::saveLoggerFromForm(
     m_dashboard->afterMutation();
   }
   clearProbedConfig();
+  if (m_db && m_db->isOpen()) {
+    Data::LoggerRepository verifyRepo(m_db->connection());
+    qInfo().noquote() << "[save] post-commit logger_info rowCount="
+                      << verifyRepo.findAll().size();
+  }
   if (isAdd) {
     emit loggerAdded(savedId);
   } else {
@@ -687,8 +728,9 @@ void LoggerFormController::saveLoggerFromForm(
 void LoggerFormController::onProbeConfigFetched(bool ok, int httpStatus,
                                                 QString rawJson,
                                                 QString errorMessage) {
-  Q_UNUSED(httpStatus);
   if (!ok) {
+    qWarning().noquote() << "[probe] failed httpStatus=" << httpStatus << "—"
+                         << errorMessage;
     clearProbedConfig();
     emit probeConfigResult(false, errorMessage);
     return;
@@ -697,12 +739,18 @@ void LoggerFormController::onProbeConfigFetched(bool ok, int httpStatus,
   const auto parsed =
       Network::RestConfigParser::parseConfigResponse(0, rawJson.toUtf8());
   if (!parsed.valid) {
+    qWarning().noquote() << "[probe] invalid config response httpStatus="
+                         << httpStatus;
     clearProbedConfig();
     emit probeConfigResult(false, QStringLiteral("Invalid config response"));
     return;
   }
 
   storeProbedFromParsed(parsed, 0);
+  qInfo().noquote() << "[probe] OK revision=" << parsed.revision
+                    << "stationCode=" << probedStationCode()
+                    << "stationName=" << probedStationName()
+                    << "sensors=" << parsed.sensors.size();
   emit probeConfigResult(true, QString{});
 }
 
