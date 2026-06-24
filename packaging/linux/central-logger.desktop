@@ -2,7 +2,7 @@
 Type=Application
 Name=Central Logger
 Comment=Central management for Modbus TCP Data Loggers
-Exec=central_logger
+Exec=central-logger
 Icon=central-logger
 StartupWMClass=central_logger
 Terminal=false

@@ -1,0 +1,6 @@
+#!/bin/sh
+# Launcher for Central Logger.
+# The application is installed under /opt/central-logger with a self-contained
+# Qt bundle. Qt locates its plugins and QML modules via the qt.conf file placed
+# beside the binary (Prefix = ..), so no environment variables are needed.
+exec /opt/central-logger/bin/central_logger "$@"

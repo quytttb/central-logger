@@ -13,6 +13,6 @@ set(CPACK_DEBIAN_PACKAGE_SHLIBDEPS OFF)
 set(CPACK_DEBIAN_PACKAGE_DEPENDS
     "libxkbcommon0, libegl1, libgl1, libfontconfig1, libdbus-1-3"
 )
-set(CPACK_PACKAGING_INSTALL_PREFIX "/usr")
+set(CPACK_PACKAGING_INSTALL_PREFIX "/opt/central-logger")
 
 include(CPack)

@@ -63,13 +63,25 @@ install(TARGETS app
     RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
 )
 
+# Deploy Qt runtime (libs, plugins, QML modules) into the private prefix.
+# qt_generate_deploy_app_script also writes a qt.conf beside the binary with
+# "Prefix = .." so Qt resolves its own plugins without QT_PLUGIN_PATH and
+# without touching /usr/plugins (which would collide with the system Qt).
 install(SCRIPT ${deploy_script})
 
+# System-integration files use absolute destinations so they land under
+# /usr/share and /usr/bin regardless of CPACK_PACKAGING_INSTALL_PREFIX.
+# This keeps the Qt bundle fully isolated in /opt/central-logger while still
+# giving the desktop environment and PATH the hooks they need.
+install(PROGRAMS ${CMAKE_SOURCE_DIR}/packaging/linux/central-logger
+    DESTINATION /usr/bin
+)
+
 install(FILES ${CMAKE_SOURCE_DIR}/packaging/linux/central-logger.desktop
-    DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/applications
+    DESTINATION /usr/share/applications
 )
 
 install(FILES ${CMAKE_SOURCE_DIR}/resources/icons/brand_4m_technologies_blue.svg
-    DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/icons/hicolor/scalable/apps
+    DESTINATION /usr/share/icons/hicolor/scalable/apps
     RENAME central-logger.svg
 )

@@ -16,7 +16,7 @@ mkdir -p "$DIST"
 
 cmake_args=(
   -DCMAKE_BUILD_TYPE=Release
-  -DCMAKE_INSTALL_PREFIX=/usr
+  -DCMAKE_INSTALL_PREFIX=/opt/central-logger
   -DCMAKE_INSTALL_LIBDIR=lib
 )
 if [[ -f "${ROOT}/.ci_qt_root" ]]; then
