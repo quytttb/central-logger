@@ -18,7 +18,7 @@ concurrency:
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
   QT_VERSION: "6.11.1"
-  QT_MODULES: qtserialbus qtserialport qtgraphs qttasktree qtquick3d qtshadertools
+  QT_MODULES: qtserialbus qtserialport qtgraphs qttasktree qtquick3d qtshadertools qtwayland
   AQT_SOURCE: git+https://github.com/miurahr/aqtinstall.git@8c3695d4a4e1ceabf6a74dc6c79681656dc6b74b
 
 permissions:

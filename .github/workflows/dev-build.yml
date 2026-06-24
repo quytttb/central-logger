@@ -21,7 +21,7 @@ concurrency:
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
   QT_VERSION: "6.11.1"
-  QT_MODULES: qtserialbus qtserialport qtgraphs qttasktree qtquick3d qtshadertools
+  QT_MODULES: qtserialbus qtserialport qtgraphs qttasktree qtquick3d qtshadertools qtwayland
   # PyPI aqtinstall 3.3.0 lacks Qt 6.11 Windows layout (miurahr/aqtinstall#1000)
   AQT_SOURCE: git+https://github.com/miurahr/aqtinstall.git@8c3695d4a4e1ceabf6a74dc6c79681656dc6b74b
 
@@ -52,6 +52,7 @@ jobs:
             libdbus-1-3 libfontconfig1 libxcb-cursor0 libxcb-icccm4 \
             libxcb-image0 libxcb-keysyms1 libxcb-randr0 libxcb-render-util0 \
             libxcb-shape0 libxcb-sync1 libxcb-xfixes0 libxcb-xkb1 \
+            libwayland-dev libwayland-client0 \
             patchelf dpkg-dev
 
       - name: Install Qt
