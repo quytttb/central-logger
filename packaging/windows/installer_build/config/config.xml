@@ -6,11 +6,12 @@
     <Publisher>4M Technologies</Publisher>
     <StartMenuDir>Central Logger</StartMenuDir>
     <TargetDir>@RootDir@/CentralLogger</TargetDir>
-    <StyleSheet>style.qss</StyleSheet>
     <WizardStyle>Modern</WizardStyle>
     <WizardDefaultWidth>850</WizardDefaultWidth>
     <WizardDefaultHeight>500</WizardDefaultHeight>
     <InstallerApplicationIcon>app_icon</InstallerApplicationIcon>
     <InstallerWindowIcon>window_icon.png</InstallerWindowIcon>
     <Logo>logo.png</Logo>
+    <AllowElevation>true</AllowElevation>
+    <ControlScript>controlscript.qs</ControlScript>
 </Installer>
