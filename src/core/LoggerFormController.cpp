@@ -605,25 +605,26 @@ void LoggerFormController::saveLoggerFromForm(
     }
   }
 
+  // Attempt to push the changed fields to the edge device. If the REST call
+  // fails (device offline, timeout, etc.) we still commit the local DB record
+  // so the logger is not lost. The caller receives configApplyFailed and can
+  // show a non-blocking warning; Modbus polling will resume when the device
+  // comes back online.
   int appliedRevision = m_probedRevision;
+  bool restApplyFailed = false;
+  QString restApplyErr;
   if (needsPost) {
-    QString applyErr;
     if (!waitForConfigApply(savedId, m_probedRevision, patchJson,
-                            &appliedRevision, &applyErr)) {
-      conn.rollback();
-      m_formSaveInProgress = false;
-      setError(applyErr);
+                            &appliedRevision, &restApplyErr)) {
+      restApplyFailed = true;
+      qWarning() << "LoggerFormController: REST config push failed for logger"
+                 << savedId << "—" << restApplyErr
+                 << "(logger will still be saved to local DB)";
       if (m_dashboard) {
         m_dashboard->logEvent(
-            0, QStringLiteral("Warning"),
-            QStringLiteral("Failed to push config to logger #%1: %2")
-                .arg(savedId)
-                .arg(applyErr));
-        m_dashboard->reloadRecentEvents();
+            savedId, QStringLiteral("Warning"),
+            QStringLiteral("Config push to device failed: %1").arg(restApplyErr));
       }
-      emit formSaveFinished(false, savedId, m_lastError);
-      emit configApplyFailed(savedId, applyErr);
-      return;
     }
   }
 
@@ -666,17 +667,21 @@ void LoggerFormController::saveLoggerFromForm(
     m_dashboard->logEvent(savedId, QStringLiteral("Info"),
                           isAdd ? QStringLiteral("Logger added: %1").arg(code)
                                 : QStringLiteral("Logger updated: %1").arg(code));
-  }
-  clearProbedConfig();
-  if (m_dashboard) {
     m_dashboard->afterMutation();
   }
+  clearProbedConfig();
   if (isAdd) {
     emit loggerAdded(savedId);
   } else {
     emit loggerUpdated(savedId);
   }
   emit formSaveFinished(true, savedId, QString{});
+
+  // Emit the REST warning AFTER formSaveFinished so QML can close the dialog
+  // first and then show the non-blocking banner.
+  if (restApplyFailed) {
+    emit configApplyFailed(savedId, restApplyErr);
+  }
 }
 
 void LoggerFormController::onProbeConfigFetched(bool ok, int httpStatus,

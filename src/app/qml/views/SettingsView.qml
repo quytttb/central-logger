@@ -160,6 +160,60 @@ Item {
                     Layout.fillWidth: true
                     wrapMode: Text.WordWrap
                 }
+
+                // Diagnostics row — log file path for support / bug reports.
+                Rectangle {
+                    Layout.fillWidth: true
+                    Layout.columnSpan: 2
+                    Layout.topMargin: AppTheme.formRowSpacing
+                    height: 1
+                    color: AppColors.dividerLine
+                }
+
+                ColumnLayout {
+                    Layout.fillWidth: true
+                    Layout.columnSpan: 2
+                    spacing: 4
+
+                    Label {
+                        text: qsTr("Diagnostics")
+                        font: AppTypography.labelSmall
+                        color: AppColors.textMuted
+                    }
+
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: 8
+
+                        Label {
+                            text: qsTr("Log file:")
+                            color: AppColors.textMuted
+                            font: AppTypography.bodySmall
+                        }
+
+                        Label {
+                            id: logPathLabel
+                            Layout.fillWidth: true
+                            text: SettingsController.logFilePath.length > 0
+                                  ? SettingsController.logFilePath
+                                  : qsTr("(logging not available)")
+                            font: AppTypography.bodySmall
+                            color: AppColors.textMuted
+                            wrapMode: Text.WrapAnywhere
+                            elide: Text.ElideNone
+                        }
+
+                        AppButton {
+                            kind: AppButton.Text
+                            text: qsTr("Copy")
+                            visible: SettingsController.logFilePath.length > 0
+                            onClicked: {
+                                DesktopService.copyToClipboard(SettingsController.logFilePath)
+                                AppNotifier.show(qsTr("Log path copied to clipboard."), "info")
+                            }
+                        }
+                    }
+                }
             }
         }
 

@@ -13,11 +13,16 @@
 #include "network/rest/RestConfigService.h"
 
 #include <QCoreApplication>
+#include <QDateTime>
+#include <QDir>
+#include <QFile>
 #include <QFontDatabase>
 #include <QGuiApplication>
 #include <QIcon>
 #include <QMetaType>
+#include <QMutex>
 #include <QQmlApplicationEngine>
+#include <QStandardPaths>
 #include "ThemeSetup.h"
 #include <QString>
 #include <QThread>
@@ -37,6 +42,71 @@ using CentralLogger::Network::ModbusService;
 using CentralLogger::Network::PollSnapshot;
 using CentralLogger::Network::RestConfigService;
 
+// ---------------------------------------------------------------------------
+// File-based message handler
+// ---------------------------------------------------------------------------
+
+namespace {
+
+QFile  *g_logFile  = nullptr;
+QMutex  g_logMutex;
+
+void fileMessageHandler(QtMsgType type, const QMessageLogContext &, const QString &msg)
+{
+    const char *level = "DEBUG";
+    switch (type) {
+    case QtDebugMsg:    level = "DEBUG";    break;
+    case QtInfoMsg:     level = "INFO";     break;
+    case QtWarningMsg:  level = "WARNING";  break;
+    case QtCriticalMsg: level = "CRITICAL"; break;
+    case QtFatalMsg:    level = "FATAL";    break;
+    }
+    const QByteArray line =
+        (QDateTime::currentDateTime().toString(Qt::ISODate)
+         + QStringLiteral(" [") + QLatin1String(level) + QStringLiteral("] ")
+         + msg + QLatin1Char('\n')).toUtf8();
+
+    QMutexLocker lock(&g_logMutex);
+    if (g_logFile && g_logFile->isOpen()) {
+        g_logFile->write(line);
+        g_logFile->flush();
+    }
+    fprintf(stderr, "%s", line.constData());
+    if (type == QtFatalMsg)
+        abort();
+}
+
+// Returns the path where the log file will be created, for display in the UI.
+QString initFileLogging()
+{
+    const QString dataDir =
+        QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
+    QDir().mkpath(dataDir);
+    const QString logPath = dataDir + QStringLiteral("/central-logger.log");
+
+    // Rotate: if the current log exceeds 5 MB, rename it to .log.old.
+    {
+        QFileInfo fi(logPath);
+        if (fi.exists() && fi.size() > 5 * 1024 * 1024) {
+            QFile::remove(logPath + QStringLiteral(".old"));
+            QFile::rename(logPath, logPath + QStringLiteral(".old"));
+        }
+    }
+
+    g_logFile = new QFile(logPath);
+    if (!g_logFile->open(QIODevice::Append | QIODevice::Text)) {
+        delete g_logFile;
+        g_logFile = nullptr;
+        return {};
+    }
+    qInstallMessageHandler(fileMessageHandler);
+    return logPath;
+}
+
+} // namespace
+
+// ---------------------------------------------------------------------------
+
 int main(int argc, char *argv[])
 {
 #ifdef Q_OS_WIN
@@ -55,6 +125,9 @@ int main(int argc, char *argv[])
     QCoreApplication::setOrganizationName(QStringLiteral("4M Technologies"));
     QCoreApplication::setOrganizationDomain(QStringLiteral("4mtech.vn"));
     QCoreApplication::setApplicationName(QStringLiteral("Central Logger"));
+
+    const QString logFilePath = initFileLogging();
+    qInfo() << "Central Logger starting — log:" << logFilePath;
 
     // Font path matches qt_add_qml_module(RESOURCES) alias in the generated qrc.
     const QString iconFontPath =
@@ -112,6 +185,7 @@ int main(int argc, char *argv[])
     SettingsController settings(nullptr);
     settings.setDatabase(&database);
     settings.load();
+    settings.setLogFilePath(logFilePath);
     SettingsController::setInstance(&settings);
 
     AppState appState(nullptr);

@@ -32,6 +32,7 @@ class SettingsController : public QObject
     Q_PROPERTY(int     dataRetentionDays      READ dataRetentionDays      WRITE setDataRetentionDays      NOTIFY dataRetentionDaysChanged)
     Q_PROPERTY(int     historyFlushIntervalS  READ historyFlushIntervalS  WRITE setHistoryFlushIntervalS  NOTIFY historyFlushIntervalSChanged)
     Q_PROPERTY(QString lastError          READ lastError                                       NOTIFY lastErrorChanged)
+    Q_PROPERTY(QString logFilePath        READ logFilePath        CONSTANT)
 
 public:
     /// Parent required — Qt 6 uses the default ctor for QML_SINGLETON when
@@ -43,6 +44,8 @@ public:
     int     dataRetentionDays()     const { return m_settings.dataRetentionDays; }
     int     historyFlushIntervalS() const { return m_settings.historyFlushIntervalS; }
     QString lastError()         const { return m_lastError; }
+    QString logFilePath()       const { return m_logFilePath; }
+    void setLogFilePath(const QString &path) { m_logFilePath = path; }
 
     void setTheme(const QString &value);
     void setSystemTimezone(const QString &value);
@@ -88,6 +91,7 @@ private:
     Data::Database  *m_db = nullptr;
     Data::AppSettings m_settings;
     QString          m_lastError;
+    QString          m_logFilePath;
 };
 
 } // namespace CentralLogger::Core
