@@ -193,6 +193,7 @@ void TestLoggerFormSave::requiresProbeBeforeSave()
 
     // No probe → m_probedRevision == -1 → saveLoggerFromForm returns early.
     h.form.saveLoggerFromForm(true, -1,
+                              QStringLiteral(""),
                               QStringLiteral("My Logger"),
                               QStringLiteral("127.0.0.1"),
                               5020, h.edge.port(),
@@ -227,6 +228,7 @@ void TestLoggerFormSave::successPath_dbCommitted()
 
     // "New Name" ≠ "EdgeName" from probe → a POST patch is required.
     h.form.saveLoggerFromForm(true, -1,
+                              QStringLiteral(""),
                               QStringLiteral("New Name"),
                               QStringLiteral("127.0.0.1"),
                               5020, h.edge.port(),
@@ -269,6 +271,7 @@ void TestLoggerFormSave::restFail_dbStillCommitted()
                      });
 
     h.form.saveLoggerFromForm(true, -1,
+                              QStringLiteral(""),
                               QStringLiteral("New Name"),
                               QStringLiteral("127.0.0.1"),
                               5020, h.edge.port(),
@@ -303,6 +306,7 @@ void TestLoggerFormSave::noRestCall_whenConfigUnchanged()
     // "EdgeName" and poll=2 match what the fake server returned → empty patch
     // → saveLoggerFromForm skips the REST call entirely.
     h.form.saveLoggerFromForm(true, -1,
+                              QStringLiteral(""),
                               QStringLiteral("EdgeName"),
                               QStringLiteral("127.0.0.1"),
                               5020, h.edge.port(),

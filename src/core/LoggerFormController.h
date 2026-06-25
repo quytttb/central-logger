@@ -102,6 +102,9 @@ public slots:
     /// `station_name` from last GET/probe snapshot (may be empty).
     Q_INVOKABLE QString probedStationName() const;
 
+    /// `station_code` from last GET/probe snapshot (may be empty).
+    Q_INVOKABLE QString probedStationCode() const;
+
     /// True when a config snapshot is loaded in RAM (Connect or Edit auto-fetch).
     Q_INVOKABLE bool hasProbedConfig() const { return m_probedRevision >= 0; }
 
@@ -111,6 +114,7 @@ public slots:
     /// Atomic Save from Add/Edit form (async — listen for formSaveFinished).
     Q_INVOKABLE void saveLoggerFromForm(bool isAdd,
                                         int loggerId,
+                                        const QString &stationCode,
                                         const QString &name,
                                         const QString &host,
                                         int modbusPort,
@@ -170,7 +174,6 @@ private:
     bool waitForConfigApply(qint64 loggerId, int expectedRevision,
                             const QJsonObject &patch, int *appliedRevisionOut,
                             QString *errorOut);
-    QString probedStationCode() const;
 
     Data::Database             *m_db        = nullptr;
     Network::RestConfigService *m_restConfig = nullptr;

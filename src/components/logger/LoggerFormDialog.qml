@@ -55,6 +55,9 @@ Dialog {
         const edgeName = LoggerFormController.probedStationName();
         if (edgeName.length > 0)
             nameField.text = edgeName;
+        const edgeCode = LoggerFormController.probedStationCode();
+        if (edgeCode.length > 0)
+            stationCodeField.text = edgeCode;
         const edgeUnit = LoggerFormController.probedModbusUnitId();
         if (edgeUnit > 0)
             modbusUnitIdSpin.value = edgeUnit;
@@ -85,6 +88,7 @@ Dialog {
         root.mode = mode || "add";
         root.initialData = initialData || ({});
         root.loggerId = loggerId !== undefined ? loggerId : -1;
+        stationCodeField.text    = root.initialData.stationCode           ?? "";
         nameField.text           = root.initialData.name                  ?? "";
         hostField.text           = root.initialData.host                  ?? "";
         modbusPortSpin.value     = root.initialData.modbusPort            ?? 5020;
@@ -115,7 +119,8 @@ Dialog {
         || LoggerFormController.isValidHost(hostField.text.trim())
 
     readonly property bool canSave:
-           nameField.text.trim().length > 0
+           stationCodeField.text.trim().length > 0
+        && nameField.text.trim().length > 0
         && hostField.text.trim().length > 0
         && root.hostValid
 
@@ -196,20 +201,34 @@ Dialog {
             columnSpacing: 16
             rowSpacing: AppTheme.formRowSpacing
 
-            // Row 0 — Name | Modbus port (wide: cols 2–3)
+            // Row 0 — Station Code (wide: cols 0-1) | Modbus port (wide: cols 2–3)
             Label {
-                text: qsTr("Name *")
+                text: qsTr("Station Code *")
                 Layout.row: 0
                 Layout.column: 0
+                Layout.alignment: Qt.AlignTop
+                Layout.topMargin: 16
             }
-            TextField {
-                id: nameField
+            ColumnLayout {
                 Layout.row: 0
                 Layout.column: 1
                 Layout.fillWidth: true
-                Material.containerStyle: Material.Outlined
-                placeholderText: qsTr("Trạm bơm số 1")
-                enabled: root.configLoaded
+                spacing: 4
+
+                TextField {
+                    id: stationCodeField
+                    Layout.fillWidth: true
+                    Material.containerStyle: Material.Outlined
+                    placeholderText: qsTr("STATION-01")
+                    enabled: root.mode === "add"
+                }
+                Label {
+                    text: qsTr("Auto-filled, or enter manually")
+                    color: AppColors.onSurfaceVariant
+                    font: AppTypography.labelSmall
+                    Layout.fillWidth: true
+                    wrapMode: Text.WordWrap
+                }
             }
             Label {
                 text: qsTr("Modbus port")
@@ -219,7 +238,7 @@ Dialog {
             }
             SpinBox {
                 id: modbusPortSpin
-                Layout.row: root.formWide ? 0 : 6
+                Layout.row: root.formWide ? 0 : 7
                 Layout.column: root.formWide ? 3 : 1
                 Layout.fillWidth: true
                 Material.containerStyle: Material.Outlined
@@ -231,24 +250,24 @@ Dialog {
             Label {
                 text: qsTr("Modbus port")
                 visible: !root.formWide
-                Layout.row: 6
+                Layout.row: 7
                 Layout.column: 0
             }
 
-            // Row 1 — Host | Modbus unit ID (wide: cols 2–3)
+            // Row 1 — Name | Modbus unit ID (wide: cols 2–3)
             Label {
-                text: qsTr("Host *")
+                text: qsTr("Name *")
                 Layout.row: 1
                 Layout.column: 0
             }
             TextField {
-                id: hostField
+                id: nameField
                 Layout.row: 1
                 Layout.column: 1
                 Layout.fillWidth: true
                 Material.containerStyle: Material.Outlined
-                placeholderText: "192.168.1.50 hoặc hostname"
-                onTextChanged: if (root.visible) root.invalidateConfig()
+                placeholderText: qsTr("Pumping Station 1")
+                enabled: root.configLoaded
             }
             Label {
                 text: qsTr("Modbus unit ID")
@@ -258,7 +277,7 @@ Dialog {
             }
             SpinBox {
                 id: modbusUnitIdSpin
-                Layout.row: root.formWide ? 1 : 7
+                Layout.row: root.formWide ? 1 : 8
                 Layout.column: root.formWide ? 3 : 1
                 Layout.fillWidth: true
                 Material.containerStyle: Material.Outlined
@@ -270,31 +289,47 @@ Dialog {
             Label {
                 text: qsTr("Modbus unit ID")
                 visible: !root.formWide
-                Layout.row: 7
+                Layout.row: 8
                 Layout.column: 0
             }
 
-            // Row 2 — host validation (full width)
+            // Row 2 — Host
+            Label {
+                text: qsTr("Host *")
+                Layout.row: 2
+                Layout.column: 0
+            }
+            TextField {
+                id: hostField
+                Layout.row: 2
+                Layout.column: 1
+                Layout.fillWidth: true
+                Material.containerStyle: Material.Outlined
+                placeholderText: "192.168.1.50 or hostname"
+                onTextChanged: if (root.visible) root.invalidateConfig()
+            }
+
+            // Row 3 — host validation (full width)
             Label {
                 text: qsTr("Host phải là IPv4 hoặc hostname hợp lệ")
                 visible: hostField.text.trim().length > 0 && !root.hostValid
                 color: AppColors.error
                 font: AppTypography.labelSmall
-                Layout.row: 2
+                Layout.row: 3
                 Layout.column: 0
                 Layout.columnSpan: root.formColumns
                 wrapMode: Text.WordWrap
             }
 
-            // Row 3 — Poll | Timeout (wide) or Poll only (narrow label)
+            // Row 4 — Poll | Timeout (wide) or Poll only (narrow label)
             Label {
                 text: qsTr("Poll interval (s)")
-                Layout.row: 3
+                Layout.row: 4
                 Layout.column: 0
             }
             SpinBox {
                 id: pollIntervalSpin
-                Layout.row: 3
+                Layout.row: 4
                 Layout.column: 1
                 Layout.fillWidth: true
                 Material.containerStyle: Material.Outlined
@@ -307,12 +342,12 @@ Dialog {
             Label {
                 text: qsTr("Timeout (s)")
                 visible: root.formWide
-                Layout.row: 3
+                Layout.row: 4
                 Layout.column: 2
             }
             SpinBox {
                 id: timeoutSpin
-                Layout.row: root.formWide ? 3 : 4
+                Layout.row: root.formWide ? 4 : 5
                 Layout.column: root.formWide ? 3 : 1
                 Layout.fillWidth: true
                 Material.containerStyle: Material.Outlined
@@ -324,19 +359,19 @@ Dialog {
             Label {
                 text: qsTr("Timeout (s)")
                 visible: !root.formWide
-                Layout.row: 4
+                Layout.row: 5
                 Layout.column: 0
             }
 
-            // Row 4 — API port | API token (wide)
+            // Row 5 — API port | API token (wide)
             Label {
                 text: qsTr("API port")
-                Layout.row: root.formWide ? 4 : 5
+                Layout.row: root.formWide ? 5 : 6
                 Layout.column: 0
             }
             SpinBox {
                 id: apiPortSpin
-                Layout.row: root.formWide ? 4 : 5
+                Layout.row: root.formWide ? 5 : 6
                 Layout.column: 1
                 Layout.fillWidth: true
                 Material.containerStyle: Material.Outlined
@@ -349,12 +384,12 @@ Dialog {
             Label {
                 text: qsTr("API token")
                 visible: root.formWide
-                Layout.row: 4
+                Layout.row: 5
                 Layout.column: 2
             }
             TextField {
                 id: apiTokenField
-                Layout.row: root.formWide ? 4 : 6
+                Layout.row: root.formWide ? 5 : 7
                 Layout.column: root.formWide ? 3 : 1
                 Layout.fillWidth: true
                 Material.containerStyle: Material.Outlined
@@ -365,7 +400,7 @@ Dialog {
             Label {
                 text: qsTr("API token")
                 visible: !root.formWide
-                Layout.row: 6
+                Layout.row: 7
                 Layout.column: 0
             }
         }
@@ -470,6 +505,7 @@ Dialog {
                 LoggerFormController.saveLoggerFromForm(
                     root.mode === "add",
                     root.loggerId,
+                    stationCodeField.text,
                     nameField.text,
                     hostField.text,
                     modbusPortSpin.value,

@@ -485,7 +485,7 @@ bool LoggerFormController::waitForConfigApply(qint64 loggerId,
 }
 
 void LoggerFormController::saveLoggerFromForm(
-    bool isAdd, int loggerId, const QString &name, const QString &host,
+    bool isAdd, int loggerId, const QString &stationCode, const QString &name, const QString &host,
     int modbusPort, int apiPort, const QString &apiToken, int modbusUnitId,
     int pollIntervalS, int timeoutS) {
   qInfo().noquote() << "[save] begin isAdd=" << isAdd
@@ -532,12 +532,15 @@ void LoggerFormController::saveLoggerFromForm(
 
   QString code;
   if (isAdd) {
-    code = probedStationCode().trimmed();
+    code = stationCode.trimmed();
+    if (code.isEmpty()) {
+      code = probedStationCode().trimmed();
+    }
     if (code.isEmpty()) {
       qWarning().noquote()
           << "[save] aborted: device config has no station_code";
       setError(QStringLiteral(
-          "Device config has no station code. Connect again, then save."));
+          "Thiết bị chưa có mã trạm. Vui lòng nhập Mã trạm (Station Code) thủ công."));
       emit formSaveFinished(false, loggerId, m_lastError);
       return;
     }
