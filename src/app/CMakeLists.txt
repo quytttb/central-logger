@@ -54,7 +54,13 @@ target_link_libraries(app
 )
 
 # Linux/Windows packaging: Qt CMake Deployment API + CPack DEB (see cmake/CPackOptions.cmake)
-qt_generate_deploy_app_script(
+# qt_generate_deploy_app_script (Qt6Core) does NOT deploy QML imports on Linux — it only
+# deploys shared libs and C++ plugins.  qt_generate_deploy_qml_app_script (Qt6Qml) is the
+# correct function for QML apps; it deploys runtime deps + QML modules in one shot.
+# (Qt docs mark qt_generate_deploy_qml_app_script "deprecated since 6.8 in favour of
+# qt_generate_deploy_app_script", but the qtbase source of the latter never calls
+# qt_deploy_qml_imports on Linux — confirmed in Qt6CoreMacros.cmake lines 3954-3962.)
+qt_generate_deploy_qml_app_script(
     TARGET app
     OUTPUT_SCRIPT deploy_script
     NO_UNSUPPORTED_PLATFORM_ERROR
