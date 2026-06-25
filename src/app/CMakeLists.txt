@@ -50,6 +50,7 @@ target_link_libraries(app
         central_logger_theme_setup
         data
         network
+        utils
 )
 
 # Linux/Windows packaging: Qt CMake Deployment API + CPack DEB (see cmake/CPackOptions.cmake)

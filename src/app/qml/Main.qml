@@ -11,14 +11,14 @@ import CentralLogger.Theme
 ApplicationWindow {
     id: root
 
-    width: 1280
-    height: 800
+    width: Math.round(Screen.desktopAvailableWidth * 0.8)
+    height: Math.round(Screen.desktopAvailableHeight * 0.8)
     minimumWidth: 1024
     minimumHeight: 768
     visible: true
     visibility: Window.Maximized
     title: qsTr("Central Logger")
-    flags: Qt.Window | Qt.FramelessWindowHint | Qt.WindowSystemMenuHint
+    flags: Qt.Window | (Qt.platform.os === "windows" ? 0 : Qt.FramelessWindowHint) | Qt.WindowSystemMenuHint
 
     Material.theme:   AppTheme.materialTheme
     Material.accent:  AppTheme.accent

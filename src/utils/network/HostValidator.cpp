@@ -1,4 +1,4 @@
-#include "utils/HostValidator.h"
+#include "utils/network/HostValidator.h"
 
 #include <QAbstractSocket>
 #include <QHostAddress>

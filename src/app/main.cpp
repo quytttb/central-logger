@@ -24,6 +24,7 @@
 #include <QQmlApplicationEngine>
 #include <QStandardPaths>
 #include "ThemeSetup.h"
+#include "utils/os/WindowsFramelessHelper.h"
 #include <QString>
 #include <QThread>
 #include <QtDebug>
@@ -121,6 +122,10 @@ int main(int argc, char *argv[])
     CentralLogger::Theme::applyQuickControlsStyle();
 
     QGuiApplication app(argc, argv);
+    
+    static WindowsFramelessHelper framelessHelper;
+    app.installNativeEventFilter(&framelessHelper);
+
     app.setWindowIcon(QIcon(QStringLiteral(":/qt/qml/CentralLogger/Components/resources/icons/brand_4m_technologies_blue.svg")));
     QCoreApplication::setOrganizationName(QStringLiteral("4M Technologies"));
     QCoreApplication::setOrganizationDomain(QStringLiteral("4mtech.vn"));

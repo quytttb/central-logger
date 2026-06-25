@@ -106,11 +106,11 @@ public slots:
     Q_INVOKABLE bool hasProbedConfig() const { return m_probedRevision >= 0; }
 
     /// Edit: GET /config for @p loggerId using DB connection params.
-    Q_INVOKABLE void loadConfigForForm(qint64 loggerId);
+    Q_INVOKABLE void loadConfigForForm(int loggerId);
 
     /// Atomic Save from Add/Edit form (async — listen for formSaveFinished).
     Q_INVOKABLE void saveLoggerFromForm(bool isAdd,
-                                        qint64 loggerId,
+                                        int loggerId,
                                         const QString &name,
                                         const QString &host,
                                         int modbusPort,

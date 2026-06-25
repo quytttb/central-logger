@@ -3,10 +3,12 @@
 
 qt_add_library(utils STATIC
     AppConstants.h
-    DateTimeUtils.h
-    DateTimeUtils.cpp
-    HostValidator.h
-    HostValidator.cpp
+    time/DateTimeUtils.h
+    time/DateTimeUtils.cpp
+    network/HostValidator.h
+    network/HostValidator.cpp
+    os/WindowsFramelessHelper.h
+    os/WindowsFramelessHelper.cpp
     events/EventLevels.h
     charts/ChartDisplayLimits.h
     sensors/AttachDiTypeHelper.h

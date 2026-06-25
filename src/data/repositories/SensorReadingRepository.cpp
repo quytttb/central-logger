@@ -1,6 +1,6 @@
 #include "SensorReadingRepository.h"
 
-#include "utils/DateTimeUtils.h"
+#include "utils/time/DateTimeUtils.h"
 
 #include <QSqlError>
 #include <QSqlQuery>

@@ -9,7 +9,7 @@
 #include "network/rest/RestConfigParser.h"
 #include "network/rest/RestConfigService.h"
 #include "utils/AppConstants.h"
-#include "utils/HostValidator.h"
+#include "utils/network/HostValidator.h"
 
 #include <QDebug>
 #include <QEventLoop>
@@ -349,7 +349,7 @@ QString LoggerFormController::probedStationCode() const {
   return {};
 }
 
-void LoggerFormController::loadConfigForForm(qint64 loggerId) {
+void LoggerFormController::loadConfigForForm(int loggerId) {
   if (!m_restConfig) {
     emit configLoadForFormFinished(
         false, QStringLiteral("REST service not available."));
@@ -485,7 +485,7 @@ bool LoggerFormController::waitForConfigApply(qint64 loggerId,
 }
 
 void LoggerFormController::saveLoggerFromForm(
-    bool isAdd, qint64 loggerId, const QString &name, const QString &host,
+    bool isAdd, int loggerId, const QString &name, const QString &host,
     int modbusPort, int apiPort, const QString &apiToken, int modbusUnitId,
     int pollIntervalS, int timeoutS) {
   qInfo().noquote() << "[save] begin isAdd=" << isAdd

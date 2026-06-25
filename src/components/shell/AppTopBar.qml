@@ -34,6 +34,14 @@ Item {
             if (mouse.button === Qt.LeftButton && Window.window)
                 Window.window.startSystemMove()
         }
+        onDoubleClicked: mouse => {
+            if (mouse.button === Qt.LeftButton && Window.window) {
+                if (Window.window.visibility === Window.Maximized)
+                    Window.window.showNormal()
+                else
+                    Window.window.showMaximized()
+            }
+        }
     }
 
     Loader {
