@@ -11,12 +11,30 @@ import CentralLogger.Theme
 ApplicationWindow {
     id: root
 
-    width: Math.round(Screen.desktopAvailableWidth * 0.8)
-    height: Math.round(Screen.desktopAvailableHeight * 0.8)
+    // Per-screen geometry (not Screen.desktop* which spans all monitors).
+    readonly property Screen targetScreen: root.screen || Qt.application.primaryScreen
+    readonly property real windowScreenFraction: 0.8
+
+    width: targetScreen
+           ? Math.round(targetScreen.availableWidth * windowScreenFraction)
+           : Math.round(Screen.desktopAvailableWidth * windowScreenFraction)
+    height: targetScreen
+            ? Math.round(targetScreen.availableHeight * windowScreenFraction)
+            : Math.round(Screen.desktopAvailableHeight * windowScreenFraction)
     minimumWidth: 1024
     minimumHeight: 768
     visible: true
     visibility: Window.Maximized
+
+    function centerOnTargetScreen() {
+        const scr = root.screen || Qt.application.primaryScreen
+        if (!scr)
+            return
+        x = scr.virtualX + Math.round((scr.availableWidth - width) / 2)
+        y = scr.virtualY + Math.round((scr.availableHeight - height) / 2)
+    }
+
+    Component.onCompleted: centerOnTargetScreen()
     title: qsTr("Central Logger")
     flags: Qt.Window | (Qt.platform.os === "windows" ? 0 : Qt.FramelessWindowHint) | Qt.WindowSystemMenuHint
 
