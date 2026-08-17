@@ -51,12 +51,16 @@ public:
 private:
     bool ensureParentDirectory(const QString &databasePath, QString *errorOut);
     bool applyInitialSchema(QString *errorOut);
-    bool readEffectiveSchemaVersion(int *versionOut, QString *errorOut);
-    bool migrateSchemaIfNeeded(int currentVersion, QString *errorOut);
-    bool backupDatabase(const QString &databasePath, QString *errorOut);
-    bool runMigrationStep(int version, QSqlQuery &query, QString *errorOut);
-    int  inferSchemaVersion(int declaredVersion) const;
+    bool readUserVersion(int *versionOut, QString *errorOut);
     bool isFreshDatabase() const;
+
+    /// Backup an older-version DB to `{path}.bak` and reopen a brand-new
+    /// empty file on the same connection (pre-production policy: recreate
+    /// from canonical schema instead of in-place migration).
+    bool backupAndResetDatabase(const QString &databasePath, QString *errorOut);
+    bool reopenConnection(const QString &databasePath,
+                          const QString &connectionName,
+                          QString *errorOut);
 
     QSqlDatabase m_db;
     QString m_connectionName;

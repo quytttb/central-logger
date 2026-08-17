@@ -34,7 +34,7 @@ ApplicationWindow {
         errorKind === "newer_than_app"
             ? qsTr("This database was created by a newer version of Central Logger. "
                    + "Update the application or remove the database file and restart.")
-            : qsTr("Central Logger could not upgrade or open the local database.")
+            : qsTr("Central Logger could not open the local database.")
 
     readonly property string dialogDetail: {
         let lines = []
@@ -43,7 +43,7 @@ ApplicationWindow {
         if (dbPath.length > 0)
             lines.push(qsTr("Database: %1").arg(dbPath))
         if (errorKind === "migrate_fail" && backupPath.length > 0)
-            lines.push(qsTr("Backup (if migration started): %1").arg(backupPath))
+            lines.push(qsTr("Backup file (if created): %1").arg(backupPath))
         return lines.join("\n\n")
     }
 
