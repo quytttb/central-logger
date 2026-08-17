@@ -636,47 +636,6 @@ void LoggerFormController::saveLoggerFromForm(
     }
   }
 
-  // Attempt to push the changed fields to the edge device. If the REST call
-  // fails (device offline, timeout, etc.) we still commit the local DB record
-  // so the logger is not lost. The caller receives configApplyFailed and can
-  // show a non-blocking warning; Modbus polling will resume when the device
-  // comes back online.
-  int appliedRevision = m_probedRevision;
-  bool restApplyFailed = false;
-  QString restApplyErr;
-  if (needsPost) {
-    if (!waitForConfigApply(savedId, m_probedRevision, patchJson,
-                            &appliedRevision, &restApplyErr)) {
-      restApplyFailed = true;
-      qWarning() << "LoggerFormController: REST config push failed for logger"
-                 << savedId << "—" << restApplyErr
-                 << "(logger will still be saved to local DB)";
-      if (m_dashboard) {
-        m_dashboard->logEvent(
-            savedId, QStringLiteral("Warning"),
-            QStringLiteral("Config push to device failed: %1").arg(restApplyErr));
-      }
-    }
-  }
-
-  if (appliedRevision < 0) {
-    appliedRevision = m_probedRevision;
-  }
-
-  if (const auto row = repo.findById(savedId, &err)) {
-    Data::LoggerInfo info = *row;
-    info.lastRevision = appliedRevision;
-    if (!repo.update(info, &err)) {
-      qWarning().noquote()
-          << "[save] aborted: lastRevision update failed —" << err;
-      conn.rollback();
-      m_formSaveInProgress = false;
-      setError(err);
-      emit formSaveFinished(false, savedId, m_lastError);
-      return;
-    }
-  }
-
   QString catalogErr;
   if (!upsertProbedCatalog(savedId, &catalogErr)) {
     qWarning().noquote() << "[save] aborted: catalog upsert failed —"
@@ -697,8 +656,45 @@ void LoggerFormController::saveLoggerFromForm(
     emit formSaveFinished(false, savedId, m_lastError);
     return;
   }
-  qInfo().noquote() << "[save] committed OK savedId=" << savedId
-                    << "restApplyFailed=" << restApplyFailed;
+  qInfo().noquote() << "[save] committed OK savedId=" << savedId;
+
+  // P2 #16 (audit M-1): the DB row is committed BEFORE the REST push so the
+  // ~15 s REST round-trip no longer holds the WAL write lock. If the push
+  // fails the logger still exists locally; the caller receives
+  // configApplyFailed and can show a non-blocking warning.
+  int appliedRevision = m_probedRevision;
+  bool restApplyFailed = false;
+  QString restApplyErr;
+  if (needsPost) {
+    if (!waitForConfigApply(savedId, m_probedRevision, patchJson,
+                            &appliedRevision, &restApplyErr)) {
+      restApplyFailed = true;
+      qWarning() << "LoggerFormController: REST config push failed for logger"
+                 << savedId << "—" << restApplyErr
+                 << "(logger already saved to local DB)";
+      if (m_dashboard) {
+        m_dashboard->logEvent(
+            savedId, QStringLiteral("Warning"),
+            QStringLiteral("Config push to device failed: %1").arg(restApplyErr));
+      }
+    }
+  }
+
+  if (appliedRevision < 0) {
+    appliedRevision = m_probedRevision;
+  }
+
+  if (appliedRevision != m_probedRevision) {
+    if (const auto row = repo.findById(savedId, &err)) {
+      Data::LoggerInfo info = *row;
+      info.lastRevision = appliedRevision;
+      QString revErr;
+      if (!repo.update(info, &revErr)) {
+        qWarning().noquote()
+            << "[save] warning: lastRevision update failed —" << revErr;
+      }
+    }
+  }
 
   m_formSaveInProgress = false;
   setError({});
