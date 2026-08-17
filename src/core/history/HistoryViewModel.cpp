@@ -64,6 +64,8 @@ HistorySearchResult executeHistorySearch(HistorySearchParams params)
         return result;
     }
 
+    Data::Database::applyPerformancePragmas(db, nullptr);
+
     {
         Data::SensorReadingRepository repo(db);
         result.totalCount = repo.countHistory(params.loggerId,

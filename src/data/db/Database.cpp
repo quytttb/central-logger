@@ -431,6 +431,7 @@ bool Database::applyPerformancePragmas(QSqlDatabase db, QString *errorOut)
 
     const QStringList statements = {
         QStringLiteral("PRAGMA journal_mode = WAL"),
+        QStringLiteral("PRAGMA busy_timeout = 5000"),
         QStringLiteral("PRAGMA synchronous = NORMAL"),
         QStringLiteral("PRAGMA temp_store = MEMORY"),
         QStringLiteral("PRAGMA mmap_size = 268435456"),
