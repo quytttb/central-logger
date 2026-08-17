@@ -85,6 +85,38 @@ bool isIgnorableMigrationError(const QString &sql, const QString &err)
     return false;
 }
 
+/// Audit H-B: make sure the database uses incremental auto-vacuum so that
+/// `PRAGMA incremental_vacuum` after retention purges can shrink the file.
+/// Switching the mode on a non-empty database requires a one-off VACUUM.
+bool ensureAutoVacuumIncremental(QSqlDatabase db, QString *errorOut)
+{
+    QSqlQuery q(db);
+    int mode = -1;
+    if (q.exec(QStringLiteral("PRAGMA auto_vacuum")) && q.next()) {
+        mode = q.value(0).toInt();
+    }
+    if (mode == 2) {
+        return true;
+    }
+    if (!q.exec(QStringLiteral("PRAGMA auto_vacuum = INCREMENTAL"))) {
+        if (errorOut) {
+            *errorOut = QStringLiteral("PRAGMA auto_vacuum failed: %1")
+                            .arg(q.lastError().text());
+        }
+        return false;
+    }
+    if (!q.exec(QStringLiteral("VACUUM"))) {
+        if (errorOut) {
+            *errorOut = QStringLiteral("VACUUM (auto_vacuum switch) failed: %1")
+                            .arg(q.lastError().text());
+        }
+        return false;
+    }
+    // VACUUM resets journal_mode to the default; applyPerformancePragmas()
+    // (called later by open()) re-applies WAL.
+    return true;
+}
+
 } // namespace
 
 int Database::schemaVersion()
@@ -141,6 +173,11 @@ bool Database::open(const QString &connectionName,
             *errorOut = QStringLiteral("PRAGMA foreign_keys failed: %1")
                             .arg(pragma.lastError().text());
         }
+        close();
+        return false;
+    }
+
+    if (!ensureAutoVacuumIncremental(m_db, errorOut)) {
         close();
         return false;
     }

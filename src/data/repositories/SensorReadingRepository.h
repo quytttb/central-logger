@@ -22,8 +22,16 @@ public:
                      QString *errorOut = nullptr,
                      bool manageTransaction = true);
 
-    /// Returns the number of rows deleted (or -1 on error).
-    int purgeOlderThan(const QDateTime &cutoffUtc, QString *errorOut = nullptr);
+    /// Deletes rows older than @p cutoffUtc in chunks of @p chunkSize rows
+    /// (each chunk is its own autocommit transaction so the WAL write lock
+    /// is released between chunks — audit H-B). @p chunkSize <= 0 disables
+    /// chunking (single DELETE). Returns the number of rows deleted
+    /// (or -1 on error).
+    int purgeOlderThan(const QDateTime &cutoffUtc,
+                       QString *errorOut = nullptr,
+                       int chunkSize = kDefaultPurgeChunkSize);
+
+    static constexpr int kDefaultPurgeChunkSize = 50000;
 
     /// Convenience helper for tests / status panels.
     int countForSensor(qint64 sensorId, QString *errorOut = nullptr) const;

@@ -125,6 +125,39 @@ private slots:
         QCOMPARE(totalReadings(), 0);
     }
 
+    void purgeChunkedLoopsUntilDone()
+    {
+        // Audit H-B: DELETE must loop in chunks (LIMIT) — 7 rows with
+        // chunkSize 3 → 3 + 3 + 1 iterations, all removed.
+        const QDateTime old = QDateTime::currentDateTimeUtc().addDays(-45);
+        for (int i = 0; i < 7; ++i) {
+            insertReading(1, static_cast<double>(i), old.addSecs(i));
+        }
+        const QDateTime fresh = QDateTime::currentDateTimeUtc().addDays(-1);
+        insertReading(1, 99.0, fresh);
+        QCOMPARE(totalReadings(), 8);
+
+        const QDateTime cutoff = QDateTime::currentDateTimeUtc().addDays(-30);
+        SensorReadingRepository repo(m_db.connection());
+        const int deleted = repo.purgeOlderThan(cutoff, nullptr, 3);
+        QCOMPARE(deleted, 7);
+        QCOMPARE(totalReadings(), 1);
+    }
+
+    void purgeChunkSizeZeroFallsBackToSingleDelete()
+    {
+        const QDateTime old = QDateTime::currentDateTimeUtc().addDays(-50);
+        insertReading(1, 1.0, old);
+        insertReading(1, 2.0, old.addSecs(1));
+        QCOMPARE(totalReadings(), 2);
+
+        const QDateTime cutoff = QDateTime::currentDateTimeUtc().addDays(-30);
+        SensorReadingRepository repo(m_db.connection());
+        const int deleted = repo.purgeOlderThan(cutoff, nullptr, 0);
+        QCOMPARE(deleted, 2);
+        QCOMPARE(totalReadings(), 0);
+    }
+
     void retentionDaysFromSettings()
     {
         // Verify that SettingsRepository returns the default 30 days.

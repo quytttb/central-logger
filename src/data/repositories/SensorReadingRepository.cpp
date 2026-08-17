@@ -78,16 +78,45 @@ bool SensorReadingRepository::insertBatch(const QVector<SensorReading> &readings
     return true;
 }
 
-int SensorReadingRepository::purgeOlderThan(const QDateTime &cutoffUtc, QString *errorOut)
+int SensorReadingRepository::purgeOlderThan(const QDateTime &cutoffUtc,
+                                            QString *errorOut,
+                                            int chunkSize)
 {
+    const QString cutoff = isoUtc(cutoffUtc);
     QSqlQuery q(m_db);
-    q.prepare(QStringLiteral("DELETE FROM sensor_reading WHERE recorded_at < :cutoff"));
-    q.bindValue(QStringLiteral(":cutoff"), isoUtc(cutoffUtc));
-    if (!q.exec()) {
-        setErr(errorOut, q);
-        return -1;
+
+    if (chunkSize <= 0) {
+        q.prepare(QStringLiteral("DELETE FROM sensor_reading WHERE recorded_at < :cutoff"));
+        q.bindValue(QStringLiteral(":cutoff"), cutoff);
+        if (!q.exec()) {
+            setErr(errorOut, q);
+            return -1;
+        }
+        return q.numRowsAffected();
     }
-    return q.numRowsAffected();
+
+    q.prepare(QStringLiteral(
+        "DELETE FROM sensor_reading WHERE id IN ("
+        "SELECT id FROM sensor_reading WHERE recorded_at < :cutoff "
+        "ORDER BY recorded_at LIMIT :lim)"));
+    int deleted = 0;
+    for (;;) {
+        q.bindValue(QStringLiteral(":cutoff"), cutoff);
+        q.bindValue(QStringLiteral(":lim"), chunkSize);
+        if (!q.exec()) {
+            setErr(errorOut, q);
+            return -1;
+        }
+        const int affected = q.numRowsAffected();
+        if (affected <= 0) {
+            break;
+        }
+        deleted += affected;
+        if (affected < chunkSize) {
+            break;
+        }
+    }
+    return deleted;
 }
 
 int SensorReadingRepository::countForSensor(qint64 sensorId, QString *errorOut) const

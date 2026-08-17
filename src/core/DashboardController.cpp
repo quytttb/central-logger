@@ -21,11 +21,18 @@
 #include "utils/charts/ChartDisplayLimits.h"
 
 #include <QDateTime>
+#include <QFuture>
+#include <QFutureWatcher>
 #include <QJSEngine>
 #include <QQmlEngine>
+#include <QSqlDatabase>
+#include <QSqlError>
+#include <QThread>
 #include <QTimeZone>
 #include <QTimer>
 #include <QVector>
+#include <QtConcurrent>
+#include <QSqlQuery>
 
 namespace CentralLogger::Core {
 
@@ -39,6 +46,66 @@ DashboardController *g_instance = nullptr;
 // Retention purge cadence — hourly (Task 16 / FE-016).
 constexpr int kPurgeIntervalMs = 3600 * 1000;
 
+// Number of pages freed per PRAGMA incremental_vacuum step.
+constexpr int kVacuumChunkPages = 1000;
+
+struct PurgeResult {
+  int deleted = 0;
+  QString error;
+};
+
+/// Runs the retention purge (and incremental_vacuum) on a dedicated
+/// connection so the chunked DELETEs + WAL write lock are off the UI thread
+/// (audit H-B). Follows the same throw-away-connection pattern used by
+/// HistoryViewModel::executeHistorySearch.
+PurgeResult executeRetentionPurge(const QString &dbPath, const QDateTime &cutoff)
+{
+  PurgeResult result;
+
+  const QString connName = QStringLiteral("retention_purge_%1").arg(
+      reinterpret_cast<quintptr>(QThread::currentThreadId()));
+  QSqlDatabase db = QSqlDatabase::addDatabase(QStringLiteral("QSQLITE"), connName);
+  db.setDatabaseName(dbPath);
+  if (!db.open()) {
+    result.error = db.lastError().text();
+    db = QSqlDatabase();
+    QSqlDatabase::removeDatabase(connName);
+    return result;
+  }
+
+  Data::Database::applyPerformancePragmas(db, nullptr);
+
+  {
+    Data::SensorReadingRepository repo(db);
+    result.deleted = repo.purgeOlderThan(cutoff, &result.error);
+  }
+
+  if (result.deleted > 0) {
+    // Reclaim freed pages in chunks; incremental_vacuum only works when
+    // auto_vacuum = INCREMENTAL (ensured by Database::open).
+    QSqlQuery q(db);
+    int freeList = -1;
+    if (q.exec(QStringLiteral("PRAGMA freelist_count")) && q.next()) {
+      freeList = q.value(0).toInt();
+    }
+    while (freeList > 0) {
+      if (!q.exec(QStringLiteral("PRAGMA incremental_vacuum(%1)")
+                      .arg(kVacuumChunkPages))) {
+        break;
+      }
+      freeList = -1;
+      if (q.exec(QStringLiteral("PRAGMA freelist_count")) && q.next()) {
+        freeList = q.value(0).toInt();
+      }
+    }
+  }
+
+  db.close();
+  db = QSqlDatabase();
+  QSqlDatabase::removeDatabase(connName);
+  return result;
+}
+
 } // namespace
 
 DashboardController::DashboardController(QObject *parent) : QObject(parent) {
@@ -47,6 +114,17 @@ DashboardController::DashboardController(QObject *parent) : QObject(parent) {
   connect(&m_purgeTimer, &QTimer::timeout, this,
           &DashboardController::purgeOldData);
   m_purgeTimer.start();
+}
+
+DashboardController::~DashboardController() {
+  // Do not leave an in-flight retention purge behind at shutdown.
+  const QList<QFutureWatcherBase *> watchers =
+      findChildren<QFutureWatcherBase *>();
+  for (QFutureWatcherBase *w : watchers) {
+    if (w->isRunning()) {
+      w->waitForFinished();
+    }
+  }
 }
 
 void DashboardController::setDatabase(Data::Database *db) {
@@ -159,6 +237,12 @@ void DashboardController::purgeOldData() {
   if (!m_db || !m_db->isOpen())
     return;
 
+  // Coalesce overlapping triggers (hourly timer + settings saved).
+  if (m_purgeRunning) {
+    return;
+  }
+  m_purgeRunning = true;
+
   // Determine retention days: prefer the live SettingsController value,
   // fall back to reading from the DB directly.
   int retentionDays = 30;
@@ -174,20 +258,52 @@ void DashboardController::purgeOldData() {
 
   const QDateTime cutoff =
       QDateTime::currentDateTimeUtc().addDays(-retentionDays);
-  Data::SensorReadingRepository repo(m_db->connection());
-  QString err;
-  const int deleted = repo.purgeOlderThan(cutoff, &err);
 
-  if (deleted < 0) {
-    qWarning() << "DashboardController::purgeOldData error:" << err;
+  // Audit H-B: purge on a background thread with its own connection so the
+  // chunked DELETE + incremental_vacuum never block the UI.
+  // In-memory databases keep synchronous execution: a throw-away QSQLITE
+  // connection to ":memory:" would see a different, empty database.
+  const QString dbPath = m_db->connection().databaseName();
+  if (dbPath == Data::Database::memoryPath()) {
+    PurgeResult result;
+    {
+      Data::SensorReadingRepository repo(m_db->connection());
+      result.deleted = repo.purgeOlderThan(cutoff, &result.error);
+    }
+    if (result.deleted < 0 || !result.error.isEmpty()) {
+      m_purgeRunning = false;
+      qWarning() << "DashboardController::purgeOldData error:" << result.error;
+      return;
+    }
+    m_purgeRunning = false;
+    emit retentionPurgeCompleted(result.deleted);
+    if (result.deleted > 0) {
+      refreshReadingsChart();
+    }
     return;
   }
 
-  emit retentionPurgeCompleted(deleted);
+  auto *watcher = new QFutureWatcher<PurgeResult>(this);
+  connect(watcher, &QFutureWatcher<PurgeResult>::finished, this,
+          [this, watcher]() {
+            m_purgeRunning = false;
+            const PurgeResult result = watcher->result();
+            watcher->deleteLater();
 
-  if (deleted > 0) {
-    refreshReadingsChart();
-  }
+            if (result.deleted < 0 || !result.error.isEmpty()) {
+              qWarning() << "DashboardController::purgeOldData error:"
+                         << result.error;
+              return;
+            }
+
+            emit retentionPurgeCompleted(result.deleted);
+            if (result.deleted > 0) {
+              refreshReadingsChart();
+            }
+          });
+  QFuture<PurgeResult> future =
+      QtConcurrent::run(executeRetentionPurge, dbPath, cutoff);
+  watcher->setFuture(future);
 }
 
 void DashboardController::startModbusPolling() { syncModbusRegistry(); }

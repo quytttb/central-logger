@@ -6,6 +6,7 @@
 #include "core/charts/PollHistoryStore.h"
 #include "core/sensors/SensorSnapshotCache.h"
 
+#include <QFuture>
 #include <QHash>
 #include <QObject>
 #include <QString>
@@ -63,6 +64,7 @@ public:
     /// Parent required so QML cannot default-construct a second singleton
     /// (Qt 6 prefers Constructor over create() when T is default-constructible).
     explicit DashboardController(QObject *parent);
+    ~DashboardController() override;
 
     LoggerListModel *loggers() { return &m_loggers; }
     SensorMonitoringTableModel *sensorTable() { return &m_sensorTable; }
@@ -159,6 +161,7 @@ private:
     QVariantMap            m_readingsChartAxis;
     bool                   m_readingsChartHasData = false;
     QTimer                 m_purgeTimer;
+    bool                   m_purgeRunning = false;
 };
 
 } // namespace CentralLogger::Core
