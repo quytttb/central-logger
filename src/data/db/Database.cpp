@@ -82,10 +82,6 @@ bool isIgnorableMigrationError(const QString &sql, const QString &err)
         && sql.contains(QStringLiteral("ADD COLUMN"), Qt::CaseInsensitive)) {
         return err.contains(QStringLiteral("duplicate column"), Qt::CaseInsensitive);
     }
-    if (sql.startsWith(QStringLiteral("ALTER TABLE"), Qt::CaseInsensitive)
-        && sql.contains(QStringLiteral("DROP COLUMN"), Qt::CaseInsensitive)) {
-        return err.contains(QStringLiteral("no such column"), Qt::CaseInsensitive);
-    }
     return false;
 }
 
