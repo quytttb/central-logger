@@ -82,6 +82,10 @@ private:
         QModbusTcpClient     *client         = nullptr;
         QTimer               *timer          = nullptr;
         bool                  pollInFlight   = false;
+        // C-A fix: bumped every time the client instance is replaced. Reply
+        // lambdas capture the epoch at send time and drop stale replies that
+        // arrive after a reconnect destroyed the client they belonged to.
+        quint64               clientEpoch    = 0;
         ModbusHeader          lastHeader;      // cached for plan reuse
         PollSnapshot          currentSnapshot; // built up across PDUs
         QVector<AnalogSample> analogAccum;
@@ -94,6 +98,7 @@ private:
 
     LoggerState *stateFor(qint64 loggerId);
     void ensureClient(LoggerState &state);
+    bool isStaleReply(const LoggerState &state, quint64 replyEpoch) const;
     void destroyState(qint64 loggerId);
     void startPollCycle(LoggerState &state);
     void readHeader(LoggerState &state);
