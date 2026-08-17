@@ -33,3 +33,15 @@ target_link_libraries(test_database_migrations
 )
 
 add_test(NAME test_database_migrations COMMAND test_database_migrations)
+
+qt_add_executable(test_wal_contention
+    test_wal_contention.cpp
+)
+
+target_link_libraries(test_wal_contention
+    PRIVATE
+        data
+        Qt6::Test
+)
+
+add_test(NAME test_wal_contention COMMAND test_wal_contention)

@@ -56,7 +56,7 @@ Toàn bộ deliverable **Phase 1** (khảo sát app PySide6 `central-logger-app`
 | Persistence SQLite | `QSqlDatabase` + driver `QSQLITE`, CMake `Qt6::Sql` | [`docs/adr/0001-db.md`](docs/adr/0001-db.md) |
 | Modbus transport | `QModbusTcpClient` (`Qt6::SerialBus`) cho FC01/FC02/FC03 — không raw `QTcpSocket` | ADR #2 (Task 4) |
 | Chart rendering | **Qt Graphs** (`Qt6::Graphs`, `import QtGraphs` in QML) — Qt Charts deprecated 6.11; `GraphsView` + `LineSeries`/`BarSeries` | ADR #3 (Task 13) |
-| Window chrome | **Cửa sổ OS mặc định** — không frameless, không system tray (FE-017 / Task 18 **dropped** 2026-05) | — |
+| Window chrome | **Frameless** (chốt 2026-08, audit M-9): `Qt.FramelessWindowHint` non-Windows + `WindowsFramelessHelper` (native Win32) trên Windows, mặc định maximized; **không** system tray, Close thoát app (FE-017: frameless done, tray không làm) | `src/utils/os/WindowsFramelessHelper.*`, `Main.qml` |
 
 ## Quyết định kỹ thuật (chưa chốt — ghi ADR khi cần)
 
@@ -194,7 +194,7 @@ Thứ tự implement gợi ý: **Task 1** DB → **2** shell QML → **3** logge
 | Mục | Lý do |
 |-----|--------|
 | FE-014 | Live chỉ Modbus; `GET /readings` debug one-shot |
-| FE-017 / Task 18 | Close thoát app; không tray/frameless |
+| FE-017 / Task 18 | Frameless đã implement (2026-08); Close thoát app; không system tray |
 | FE-020 / Task 21 | Không decode QR trong app — copy-paste text provision |
 
 **CI (2026-05):** workflows trên `main`; hướng dẫn đóng gói + `deploy.sh` / `deploy.ps1` trong [`packaging/README.md`](packaging/README.md). Linux: CPack DEB; Windows: QTIFW. Release: `packaging/linux/deploy.sh` hoặc `packaging/windows/deploy.ps1` (bump `CMakeLists.txt` → tag `v*.*.*`).
@@ -217,5 +217,5 @@ Thứ tự implement gợi ý: **Task 1** DB → **2** shell QML → **3** logge
 
 | Task | FE | Lý do |
 |------|-----|--------|
-| 18 | FE-017 | Tray + frameless — cửa sổ OS chuẩn |
+| 18 | FE-017 | Tray vẫn không làm; frameless đã implement lại (chốt 2026-08) |
 | 21 | FE-020 | QR scan trong app — provision thủ công: Data Logger xuất text → copy-paste vào form (không import ảnh QR) |

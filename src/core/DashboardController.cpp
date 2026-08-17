@@ -106,6 +106,36 @@ PurgeResult executeRetentionPurge(const QString &dbPath, const QDateTime &cutoff
   return result;
 }
 
+/// H-E: run the 24h chart COUNT query on a dedicated throw-away connection
+/// (thread pool) so the GROUP BY scan never blocks the UI thread.
+QVector<ReadingBucketPoint> executeChartQuery(const QString &dbPath,
+                                              const QTimeZone &tz,
+                                              int bucketMinutes)
+{
+  const QString connName = QStringLiteral("chart_query_%1").arg(
+      reinterpret_cast<quintptr>(QThread::currentThreadId()));
+  QSqlDatabase db = QSqlDatabase::addDatabase(QStringLiteral("QSQLITE"), connName);
+  db.setDatabaseName(dbPath);
+  if (!db.open()) {
+    db = QSqlDatabase();
+    QSqlDatabase::removeDatabase(connName);
+    return {};
+  }
+
+  Data::Database::applyPerformancePragmas(db, nullptr);
+
+  QVector<ReadingBucketPoint> points;
+  {
+    ChartQueryService svc(db);
+    points = svc.readingCountsLast24h(bucketMinutes, tz);
+  }
+
+  db.close();
+  db = QSqlDatabase();
+  QSqlDatabase::removeDatabase(connName);
+  return points;
+}
+
 } // namespace
 
 DashboardController::DashboardController(QObject *parent) : QObject(parent) {
@@ -135,6 +165,15 @@ void DashboardController::setDatabase(Data::Database *db) {
 
 void DashboardController::setModbusBridge(Network::ModbusBridge *bridge) {
   m_bridge = bridge;
+}
+
+void DashboardController::invalidateBridgeCatalogCache(qint64 loggerId) {
+  // Audit H-A: the bridge's catalog cache lives on the bridge thread — clear
+  // it via a queued invocation after any CRUD that touched logger_sensor.
+  if (!m_bridge)
+    return;
+  QMetaObject::invokeMethod(m_bridge, "invalidateCatalogCache",
+                            Qt::QueuedConnection, Q_ARG(qint64, loggerId));
 }
 
 void DashboardController::setModbusService(Network::ModbusService *service) {
@@ -206,31 +245,59 @@ void DashboardController::refreshReadingsChart() {
       tz = configured;
   }
 
-  ChartQueryService svc(m_db->connection());
-  const auto points = svc.readingCountsLast24h(5, tz);
+  // H-E (audit): the 24h GROUP BY scan is comparatively heavy; run it off
+  // the UI thread on a dedicated connection and apply the result when the
+  // background query finishes. Coalesce with m_chartQueryRunning so a fast
+  // timer/trigger storm can't stack concurrent queries.
+  if (m_chartQueryRunning)
+    return;
+  m_chartQueryRunning = true;
+  const QString dbPath = m_db->connection().databaseName();
+  const bool inMemory = (dbPath == Data::Database::memoryPath());
 
-  QVariantList data;
-  data.reserve(points.size());
-  for (const auto &pt : points) {
-    QVariantMap m;
-    m.insert(QStringLiteral("label"), pt.label);
-    m.insert(QStringLiteral("bucketMs"), pt.bucketMs);
-    m.insert(QStringLiteral("count"), pt.count);
-    data.append(m);
-  }
-  const auto presentation =
-      buildReadingsChartPresentation(data, kChartDisplayPointCount, 5, tz);
-  m_readingsChartPlotPoints = presentation.plotPoints;
-  m_readingsChartAxis = presentation.axis;
-  m_readingsChartHasData = false;
-  for (const auto &pt : points) {
-    if (pt.count > 0) {
-      m_readingsChartHasData = true;
-      break;
+  auto applyPoints = [this, tz](const QVector<ReadingBucketPoint> &points) {
+    QVariantList data;
+    data.reserve(points.size());
+    for (const auto &pt : points) {
+      QVariantMap m;
+      m.insert(QStringLiteral("label"), pt.label);
+      m.insert(QStringLiteral("bucketMs"), pt.bucketMs);
+      m.insert(QStringLiteral("count"), pt.count);
+      data.append(m);
     }
+    const auto presentation =
+        buildReadingsChartPresentation(data, kChartDisplayPointCount, 5, tz);
+    m_readingsChartPlotPoints = presentation.plotPoints;
+    m_readingsChartAxis = presentation.axis;
+    m_readingsChartHasData = false;
+    for (const auto &pt : points) {
+      if (pt.count > 0) {
+        m_readingsChartHasData = true;
+        break;
+      }
+    }
+    emit readingsChartChanged();
+  };
+
+  if (inMemory) {
+    // :memory: DBs are per-connection; query synchronously on the main conn.
+    ChartQueryService svc(m_db->connection());
+    applyPoints(svc.readingCountsLast24h(5, tz));
+    m_chartQueryRunning = false;
+    return;
   }
 
-  emit readingsChartChanged();
+  auto *watcher = new QFutureWatcher<QVector<ReadingBucketPoint>>(this);
+  connect(watcher, &QFutureWatcher<QVector<ReadingBucketPoint>>::finished,
+          this, [this, watcher, applyPoints]() {
+            const auto points = watcher->result();
+            watcher->deleteLater();
+            m_chartQueryRunning = false;
+            applyPoints(points);
+          });
+  QFuture<QVector<ReadingBucketPoint>> future =
+      QtConcurrent::run(executeChartQuery, dbPath, tz, 5);
+  watcher->setFuture(future);
 }
 
 void DashboardController::purgeOldData() {
@@ -354,7 +421,8 @@ void DashboardController::syncModbusRegistry() {
 }
 
 void DashboardController::onSnapshotApplied(
-    const Network::PollSnapshot &snapshot, int sensorCount) {
+    const Network::PollSnapshot &snapshot, int sensorCount,
+    const QVector<Data::LoggerSensor> &catalogRows) {
   const qint64 loggerId = snapshot.loggerId;
   const bool online = snapshot.success;
   const QString newStatus =
@@ -370,10 +438,10 @@ void DashboardController::onSnapshotApplied(
       loggerId, newStatus, sensorCount, snapshot.header.isPolling(),
       snapshot.header.isAnyAlarm(), snapshot.header.isRtuConnected());
 
-  if (online && m_db && m_db->isOpen()) {
-    Data::SensorCatalogRepository catalog(m_db->connection());
-    const auto rows = catalog.listByLoggerId(loggerId);
-    m_sensorCache.apply(snapshot, rows);
+  if (online) {
+    // Audit H-A: catalog rows arrive pre-fetched from the bridge thread;
+    // the UI thread no longer touches the DB on this path.
+    m_sensorCache.apply(snapshot, catalogRows);
     if (m_sensorTable.loggerId() == loggerId) {
       m_sensorTable.setRows(m_sensorCache.rowsFor(loggerId));
     }
@@ -382,7 +450,7 @@ void DashboardController::onSnapshotApplied(
     // trending chart uses catalog names instead of "Sensor #N".
     QHash<int, QString> nameMap;
     QHash<int, int> decimalsMap;
-    for (const auto &row : rows) {
+    for (const auto &row : catalogRows) {
       if (row.sensorType == QStringLiteral("ANALOG")) {
         nameMap.insert(row.edgeSensorId,
                        row.name.isEmpty()
@@ -466,6 +534,7 @@ void DashboardController::cleanupRemovedLogger(qint64 id) {
   m_sensorCache.remove(id);
   m_pollHistory.remove(id);
   m_lastStatus.remove(id);
+  invalidateBridgeCatalogCache(id);
   if (m_appState) {
     m_appState->removeLogger(id);
   }
@@ -494,6 +563,10 @@ void DashboardController::afterMutation() {
   reloadLoggers();
   syncModbusRegistry();
   reloadRecentEvents();
+  // Audit H-A: catalog mutations (via LoggerFormController::upsertProbedCatalog
+  // or sensor upserts) can change names/thresholds the bridge cached — drop
+  // every cached entry so the next poll rebuilds from the current catalog.
+  invalidateBridgeCatalogCache(0);
   // L-14: refresh the readings chart after any CRUD operation that can
   // change the set of active loggers (same pattern as purgeOldData).
   refreshReadingsChart();

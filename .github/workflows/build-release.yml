@@ -150,6 +150,13 @@ jobs:
             -DCMAKE_PREFIX_PATH="$env:QT_ROOT_DIR"
           cmake --build build-release-win -j
 
+      # Audit M-11: Windows job previously built but never ran tests.
+      - name: Test
+        shell: pwsh
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: ctest --test-dir build-release-win --output-on-failure
+
       - name: Build QTIFW installer
         shell: pwsh
         env:

@@ -109,6 +109,10 @@ private:
     void finishCycle(LoggerState &state, bool success, const QString &errorMessage = {});
 
     QHash<qint64, LoggerState *> m_states;
+    // M-4 fix: sequential stagger for the first poll of every logger so
+    // startup does not open all TCP connections simultaneously.
+    int m_staggerCounter = 0;
+    static constexpr int kStartupStaggerMs = 100;
 };
 
 } // namespace CentralLogger::Network

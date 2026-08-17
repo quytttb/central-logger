@@ -113,11 +113,14 @@ void ModbusService::registerLogger(const LoggerRuntimeConfig &config)
             state->timer->start();
         }
         if (created) {
-            // First-time register: poll immediately so the UI doesn't wait
-            // a full interval to see status.
-            QTimer::singleShot(0, this, [this, id = config.loggerId]() {
+            // First-time register: poll soon so the UI doesn't wait a full
+            // interval to see status. Audit M-4: stagger the first poll per
+            // logger (100 ms each) so startup doesn't open every TCP
+            // connection at once.
+            const int delayMs = m_staggerCounter++ * kStartupStaggerMs;
+            QTimer::singleShot(delayMs, this, [this, id = config.loggerId]() {
                 if (auto *s = stateFor(id)) {
-                    if (s->config.enabled) {
+                    if (s->config.enabled && !s->pollInFlight) {
                         startPollCycle(*s);
                     }
                 }

@@ -1,6 +1,7 @@
 #include "ModbusBridge.h"
 
 #include "data/db/Database.h"
+#include "data/models/LoggerSensor.h"
 #include "data/models/SensorReading.h"
 #include "data/repositories/LoggerRepository.h"
 #include "data/repositories/SensorCatalogRepository.h"
@@ -8,6 +9,7 @@
 
 #include <QDateTime>
 #include <QSqlError>
+#include <QThread>
 #include <QtDebug>
 
 namespace CentralLogger::Network {
@@ -23,8 +25,87 @@ void ModbusBridge::setConnection(QSqlDatabase db)
     m_db             = nullptr;
 }
 
+void ModbusBridge::start()
+{
+    // Audit H-A: when the bridge lives on its own thread, open a dedicated
+    // connection here (QSqlDatabase handles are thread-bound).
+    if (m_standaloneConn.isValid() || m_db || !m_databasePath.isEmpty()) {
+        if (!m_databasePath.isEmpty() && !m_standaloneConn.isValid() && !m_db) {
+            const QString connName =
+                QStringLiteral("modbus_live_%1")
+                    .arg(reinterpret_cast<quintptr>(QThread::currentThreadId()));
+            m_dedicatedConn = QSqlDatabase::addDatabase(QStringLiteral("QSQLITE"), connName);
+            m_dedicatedConn.setDatabaseName(m_databasePath);
+            if (!m_dedicatedConn.open()) {
+                qWarning() << "ModbusBridge: cannot open dedicated connection:"
+                           << m_dedicatedConn.lastError().text();
+                m_dedicatedConn = QSqlDatabase();
+                QSqlDatabase::removeDatabase(connName);
+                return;
+            }
+            QString pragmaErr;
+            if (!Data::Database::applyPerformancePragmas(m_dedicatedConn, &pragmaErr)) {
+                qWarning() << "ModbusBridge: performance pragmas failed:" << pragmaErr;
+            }
+        }
+    }
+}
+
+void ModbusBridge::shutdown()
+{
+    m_catalogCache.clear();
+    if (m_dedicatedConn.isValid()) {
+        const QString connName = m_dedicatedConn.connectionName();
+        if (m_dedicatedConn.isOpen()) {
+            m_dedicatedConn.close();
+        }
+        m_dedicatedConn = QSqlDatabase();
+        QSqlDatabase::removeDatabase(connName);
+    }
+}
+
+void ModbusBridge::invalidateCatalogCache(qint64 loggerId)
+{
+    if (loggerId <= 0) {
+        m_catalogCache.clear();
+    } else {
+        m_catalogCache.remove(loggerId);
+    }
+}
+
+ModbusBridge::CatalogCacheEntry &ModbusBridge::catalogCacheFor(qint64 loggerId,
+                                                               QSqlDatabase &db)
+{
+    auto it = m_catalogCache.find(loggerId);
+    if (it != m_catalogCache.end()) {
+        return *it;
+    }
+
+    // Audit M-2: build the cache once per logger from one catalog SELECT
+    // instead of doing UPSERT+SELECT per sample on every poll.
+    CatalogCacheEntry entry;
+    Data::SensorCatalogRepository catalog(db);
+    const auto rows = catalog.listByLoggerId(loggerId);
+    for (const auto &s : rows) {
+        if (!s.active || s.id <= 0) {
+            continue;
+        }
+        if (s.sensorType == QStringLiteral("ANALOG")) {
+            entry.analogIds.insert(s.edgeSensorId, s.id);
+        } else if (s.sensorType == QStringLiteral("DI")) {
+            entry.diIds.insert(s.edgeSensorId, s.id);
+        } else if (s.sensorType == QStringLiteral("DO")) {
+            entry.doIds.insert(s.edgeSensorId, s.id);
+        }
+    }
+    return *m_catalogCache.insert(loggerId, std::move(entry));
+}
+
 QSqlDatabase ModbusBridge::sqlConnection() const
 {
+    if (m_dedicatedConn.isValid() && m_dedicatedConn.isOpen()) {
+        return m_dedicatedConn;
+    }
     if (m_db && m_db->isOpen()) {
         return m_db->connection();
     }
@@ -48,7 +129,8 @@ void ModbusBridge::applyLiveSnapshot(const PollSnapshot &snapshot)
     if (!snapshot.success) {
         loggers.updateStatus(snapshot.loggerId, QStringLiteral("offline"));
         const int sensorCount = catalog.listByLoggerId(snapshot.loggerId).size();
-        emit snapshotApplied(snapshot, sensorCount);
+        emit snapshotApplied(snapshot, sensorCount,
+                             QVector<Data::LoggerSensor>{});
         return;
     }
 
@@ -62,9 +144,21 @@ void ModbusBridge::applyLiveSnapshot(const PollSnapshot &snapshot)
                                     QStringLiteral("online"),
                                     now);
 
-    for (const auto &sample : snapshot.analogs) {
-        catalog.ensureExists(snapshot.loggerId, sample.edgeSensorId,
-                             QStringLiteral("ANALOG"));
+    // Audit M-2: ensureExists is only needed for sensors the cache does not
+    // know yet (newly wired sensors). Cache hits skip the UPSERT+SELECT.
+    {
+        auto &cached = catalogCacheFor(snapshot.loggerId, db);
+        for (const auto &sample : snapshot.analogs) {
+            if (cached.analogIds.contains(sample.edgeSensorId)) {
+                continue;
+            }
+            const qint64 id = catalog.ensureExists(snapshot.loggerId,
+                                                   sample.edgeSensorId,
+                                                   QStringLiteral("ANALOG"));
+            if (id > 0) {
+                cached.analogIds.insert(sample.edgeSensorId, id);
+            }
+        }
     }
 
     {
@@ -85,6 +179,10 @@ void ModbusBridge::applyLiveSnapshot(const PollSnapshot &snapshot)
             &pruneErr);
         if (pruned < 0) {
             qWarning() << "ModbusBridge: pruneOrphanSensors failed:" << pruneErr;
+        } else if (pruned > 0) {
+            // Deactivated rows may be cached — drop the entry so the next
+            // snapshot rebuilds it from the current catalog.
+            m_catalogCache.remove(snapshot.loggerId);
         }
     }
 
@@ -96,12 +194,12 @@ void ModbusBridge::applyLiveSnapshot(const PollSnapshot &snapshot)
         }
     }
 
-    const int sensorCount = catalog.listByLoggerId(snapshot.loggerId).size();
-    emit snapshotApplied(snapshot, sensorCount);
+    const auto rows = catalog.listByLoggerId(snapshot.loggerId);
+    emit snapshotApplied(snapshot, rows.size(), rows);
 }
 
 QVector<Data::SensorReading> ModbusBridge::buildReadings(const PollSnapshot &snapshot,
-                                                         QSqlDatabase db) const
+                                                          QSqlDatabase db)
 {
     QVector<Data::SensorReading> batch;
     if (!snapshot.success) {
@@ -117,14 +215,36 @@ QVector<Data::SensorReading> ModbusBridge::buildReadings(const PollSnapshot &sna
     const QDateTime now = snapshot.measuredAt.isValid()
         ? snapshot.measuredAt
         : QDateTime::currentDateTimeUtc();
+    const qint64 nowMs = now.toMSecsSinceEpoch();
 
     batch.reserve(snapshot.analogs.size()
-                  + snapshot.diBits.size()
-                  + snapshot.doBits.size());
+                   + snapshot.diBits.size()
+                   + snapshot.doBits.size());
 
-    auto appendReading = [&](qint64 sensorId, double value,
-                             bool valid, bool alarm, bool stale)
+    // H-C (store-on-change): write a reading only when the value or the
+    // valid/alarm/stale flags changed, or once every kHeartbeatMs even when
+    // unchanged (charts keep showing continuity). Cuts write volume by 1–2
+    // orders of magnitude at steady state — see docs/adr/0002-store-on-change.md.
+    auto appendIfChanged = [&](qint64 sensorId, double value,
+                               bool valid, bool alarm, bool stale)
     {
+        const int flags = (valid ? 1 : 0) | (alarm ? 2 : 0) | (stale ? 4 : 0);
+
+        const auto valIt = m_lastValue.constFind(sensorId);
+        const bool firstSeen = valIt == m_lastValue.constEnd();
+        const bool valueChanged = firstSeen || (*valIt != value);
+
+        const auto flgIt = m_lastFlags.constFind(sensorId);
+        const bool flagsChanged = flgIt == m_lastFlags.constEnd() || *flgIt != flags;
+
+        const auto tsIt = m_lastWrittenMs.constFind(sensorId);
+        const bool heartbeatDue = tsIt == m_lastWrittenMs.constEnd()
+                                  || nowMs - *tsIt >= kHeartbeatMs;
+
+        if (!valueChanged && !flagsChanged && !heartbeatDue) {
+            return;
+        }
+
         Data::SensorReading r;
         r.sensorId        = sensorId;
         r.value           = value;
@@ -134,6 +254,10 @@ QVector<Data::SensorReading> ModbusBridge::buildReadings(const PollSnapshot &sna
         r.loggerTimestamp = snapshot.header.unixTimestamp;
         r.recordedAt      = now;
         batch.append(r);
+
+        m_lastValue.insert(sensorId, value);
+        m_lastFlags.insert(sensorId, flags);
+        m_lastWrittenMs.insert(sensorId, nowMs);
     };
 
     for (const auto &sample : snapshot.analogs) {
@@ -142,8 +266,8 @@ QVector<Data::SensorReading> ModbusBridge::buildReadings(const PollSnapshot &sna
         if (sensorId <= 0) {
             continue;
         }
-        appendReading(sensorId, static_cast<double>(sample.value),
-                      sample.isValid(), sample.isAlarm(), sample.isStale());
+        appendIfChanged(sensorId, static_cast<double>(sample.value),
+                        sample.isValid(), sample.isAlarm(), sample.isStale());
     }
 
     const auto catalogRows = catalog.listByLoggerId(snapshot.loggerId);
@@ -156,15 +280,15 @@ QVector<Data::SensorReading> ModbusBridge::buildReadings(const PollSnapshot &sna
             if (bit < 0 || bit >= snapshot.diBits.size()) {
                 continue;
             }
-            appendReading(sensor.id, snapshot.diBits.at(bit) ? 1.0 : 0.0,
-                          true, false, false);
+            appendIfChanged(sensor.id, snapshot.diBits.at(bit) ? 1.0 : 0.0,
+                            true, false, false);
         } else if (sensor.sensorType == QStringLiteral("DO")) {
             const int bit = sensor.edgeSensorId;
             if (bit < 0 || bit >= snapshot.doBits.size()) {
                 continue;
             }
-            appendReading(sensor.id, snapshot.doBits.at(bit) ? 1.0 : 0.0,
-                          true, false, false);
+            appendIfChanged(sensor.id, snapshot.doBits.at(bit) ? 1.0 : 0.0,
+                            true, false, false);
         }
     }
 

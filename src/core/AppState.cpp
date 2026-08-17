@@ -53,14 +53,10 @@ void AppState::refreshFromDatabase()
 
     Data::LoggerRepository loggers(m_db->connection());
 
-    const auto rows = loggers.findAll();
-    const int total = rows.size();
-    int online = 0;
-    for (const auto &l : rows) {
-        if (l.status == QStringLiteral("online")) {
-            ++online;
-        }
-    }
+    // H-A / M-2: COUNT aggregates instead of loading every logger row into
+    // memory just to count statuses.
+    const int total  = loggers.countTotal();
+    const int online = loggers.countOnline();
 
     int alarms = 0;
     for (bool alarm : std::as_const(m_alarmByLogger)) {
@@ -69,7 +65,7 @@ void AppState::refreshFromDatabase()
         }
     }
 
-    const QString text = total == 0 ? QStringLiteral("No loggers configured")
+    const QString text = total <= 0 ? QStringLiteral("No loggers configured")
                                     : QStringLiteral("Ready");
 
     if (m_totalLoggers != total) {

@@ -121,8 +121,11 @@ public slots:
 
     /// Bridge → DashboardController on the main thread. Wired from main.cpp
     /// so it has to be public; not intended for direct QML use.
+    /// Audit H-A: @p catalogRows is the catalog fetched on the bridge thread;
+    /// the UI path no longer issues its own catalog SELECT.
     void onSnapshotApplied(const CentralLogger::Network::PollSnapshot &snapshot,
-                           int sensorCount);
+                           int sensorCount,
+                           const QVector<Data::LoggerSensor> &catalogRows);
 
     /// Insert a row into `system_event` and refresh the recent-events list.
     /// Called from LoggerDetailViewModel and LoggerFormController.
@@ -138,6 +141,10 @@ signals:
 
 private:
     void syncModbusRegistry();
+
+    /// Audit H-A: clear the bridge's cached catalog entries for @p loggerId
+    /// (or all when <=0) after catalog mutations. Safe to call from any thread.
+    void invalidateBridgeCatalogCache(qint64 loggerId);
 
     /// Edge-trigger helper for Task 19 — records `Online`/`Offline` events
     /// only on actual transitions, skipping the very first snapshot for an
@@ -162,6 +169,7 @@ private:
     bool                   m_readingsChartHasData = false;
     QTimer                 m_purgeTimer;
     bool                   m_purgeRunning = false;
+    bool                   m_chartQueryRunning = false; // H-E coalesce guard
 };
 
 } // namespace CentralLogger::Core

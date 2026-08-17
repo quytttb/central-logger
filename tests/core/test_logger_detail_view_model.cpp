@@ -130,7 +130,8 @@ void TestLoggerDetailViewModel::setLoggerIdLoadsCacheBaseline()
     // while the table remains empty.
     auto snap = makeSnapshot(loggerId);
     snap.analogs = { makeAnalog(1, 21.0f) };
-    ctrl.onSnapshotApplied(snap, /*sensorCount*/ 1);
+    ctrl.onSnapshotApplied(snap, /*sensorCount*/ 1,
+                           catalog.listByLoggerId(loggerId));
     QCOMPARE(ctrl.sensorCache()->rowsFor(loggerId).size(), 1);
     QCOMPARE(ctrl.sensorTable()->rowCount(), 0);
 
@@ -180,7 +181,7 @@ void TestLoggerDetailViewModel::snapshotForActiveLoggerRefreshesTable()
 
     auto snap = makeSnapshot(loggerId);
     snap.analogs = { makeAnalog(1, 33.5f) };
-    ctrl.onSnapshotApplied(snap, 1);
+    ctrl.onSnapshotApplied(snap, 1, catalog.listByLoggerId(loggerId));
 
     QCOMPARE(vm.sensorTable()->rowCount(), 1);
     using M = SensorMonitoringTableModel;
@@ -221,7 +222,7 @@ void TestLoggerDetailViewModel::snapshotForOtherLoggerIgnored()
     // Snapshot for logger B should NOT affect the active table (logger A).
     auto snap = makeSnapshot(b);
     snap.analogs = { makeAnalog(1, 99.0f) };
-    ctrl.onSnapshotApplied(snap, 1);
+    ctrl.onSnapshotApplied(snap, 1, catalog.listByLoggerId(b));
 
     QCOMPARE(vm.sensorTable()->loggerId(), a);
     QCOMPARE(vm.sensorTable()->rowCount(), 0);
@@ -261,7 +262,7 @@ void TestLoggerDetailViewModel::liveStateMirrorsListModelFlags()
     // bit0=polling, bit1=RTU connected, bit2=any alarm
     snap.header.mapVersion  = 1;
     snap.header.statusFlags = 0x07;
-    ctrl.onSnapshotApplied(snap, /*sensorCount*/ 0);
+    ctrl.onSnapshotApplied(snap, /*sensorCount*/ 0, {});
 
     QVERIFY(spy.count() >= 1);
     QVERIFY(vm.online());
@@ -273,7 +274,7 @@ void TestLoggerDetailViewModel::liveStateMirrorsListModelFlags()
     PollSnapshot bad;
     bad.loggerId = loggerId;
     bad.success  = false;
-    ctrl.onSnapshotApplied(bad, 0);
+    ctrl.onSnapshotApplied(bad, 0, {});
 
     QVERIFY(!vm.online());
     QVERIFY(!vm.polling());
@@ -299,7 +300,7 @@ void TestLoggerDetailViewModel::listModelExposesRtuConnectedRole()
     snap.success  = true;
     snap.header.mapVersion  = 1;
     snap.header.statusFlags = 0x02; // RTU connected only
-    ctrl.onSnapshotApplied(snap, /*sensorCount*/ 0);
+    ctrl.onSnapshotApplied(snap, /*sensorCount*/ 0, {});
 
     auto *model = ctrl.loggers();
     const int row = model->indexOfLogger(loggerId);

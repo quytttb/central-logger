@@ -31,3 +31,8 @@ struct LoggerSensor
 };
 
 } // namespace CentralLogger::Data
+
+// Audit H-A: snapshotApplied crosses thread boundaries carrying
+// QVector<LoggerSensor> — declare the metatype for queued signals.
+#include <QMetaType>
+Q_DECLARE_METATYPE(QVector<CentralLogger::Data::LoggerSensor>)

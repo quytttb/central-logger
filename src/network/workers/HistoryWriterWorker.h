@@ -24,6 +24,10 @@ class HistoryWriterWorker : public QObject
 public:
     static constexpr int kMaxBatchSize            = 20;
     static constexpr int kDefaultFlushIntervalS   = 5;
+    /// Audit H-D: cap the in-memory enqueue queue so a slow/blocked disk
+    /// cannot grow memory without bound. When full, the oldest snapshot is
+    /// dropped (with a qWarning) — bounded data loss beats unbounded RAM.
+    static constexpr int kMaxQueueSize            = 5000;
 
     explicit HistoryWriterWorker(QObject *parent = nullptr);
     ~HistoryWriterWorker() override;
@@ -31,9 +35,21 @@ public:
     void setDatabasePath(const QString &path) { m_databasePath = path; }
     void setFlushIntervalSeconds(int seconds);
 
-    /// Drains the pending queue and writes all snapshots to SQLite immediately.
-    /// Blocks the caller until the flush completes (thread-safe).
+    /// Number of snapshots currently waiting in the queue (thread-safe).
+    int pendingCount() const;
+
+    /// Requests an immediate async flush. Returns at once — the caller must
+    /// not block. Watch flushFinished() if completion notification is needed.
+    /// Audit H-D: replaces the old blocking spin-wait implementation.
     void flushPending();
+
+signals:
+    /// Emitted once an async flushPending request has drained the queue
+    /// (audit H-D) — or immediately if the worker is already stopped.
+    void flushFinished();
+
+    /// Emitted when the queue overflowed and a snapshot was dropped.
+    void droppedSnapshot(qint64 loggerId);
 
 public slots:
     void start();
