@@ -11,8 +11,10 @@ import CentralLogger.Theme
 ApplicationWindow {
     id: root
 
-    // Per-screen geometry (not Screen.desktop* which spans all monitors).
-    readonly property Screen targetScreen: root.screen || Qt.application.primaryScreen
+    // Per-screen geometry. ApplicationWindow exposes its current `screen`
+    // attached property; fall back to Screen attached (set on any Item)
+    // for cases where the window hasn't been associated with a screen yet.
+    readonly property Screen targetScreen: root.screen || Screen
     readonly property real windowScreenFraction: 0.8
 
     width: targetScreen
@@ -27,7 +29,7 @@ ApplicationWindow {
     visibility: Window.Maximized
 
     function centerOnTargetScreen() {
-        const scr = root.screen || Qt.application.primaryScreen
+        const scr = root.screen || Screen
         if (!scr)
             return
         x = scr.virtualX + Math.round((scr.availableWidth - width) / 2)
@@ -130,6 +132,47 @@ ApplicationWindow {
                     color: AppColors.surface
                     z: -1
                 }
+
+                // Frameless resize handles — X11 has no implicit grips on
+                // borderless windows, so on Linux / Windows users can't
+                // resize a restored window without these. Mouse areas are
+                // transparent and forward startSystemResize() with the edge
+                // they sit on; they only stay interactive when the window
+                // is in a non-maximized state.
+                component ResizeHandle: MouseArea {
+                    // `edge` is a QFlags value passed straight through to
+                    // Window::startSystemResize(Qt::Edges) on the C++ side;
+                    // declare as int to keep qmllint happy with the QML type
+                    // system (Qt.Edges isn't exposed as a QML basic type).
+                    property int edge: Qt.RightEdge
+                    hoverEnabled: true
+                    cursorShape: {
+                        if (edge === Qt.TopEdge || edge === Qt.BottomEdge)
+                            return Qt.SizeVerCursor
+                        if (edge === Qt.LeftEdge || edge === Qt.RightEdge)
+                            return Qt.SizeHorCursor
+                        if (edge === Qt.TopLeftEdge || edge === Qt.BottomRightEdge)
+                            return Qt.SizeFDiagCursor
+                        if (edge === Qt.TopRightEdge || edge === Qt.BottomLeftEdge)
+                            return Qt.SizeBDiagCursor
+                        return Qt.ArrowCursor
+                    }
+                    enabled: root.visibility !== Window.Maximized
+                    visible: enabled
+                    width: 6
+                    height: 6
+                    propagateComposedEvents: true
+                    onPressed: mouse => {
+                        if (mouse.button === Qt.LeftButton && Window.window)
+                            Window.window.startSystemResize(edge)
+                    }
+                }
+
+                ResizeHandle { anchors.right: parent.right;  anchors.top: parent.top;        edge: Qt.TopRightEdge }
+                ResizeHandle { anchors.right: parent.right;  anchors.bottom: parent.bottom;    edge: Qt.BottomRightEdge }
+                ResizeHandle { anchors.bottom: parent.bottom; anchors.right: parent.right;     edge: Qt.BottomRightEdge }
+                ResizeHandle { anchors.right: parent.right;  anchors.verticalCenter: parent.verticalCenter; edge: Qt.RightEdge }
+                ResizeHandle { anchors.bottom: parent.bottom; anchors.horizontalCenter: parent.horizontalCenter; edge: Qt.BottomEdge }
 
                 Loader {
                     id: viewLoader

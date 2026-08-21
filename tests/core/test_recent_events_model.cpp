@@ -252,11 +252,11 @@ void TestRecentEventsModel::dashboardOnlineTransitionLogsEvent()
     const int crudEvents = repo.listRecent().size();
 
     // First snapshot seeds the tracker without an event.
-    ctrl.onSnapshotApplied(makeSnapshot(id, /*success*/ false), 0);
+    ctrl.onSnapshotApplied(makeSnapshot(id, /*success*/ false), 0, {});
     QCOMPARE(repo.listRecent().size(), crudEvents);
 
     // Transition offline → online: one Online event with level=info.
-    ctrl.onSnapshotApplied(makeSnapshot(id, /*success*/ true), 0);
+    ctrl.onSnapshotApplied(makeSnapshot(id, /*success*/ true), 0, {});
     const auto recent = repo.listRecent();
     QCOMPARE(recent.size(), crudEvents + 1);
     QCOMPARE(recent.first().eventType, QStringLiteral("Online"));
@@ -284,12 +284,12 @@ void TestRecentEventsModel::dashboardOfflineTransitionLogsWarningEvent()
 
     // First successful poll logs Online; capture the count after so the
     // Offline assertion below is always +1 regardless.
-    ctrl.onSnapshotApplied(makeSnapshot(id, /*success*/ true), 0);
+    ctrl.onSnapshotApplied(makeSnapshot(id, /*success*/ true), 0, {});
 
     EventRepository repo(db.connection());
     const int beforeOffline = repo.listRecent().size();
 
-    ctrl.onSnapshotApplied(makeSnapshot(id, /*success*/ false), 0);
+    ctrl.onSnapshotApplied(makeSnapshot(id, /*success*/ false), 0, {});
     const auto recent = repo.listRecent();
     QCOMPARE(recent.size(), beforeOffline + 1);
     QCOMPARE(recent.first().eventType, QStringLiteral("Offline"));
@@ -314,21 +314,21 @@ void TestRecentEventsModel::dashboardSkipsFirstSnapshotAndDoesNotSpamRepeats()
 
     // First successful poll logs an Online event immediately so the user
     // sees the initial connection succeed.
-    ctrl.onSnapshotApplied(makeSnapshot(id, true), 0);
+    ctrl.onSnapshotApplied(makeSnapshot(id, true), 0, {});
     QCOMPARE(repo.listRecent().size(), crudEvents + 1);
 
     // Repeated online polls must not spam events.
-    ctrl.onSnapshotApplied(makeSnapshot(id, true), 0);
-    ctrl.onSnapshotApplied(makeSnapshot(id, true), 0);
+    ctrl.onSnapshotApplied(makeSnapshot(id, true), 0, {});
+    ctrl.onSnapshotApplied(makeSnapshot(id, true), 0, {});
     QCOMPARE(repo.listRecent().size(), crudEvents + 1);
 
-    ctrl.onSnapshotApplied(makeSnapshot(id, false), 0); // Online → Offline
+    ctrl.onSnapshotApplied(makeSnapshot(id, false), 0, {}); // Online → Offline
     QCOMPARE(repo.listRecent().size(), crudEvents + 2);
 
-    ctrl.onSnapshotApplied(makeSnapshot(id, false), 0); // no edge
+    ctrl.onSnapshotApplied(makeSnapshot(id, false), 0, {}); // no edge
     QCOMPARE(repo.listRecent().size(), crudEvents + 2);
 
-    ctrl.onSnapshotApplied(makeSnapshot(id, true), 0);  // Offline → Online
+    ctrl.onSnapshotApplied(makeSnapshot(id, true), 0, {});  // Offline → Online
     QCOMPARE(repo.listRecent().size(), crudEvents + 3);
 }
 

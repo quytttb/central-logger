@@ -271,7 +271,8 @@ void TestSensorMonitoringTableModel::dashboardOnSnapshotAppliedRefreshesTable()
 
     auto snap = makeSnapshot(loggerId);
     snap.analogs = { makeAnalog(1, 22.75f) };
-    ctrl.onSnapshotApplied(snap, /*sensorCount*/ 1);
+    ctrl.onSnapshotApplied(snap, /*sensorCount*/ 1,
+                           catalog.listByLoggerId(loggerId));
 
     QCOMPARE(spy.count(), 1);
     QCOMPARE(spy.takeFirst().value(0).toLongLong(), loggerId);

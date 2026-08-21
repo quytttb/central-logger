@@ -67,7 +67,14 @@ RestConfigService::resolveEndpoint(qint64 loggerId, QString *errorOut) const
         if (errorOut) *errorOut = QStringLiteral("Logger has no host / API port");
         return ep;
     }
-    ep.baseUrl = QStringLiteral("http://%1:%2/api/v1").arg(info->host).arg(info->apiPort);
+    // RFC 3986: IPv6 literals in a URL must be wrapped in [...].
+    // QHostAddress returns IPv6Protocol for any address with ':' (including
+    // IPv4-mapped), so detect with a quick check rather than parsing.
+    const bool needsBracket = info->host.contains(QLatin1Char(':'));
+    const QString hostForUrl = needsBracket
+        ? QStringLiteral("[%1]").arg(info->host)
+        : info->host;
+    ep.baseUrl = QStringLiteral("http://%1:%2/api/v1").arg(hostForUrl).arg(info->apiPort);
     ep.token   = info->apiToken;
     ep.valid   = true;
     return ep;
@@ -190,6 +197,11 @@ void RestConfigService::applyConfig(qint64 loggerId,
 void RestConfigService::fetchReadingsDebug(qint64 loggerId)
 {
     if (!startGuard(loggerId, Endpoint::Readings)) {
+        // Guard is busy — emit so the VM can clear its busy state. Without
+        // this the UI's busy flag is stuck forever (re-entrant request for
+        // the same logger).
+        emit readingsDebugFetched(loggerId, false, 0, QString{},
+            QStringLiteral("Readings request already in progress."));
         return;
     }
 
@@ -261,7 +273,14 @@ QString humanizeProbeError(int httpStatus,
 
 void RestConfigService::probeConfig(const QString &host, int apiPort, const QString &token)
 {
-    if (m_probeInFlight) return;  // one at a time
+    if (m_probeInFlight) {
+        // Same as fetchReadingsDebug: emit so the form's busy state can
+        // recover instead of waiting forever for a probeConfigResult that
+        // would never arrive from the in-flight request.
+        emit probeConfigFetched(false, 0, QString{},
+            QStringLiteral("Probe already in progress."));
+        return;
+    }
 
     if (host.trimmed().isEmpty() || apiPort <= 0) {
         emit probeConfigFetched(false, 0, QString{},
@@ -274,7 +293,8 @@ void RestConfigService::probeConfig(const QString &host, int apiPort, const QStr
     const QString baseUrl = QStringLiteral("http://%1:%2/api/v1").arg(host.trimmed()).arg(apiPort);
 
     QNetworkRequest req{ QUrl(baseUrl + QStringLiteral("/config")) };
-    req.setHeader(QNetworkRequest::ContentTypeHeader, QStringLiteral("application/json"));
+    // M-7: GET /config carries no body — don't send Content-Type. (Apply
+    // below does the same, so probe and fetch stay consistent.)
     req.setTransferTimeout(8000); // 8s timeout for probe
     if (!token.trimmed().isEmpty()) {
         req.setRawHeader("Authorization", "Bearer " + token.trimmed().toUtf8());

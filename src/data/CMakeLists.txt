@@ -51,23 +51,6 @@ qt_add_resources(data "db_schema"
         db/schema/001_initial.sql
 )
 
-set(DB_MIGRATION_FILES
-    db/migrations/002_logger_sensor_attach_di.sql
-    db/migrations/003_logger_sensor_all_parents.sql
-    db/migrations/004_app_settings_history_flush.sql
-    db/migrations/005_drop_maintenance_mode.sql
-    db/migrations/006_logger_sensor_decimals.sql
-)
-foreach(mig ${DB_MIGRATION_FILES})
-    get_filename_component(mig_alias ${mig} NAME)
-    set_source_files_properties(${mig} PROPERTIES QT_RESOURCE_ALIAS "${mig_alias}")
-endforeach()
-qt_add_resources(data "db_migrations"
-    PREFIX "/db/migrations"
-    FILES
-        ${DB_MIGRATION_FILES}
-)
-
 target_include_directories(data
     PUBLIC
         ${CMAKE_CURRENT_SOURCE_DIR}/..

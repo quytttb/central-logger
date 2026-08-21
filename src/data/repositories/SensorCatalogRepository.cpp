@@ -48,25 +48,44 @@ std::optional<double> readOptDouble(const QVariant &v)
     return v.toDouble();
 }
 
+// Column positions for the SELECT * FROM logger_sensor lists used by
+// rowToModel. Using positional access avoids qt.sql.qsqlquery "unknown
+// field name" warnings on prepared queries and is faster than named lookups.
+enum ColSensor {
+    ColSensorId = 0,
+    ColSensorLoggerId,
+    ColSensorEdgeSensorId,
+    ColSensorSensorType,
+    ColSensorName,
+    ColSensorUnit,
+    ColSensorMinThreshold,
+    ColSensorMaxThreshold,
+    ColSensorDecimals,
+    ColSensorActive,
+    ColSensorParentEdgeSensorId,
+    ColSensorDiType,
+    ColSensorAllParentIds,
+};
+
 LoggerSensor rowToModel(const QSqlQuery &q)
 {
     LoggerSensor s;
-    s.id            = q.value(QStringLiteral("id")).toLongLong();
-    s.loggerId      = q.value(QStringLiteral("logger_id")).toLongLong();
-    s.edgeSensorId  = q.value(QStringLiteral("edge_sensor_id")).toInt();
-    s.sensorType    = q.value(QStringLiteral("sensor_type")).toString();
-    s.name          = q.value(QStringLiteral("name")).toString();
-    s.unit          = q.value(QStringLiteral("unit")).toString();
-    s.minThreshold  = readOptDouble(q.value(QStringLiteral("min_threshold")));
-    s.maxThreshold  = readOptDouble(q.value(QStringLiteral("max_threshold")));
-    s.decimals      = q.value(QStringLiteral("decimals")).toInt();
-    s.active        = q.value(QStringLiteral("active")).toInt() != 0;
-    const QVariant parentV = q.value(QStringLiteral("parent_edge_sensor_id"));
+    s.id            = q.value(ColSensorId).toLongLong();
+    s.loggerId      = q.value(ColSensorLoggerId).toLongLong();
+    s.edgeSensorId  = q.value(ColSensorEdgeSensorId).toInt();
+    s.sensorType    = q.value(ColSensorSensorType).toString();
+    s.name          = q.value(ColSensorName).toString();
+    s.unit          = q.value(ColSensorUnit).toString();
+    s.minThreshold  = readOptDouble(q.value(ColSensorMinThreshold));
+    s.maxThreshold  = readOptDouble(q.value(ColSensorMaxThreshold));
+    s.decimals      = q.value(ColSensorDecimals).toInt();
+    s.active        = q.value(ColSensorActive).toInt() != 0;
+    const QVariant parentV = q.value(ColSensorParentEdgeSensorId);
     if (!parentV.isNull()) {
         s.parentEdgeSensorId = parentV.toInt();
     }
-    s.diType       = q.value(QStringLiteral("di_type")).toString();
-    s.allParentIds = deserializeParentIds(q.value(QStringLiteral("all_parent_ids")));
+    s.diType       = q.value(ColSensorDiType).toString();
+    s.allParentIds = deserializeParentIds(q.value(ColSensorAllParentIds));
     return s;
 }
 

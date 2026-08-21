@@ -2,7 +2,7 @@
 # Install Qt 6.11.1 + addons via aqtinstall (same modules as CI workflows).
 set -euo pipefail
 
-version="${QT_VERSION:-6.11.1}"
+version="${QT_VERSION:-6.11.2}"
 modules="${QT_AQT_MODULES:-qtserialbus qtserialport qtgraphs qttasktree qtquick3d qtshadertools}"
 
 # Match install-qt-action layout: $RUNNER_WORKSPACE/Qt (parent of checkout).

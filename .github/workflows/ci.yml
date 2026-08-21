@@ -8,7 +8,7 @@ on:
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
-  QT_VERSION: "6.11.1"
+  QT_VERSION: "6.11.2"
   QT_MODULES: qtserialbus qtserialport qtgraphs qttasktree qtquick3d qtshadertools
   AQT_SOURCE: git+https://github.com/miurahr/aqtinstall.git@8c3695d4a4e1ceabf6a74dc6c79681656dc6b74b
 
@@ -41,7 +41,7 @@ jobs:
           install-deps: false
           aqtsource: ${{ env.AQT_SOURCE }}
           cache: true
-          cache-key-prefix: qt611-linux
+          cache-key-prefix: qt6112-linux
 
       - name: Configure
         run: |
@@ -62,3 +62,103 @@ jobs:
         env:
           QT_QPA_PLATFORM: offscreen
         run: ctest --test-dir build --output-on-failure
+
+  qmllint:
+    # Static analysis for QML: catches missing ComponentBehavior bounds,
+    # unknown properties on registered types, signal/payload mismatches,
+    # and broken imports. Runs against the same Debug build the test job
+    # produces so it sees the same QML module output directory.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install Qt
+        uses: jurplel/install-qt-action@v4.3.1
+        with:
+          version: ${{ env.QT_VERSION }}
+          host: linux
+          target: desktop
+          arch: linux_gcc_64
+          modules: ${{ env.QT_MODULES }}
+          dir: ${{ runner.workspace }}
+          install-deps: false
+          aqtsource: ${{ env.AQT_SOURCE }}
+          cache: true
+          cache-key-prefix: qt6112-linux
+
+      - name: Configure
+        run: |
+          PRE="${QT_ROOT_DIR}"
+          if [ ! -f "${PRE}/lib/cmake/Qt6Graphs/Qt6GraphsConfig.cmake" ]; then
+            PRE="$(dirname "${PRE}")/gcc_64"
+          fi
+          export PATH="${PRE}/bin:${PATH}"
+          cmake -B build-qml -DCMAKE_BUILD_TYPE=Debug \
+            -DCMAKE_PREFIX_PATH="${PRE}" \
+            -DQt6_DIR="${PRE}/lib/cmake/Qt6"
+
+      - name: qmllint
+        run: cmake --build build-qml --target qmllint
+
+      # Surface qmllint warnings as a job summary so reviewers can spot them
+      # in the PR checks UI without re-running the build locally.
+      - name: Summary
+        if: always()
+        run: |
+          {
+            echo "### qmllint"
+            echo "Aggregated lint target status: ${{ steps.qmllint.outcome == 'success' && '✓ clean' || '✗ warnings/errors — see job log' }}"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  sanitizers:
+    # AddressSanitizer + UndefinedBehaviorSanitizer in Debug. Catches
+    # buffer overruns, use-after-free, integer overflow, alignment bugs,
+    # and leaks at runtime — a class of issues static analysis misses.
+    # Only runs against the in-tree unit tests (no GUI app — QPA offscreen
+    # is unnecessary because tests don't open windows).
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install Qt
+        uses: jurplel/install-qt-action@v4.3.1
+        with:
+          version: ${{ env.QT_VERSION }}
+          host: linux
+          target: desktop
+          arch: linux_gcc_64
+          modules: ${{ env.QT_MODULES }}
+          dir: ${{ runner.workspace }}
+          install-deps: false
+          aqtsource: ${{ env.AQT_SOURCE }}
+          cache: true
+          cache-key-prefix: qt6112-linux
+
+      - name: Configure
+        env:
+          # ASan + UBSan instrumentation. -fno-omit-frame-pointer keeps stack
+          # traces usable in ASan reports; -O1 keeps the runtime overhead
+          # manageable on a free CI runner.
+          CXXFLAGS: -fsanitize=address,undefined -fno-omit-frame-pointer -O1
+          LDFLAGS:  -fsanitize=address,undefined
+          UBSAN_OPTIONS: print_stacktrace=1:halt_on_error=1
+          ASAN_OPTIONS: detect_leaks=1:detect_stack_use_after_return=1
+        run: |
+          PRE="${QT_ROOT_DIR}"
+          if [ ! -f "${PRE}/lib/cmake/Qt6Graphs/Qt6GraphsConfig.cmake" ]; then
+            PRE="$(dirname "${PRE}")/gcc_64"
+          fi
+          export PATH="${PRE}/bin:${PATH}"
+          cmake -B build-asan -DCMAKE_BUILD_TYPE=Debug \
+            -DCMAKE_PREFIX_PATH="${PRE}" \
+            -DQt6_DIR="${PRE}/lib/cmake/Qt6"
+
+      - name: Build (sanitizers)
+        run: cmake --build build-asan -j"$(nproc)"
+
+      - name: Test (sanitizers)
+        env:
+          QT_QPA_PLATFORM: offscreen
+          UBSAN_OPTIONS: print_stacktrace=1:halt_on_error=1
+          ASAN_OPTIONS: detect_leaks=1:detect_stack_use_after_return=1
+        run: ctest --test-dir build-asan --output-on-failure

@@ -54,18 +54,18 @@ Do not change edge API without explicit user approval.
 
 ## MVP scope
 
-**MVP Core (repo này — đã implement):** FE-001 … FE-016, **trừ FE-014** (không merge `/readings` live) và **trừ FE-017** (xem dưới). Mapping task: Tasks **1–17** + **19** trong [`docs/plan/tasks-6-24-agent-prompts.md`](docs/plan/tasks-6-24-agent-prompts.md); **Task 18** không làm.
+**MVP Core (repo này — đã implement):** FE-001 … FE-016, **trừ FE-014** (không merge `/readings` live). Mapping task: Tasks **1–17** + **19** trong [`docs/plan/tasks-6-24-agent-prompts.md`](docs/plan/tasks-6-24-agent-prompts.md); **Task 18** đã làm lại một nửa (xem FE-017 bên dưới).
 
 | FE | Trạng thái |
 |----|------------|
 | FE-001 … FE-013, FE-015, FE-016 | Done (Tasks 1–16, 19) |
 | FE-004 (search) | Done (Task 17 — `LoggerSearchProxyModel`) |
 | FE-014 | **Out of scope** — `/readings` chỉ debug |
-| FE-017 (tray + frameless) | **Deferred / dropped** — giữ `ApplicationWindow` chuẩn OS (đóng = thoát app) |
+| FE-017 (tray + frameless) | **Frameless: đã implement** (chốt 2026-08 theo audit H-D/M-9); **system tray: không làm** — Close thoát app |
 
-**Không implement FE-017** trừ khi user yêu cầu lại: không `QSystemTrayIcon`, không `Qt.FramelessWindowHint`, không ẩn cửa sổ xuống tray khi Close.
+**FE-017 đã chốt lại (2026-08-17):** cửa sổ **frameless** là chuẩn hiện tại — `Main.qml` đặt `Qt.FramelessWindowHint` (non-Windows), Windows dùng `utils/os/WindowsFramelessHelper` (native event filter: `WM_NCCALCSIZE` bỏ title bar, `WM_NCHITTEST` giữ viền resize) + mở maximized mặc định; **không dùng** `QSystemTrayIcon`, Close vẫn thoát app (không minimize-to-tray).
 
-**Nice-to-have (Tasks 20–24):** Done trừ các task dropped. **Dropped:** Task **18** (FE-017), Task **21** (FE-020 QR). Còn lại chủ yếu manual hardware test (Task 4). Khảo sát cũ ghi FE-001…FE-017 — **khi mâu thuẫn, theo `HANDOFF.md`.**
+**Nice-to-have (Tasks 20–24):** Done trừ các task dropped. **Dropped:** Task **21** (FE-020 QR). Task **18** (FE-017): tray vẫn không làm, frameless đã implement — xem hàng FE-017 ở trên. Khảo sát cũ ghi FE-001…FE-017 — **khi mâu thuẫn, theo `HANDOFF.md`.**
 
 ## Testing
 

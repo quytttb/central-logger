@@ -167,6 +167,27 @@ QVector<LoggerInfo> LoggerRepository::findAll(QString *errorOut) const
     return result;
 }
 
+int LoggerRepository::countTotal(QString *errorOut) const
+{
+    QSqlQuery q(m_db);
+    if (!q.exec(QStringLiteral("SELECT COUNT(*) FROM logger_info")) || !q.next()) {
+        setErr(errorOut, q);
+        return -1;
+    }
+    return q.value(0).toInt();
+}
+
+int LoggerRepository::countOnline(QString *errorOut) const
+{
+    QSqlQuery q(m_db);
+    if (!q.exec(QStringLiteral("SELECT COUNT(*) FROM logger_info WHERE status = 'online'"))
+        || !q.next()) {
+        setErr(errorOut, q);
+        return -1;
+    }
+    return q.value(0).toInt();
+}
+
 QVector<LoggerListRow> LoggerRepository::findAllWithSensorCounts(QString *errorOut) const
 {
     QVector<LoggerListRow> result;

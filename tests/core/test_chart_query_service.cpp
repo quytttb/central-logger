@@ -107,9 +107,16 @@ private slots:
     {
         // With bucketMinutes=60 (1 hour), 3 readings in the same hour → 1 bucket.
         const QDateTime now = QDateTime::currentDateTimeUtc();
-        insertReading(1, 1.0, now.addSecs(-30).toString(Qt::ISODateWithMs));
-        insertReading(1, 2.0, now.addSecs(-60).toString(Qt::ISODateWithMs));
-        insertReading(1, 3.0, now.addSecs(-90).toString(Qt::ISODateWithMs));
+        // Anchor the test data at the start of the current UTC hour so three
+        // readings spaced 30 s apart always share a 60-minute bucket regardless
+        // of when the test runs (avoids flakes around bucket edges).
+        const QDateTime anchorTime = QDateTime::currentDateTimeUtc();
+        const QDateTime anchor(anchorTime.date(),
+                              QTime(anchorTime.time().hour(), 0, 0),
+                              Qt::UTC);
+        insertReading(1, 1.0, anchor.addSecs(-30).toString(Qt::ISODateWithMs));
+        insertReading(1, 2.0, anchor.addSecs(-60).toString(Qt::ISODateWithMs));
+        insertReading(1, 3.0, anchor.addSecs(-90).toString(Qt::ISODateWithMs));
 
         ChartQueryService svc(m_db.connection());
         const auto pts = svc.readingCountsLast24h(60);

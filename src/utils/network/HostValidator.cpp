@@ -17,6 +17,19 @@ bool isValidHostnameLabel(const QString &label) {
   return labelRe.match(label).hasMatch();
 }
 
+bool isValidIpv6(const QString &host) {
+  const QString s = host.trimmed();
+  if (s.isEmpty())
+    return false;
+
+  QHostAddress addr;
+  if (!addr.setAddress(s))
+    return false;
+  // QHostAddress::setAddress accepts IPv4 in IPv4-mapped IPv6 form
+  // ("::ffff:1.2.3.4") and similar — we want native IPv6 only.
+  return addr.protocol() == QAbstractSocket::IPv6Protocol && !addr.isNull();
+}
+
 } // namespace
 
 bool HostValidator::looksLikeIpv4Literal(const QString &host) {
@@ -74,6 +87,10 @@ bool HostValidator::isValidHost(const QString &host) {
   // label rules — require strict IPv4 when only digits and dots.
   if (looksLikeIpv4Literal(s))
     return isValidIpv4(s);
+
+  // IPv6 literal (contains ':' but not '/' which would be CIDR).
+  if (s.contains(QLatin1Char(':')))
+    return isValidIpv6(s);
 
   return isValidHostname(s);
 }

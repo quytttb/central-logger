@@ -1,5 +1,6 @@
 #include "HistoryViewModel.h"
 
+#include "core/SettingsController.h"
 #include "data/db/Database.h"
 #include "data/repositories/LoggerRepository.h"
 #include "data/repositories/SensorReadingRepository.h"
@@ -11,8 +12,12 @@
 #include <QSqlError>
 #include <QTextStream>
 #include <QThread>
+#include <QTimeZone>
+#include <QTimer>
 #include <QtConcurrent>
 #include <QVariantMap>
+
+#include <memory>
 
 namespace CentralLogger::Core {
 
@@ -63,6 +68,8 @@ HistorySearchResult executeHistorySearch(HistorySearchParams params)
         QSqlDatabase::removeDatabase(connName);
         return result;
     }
+
+    Data::Database::applyPerformancePragmas(db, nullptr);
 
     {
         Data::SensorReadingRepository repo(db);
@@ -175,10 +182,27 @@ void HistoryViewModel::search(const QString &fromDate, const QString &toDate, qi
         return;
     }
 
-    const QDateTime fromDt = QDateTime::fromString(fromDate, QStringLiteral("dd/MM/yyyy"))
-                                  .toUTC();
-    const QDateTime toDt   = QDateTime::fromString(toDate,   QStringLiteral("dd/MM/yyyy"))
-                                  .addDays(1).addSecs(-1).toUTC();
+    // M-7 fix: date boundaries must use the SAME timezone the chart uses
+    // (configured system_timezone), not the process-local OS timezone —
+    // otherwise the History search and the Dashboard chart disagree around
+    // the midnight boundary.
+    QTimeZone tz = QTimeZone::systemTimeZone();
+    if (auto *settings = SettingsController::instance()) {
+        if (!settings->systemTimezone().isEmpty()) {
+            const QTimeZone configured(settings->systemTimezone().toUtf8());
+            if (configured.isValid())
+                tz = configured;
+        }
+    }
+
+    const QDate fromDate2 = QDate::fromString(fromDate, QStringLiteral("dd/MM/yyyy"));
+    const QDate toDate2   = QDate::fromString(toDate,   QStringLiteral("dd/MM/yyyy"));
+    const QDateTime fromDt = fromDate2.isValid()
+        ? QDateTime(fromDate2, QTime(0, 0), tz).toUTC()
+        : QDateTime();
+    const QDateTime toDt = toDate2.isValid()
+        ? QDateTime(toDate2.addDays(1), QTime(0, 0), tz).addSecs(-1).toUTC()
+        : QDateTime();
 
     if (!fromDt.isValid() || !toDt.isValid()) {
         setError(tr("Invalid date format. Use dd/MM/yyyy."));
@@ -222,10 +246,43 @@ void HistoryViewModel::search(const QString &fromDate, const QString &toDate, qi
 
 void HistoryViewModel::refresh(const QString &fromDate, const QString &toDate, qint64 sensorId)
 {
-    if (g_historyWriter) {
-        g_historyWriter->flushPending();
+    if (!g_historyWriter) {
+        search(fromDate, toDate, sensorId);
+        return;
     }
-    search(fromDate, toDate, sensorId);
+
+    // H-D: flushPending() is now non-blocking. Re-run the search only after
+    // the writer acknowledges the drain via flushFinished(); a short fallback
+    // timer guards against the signal never arriving (e.g. writer not started).
+    auto done = std::make_shared<bool>(false);
+    auto conn = std::make_shared<QMetaObject::Connection>();
+    // Disconnect the flushFinished connection regardless of which path
+    // (signal or fallback timer) ran the search, so we don't leak a
+    // QMetaObject::Connection registration per Refresh click.
+    auto runSearch = [this, fromDate, toDate, sensorId, done, conn]() {
+        if (*done)
+            return;
+        *done = true;
+        search(fromDate, toDate, sensorId);
+    };
+    auto disconnectConn = [conn]() {
+        if (*conn)
+            QObject::disconnect(*conn);
+    };
+
+    *conn = QObject::connect(
+        g_historyWriter, &Network::HistoryWriterWorker::flushFinished,
+        this, [runSearch, disconnectConn]() {
+            disconnectConn();
+            runSearch();
+        });
+    // Fallback: if flushFinished did not fire within 2 s, search anyway.
+    QTimer::singleShot(2000, this, [runSearch, disconnectConn]() {
+        disconnectConn();
+        runSearch();
+    });
+
+    g_historyWriter->flushPending();
 }
 
 void HistoryViewModel::onSearchCompleted()

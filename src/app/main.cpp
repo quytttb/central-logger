@@ -51,6 +51,9 @@ namespace {
 
 QFile  *g_logFile  = nullptr;
 QMutex  g_logMutex;
+QString g_logPath;                // full path for rotation
+constexpr qint64 kLogMaxBytes    = 5 * 1024 * 1024; // rotate at 5 MB
+constexpr int    kLogKeepBackups = 3;               // app.log.1 … app.log.3
 
 void fileMessageHandler(QtMsgType type, const QMessageLogContext &, const QString &msg)
 {
@@ -69,8 +72,24 @@ void fileMessageHandler(QtMsgType type, const QMessageLogContext &, const QStrin
 
     QMutexLocker lock(&g_logMutex);
     if (g_logFile && g_logFile->isOpen()) {
-        g_logFile->write(line);
-        g_logFile->flush();
+        // M-12 (audit P2 #19): rotate during the run, not only at startup,
+        // so a 24/7 session cannot grow the log file without bound.
+        if (g_logFile->size() + line.size() > kLogMaxBytes) {
+            g_logFile->close();
+            QFile::remove(g_logPath + QStringLiteral(".%1").arg(kLogKeepBackups));
+            for (int i = kLogKeepBackups - 1; i >= 1; --i) {
+                QFile::rename(g_logPath + QStringLiteral(".%1").arg(i),
+                              g_logPath + QStringLiteral(".%1").arg(i + 1));
+            }
+            QFile::rename(g_logPath, g_logPath + QStringLiteral(".1"));
+            if (g_logFile->open(QIODevice::Append | QIODevice::Text)) {
+                g_logFile->write(line);
+                g_logFile->flush();
+            }
+        } else {
+            g_logFile->write(line);
+            g_logFile->flush();
+        }
     }
     fprintf(stderr, "%s", line.constData());
     if (type == QtFatalMsg)
@@ -84,13 +103,18 @@ QString initFileLogging()
         QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
     QDir().mkpath(dataDir);
     const QString logPath = dataDir + QStringLiteral("/central-logger.log");
+    g_logPath = logPath;
 
-    // Rotate: if the current log exceeds 5 MB, rename it to .log.old.
+    // Startup rotation (startup fallback kept for oversized leftovers).
     {
         QFileInfo fi(logPath);
-        if (fi.exists() && fi.size() > 5 * 1024 * 1024) {
-            QFile::remove(logPath + QStringLiteral(".old"));
-            QFile::rename(logPath, logPath + QStringLiteral(".old"));
+        if (fi.exists() && fi.size() > kLogMaxBytes) {
+            QFile::remove(logPath + QStringLiteral(".%1").arg(kLogKeepBackups));
+            for (int i = kLogKeepBackups - 1; i >= 1; --i) {
+                QFile::rename(logPath + QStringLiteral(".%1").arg(i),
+                              logPath + QStringLiteral(".%1").arg(i + 1));
+            }
+            QFile::rename(logPath, logPath + QStringLiteral(".1"));
         }
     }
 
@@ -206,7 +230,17 @@ int main(int argc, char *argv[])
     modbusThread.start();
 
     ModbusBridge bridge;
-    bridge.setDatabase(&database);
+    // Audit H-A: live-pipeline DB writes (status + catalog sync) run on a
+    // dedicated thread with its own connection — the UI thread only receives
+    // the finished snapshotApplied signal (pure model updates).
+    QThread bridgeThread;
+    bridgeThread.setObjectName(QStringLiteral("ModbusBridge"));
+    bridge.setDatabasePath(database.connection().databaseName());
+    bridge.moveToThread(&bridgeThread);
+    QObject::connect(&bridgeThread, &QThread::started,
+                     &bridge, &ModbusBridge::start,
+                     Qt::DirectConnection);
+    bridgeThread.start();
 
     ModbusDataDispatcher dispatcher;
 
@@ -273,6 +307,11 @@ int main(int argc, char *argv[])
         historyWorker.shutdown();
         historyThread.quit();
         historyThread.wait();
+
+        QMetaObject::invokeMethod(&bridge, "shutdown",
+                                  Qt::QueuedConnection);
+        bridgeThread.quit();
+        bridgeThread.wait();
     });
 
     QQmlApplicationEngine engine;

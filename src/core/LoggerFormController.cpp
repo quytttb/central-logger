@@ -12,7 +12,6 @@
 #include "utils/network/HostValidator.h"
 
 #include <QDebug>
-#include <QEventLoop>
 #include <QJSEngine>
 #include <QJsonObject>
 #include <QQmlEngine>
@@ -44,6 +43,8 @@ void LoggerFormController::setRestConfigService(Network::RestConfigService *rest
             &LoggerFormController::onProbeConfigFetched);
     connect(m_restConfig, &Network::RestConfigService::configFetched, this,
             &LoggerFormController::onConfigFetchedForForm);
+    connect(m_restConfig, &Network::RestConfigService::configApplied, this,
+            &LoggerFormController::onConfigAppliedPending);
   }
 }
 
@@ -413,77 +414,6 @@ bool LoggerFormController::upsertProbedCatalog(qint64 loggerId,
   return true;
 }
 
-bool LoggerFormController::waitForConfigApply(qint64 loggerId,
-                                              int expectedRevision,
-                                              const QJsonObject &patch,
-                                              int *appliedRevisionOut,
-                                              QString *errorOut) {
-  if (!m_restConfig) {
-    if (errorOut) {
-      *errorOut = QStringLiteral("REST service not available.");
-    }
-    return false;
-  }
-
-  bool finished = false;
-  bool applyOk = false;
-  QString applyErr;
-  int appliedRev = -1;
-
-  auto handler = [&](qint64 lid, bool ok, int httpStatus, QString rawJson,
-                     QString errMsg) {
-    if (lid != loggerId) {
-      return;
-    }
-    finished = true;
-    applyOk = ok;
-    applyErr = errMsg.isEmpty() && !ok
-                   ? QStringLiteral("HTTP %1").arg(httpStatus)
-                   : errMsg;
-    if (ok) {
-      const auto result =
-          Network::RestConfigParser::parseApplyResponse(rawJson.toUtf8());
-      appliedRev = result.appliedRevision;
-    }
-  };
-
-  const QMetaObject::Connection conn = connect(
-      m_restConfig, &Network::RestConfigService::configApplied, this, handler);
-
-  m_restConfig->applyConfig(loggerId, expectedRevision, patch);
-
-  QEventLoop loop;
-  QTimer timer;
-  timer.setSingleShot(true);
-  connect(&timer, &QTimer::timeout, &loop, [&]() {
-    if (!finished) {
-      finished = true;
-      applyOk = false;
-      applyErr = QStringLiteral("Config apply timed out.");
-    }
-    loop.quit();
-  });
-  connect(m_restConfig, &Network::RestConfigService::configApplied, &loop,
-          &QEventLoop::quit, Qt::QueuedConnection);
-
-  timer.start(15000);
-  loop.exec();
-  disconnect(conn);
-  timer.stop();
-
-  if (!applyOk) {
-    if (errorOut) {
-      *errorOut =
-          applyErr.isEmpty() ? QStringLiteral("Config push failed.") : applyErr;
-    }
-    return false;
-  }
-  if (appliedRevisionOut) {
-    *appliedRevisionOut = appliedRev;
-  }
-  return true;
-}
-
 void LoggerFormController::saveLoggerFromForm(
     bool isAdd, int loggerId, const QString &stationCode, const QString &name, const QString &host,
     int modbusPort, int apiPort, const QString &apiToken, int modbusUnitId,
@@ -636,47 +566,6 @@ void LoggerFormController::saveLoggerFromForm(
     }
   }
 
-  // Attempt to push the changed fields to the edge device. If the REST call
-  // fails (device offline, timeout, etc.) we still commit the local DB record
-  // so the logger is not lost. The caller receives configApplyFailed and can
-  // show a non-blocking warning; Modbus polling will resume when the device
-  // comes back online.
-  int appliedRevision = m_probedRevision;
-  bool restApplyFailed = false;
-  QString restApplyErr;
-  if (needsPost) {
-    if (!waitForConfigApply(savedId, m_probedRevision, patchJson,
-                            &appliedRevision, &restApplyErr)) {
-      restApplyFailed = true;
-      qWarning() << "LoggerFormController: REST config push failed for logger"
-                 << savedId << "—" << restApplyErr
-                 << "(logger will still be saved to local DB)";
-      if (m_dashboard) {
-        m_dashboard->logEvent(
-            savedId, QStringLiteral("Warning"),
-            QStringLiteral("Config push to device failed: %1").arg(restApplyErr));
-      }
-    }
-  }
-
-  if (appliedRevision < 0) {
-    appliedRevision = m_probedRevision;
-  }
-
-  if (const auto row = repo.findById(savedId, &err)) {
-    Data::LoggerInfo info = *row;
-    info.lastRevision = appliedRevision;
-    if (!repo.update(info, &err)) {
-      qWarning().noquote()
-          << "[save] aborted: lastRevision update failed —" << err;
-      conn.rollback();
-      m_formSaveInProgress = false;
-      setError(err);
-      emit formSaveFinished(false, savedId, m_lastError);
-      return;
-    }
-  }
-
   QString catalogErr;
   if (!upsertProbedCatalog(savedId, &catalogErr)) {
     qWarning().noquote() << "[save] aborted: catalog upsert failed —"
@@ -697,18 +586,28 @@ void LoggerFormController::saveLoggerFromForm(
     emit formSaveFinished(false, savedId, m_lastError);
     return;
   }
-  qInfo().noquote() << "[save] committed OK savedId=" << savedId
-                    << "restApplyFailed=" << restApplyFailed;
+  qInfo().noquote() << "[save] committed OK savedId=" << savedId;
 
-  m_formSaveInProgress = false;
+  // P2 #16 (audit M-1): the DB row is committed BEFORE the REST push so the
+  // ~15 s REST round-trip no longer holds the WAL write lock. If the push
+  // fails the logger still exists locally; the caller receives
+  // configApplyFailed and can show a non-blocking warning.
+  //
+  // The REST round-trip used to spin a nested QEventLoop (waitForConfigApply),
+  // which blocked the UI thread for the full timeout. The whole save flow is
+  // now fully async: we keep a small PendingApply record, fire the POST,
+  // and complete the save in onConfigAppliedPending() / finishPendingApply().
   setError({});
+
+  // Notify the dashboard / QML that the DB row is in. The REST part, if
+  // any, will land later via formSaveFinished (already emitted below for
+  // the synchronous no-POST path) and configApplyFailed.
   if (m_dashboard) {
     m_dashboard->logEvent(savedId, QStringLiteral("Info"),
                           isAdd ? QStringLiteral("Logger added: %1").arg(code)
                                 : QStringLiteral("Logger updated: %1").arg(code));
     m_dashboard->afterMutation();
   }
-  clearProbedConfig();
   if (m_db && m_db->isOpen()) {
     Data::LoggerRepository verifyRepo(m_db->connection());
     qInfo().noquote() << "[save] post-commit logger_info rowCount="
@@ -719,13 +618,137 @@ void LoggerFormController::saveLoggerFromForm(
   } else {
     emit loggerUpdated(savedId);
   }
-  emit formSaveFinished(true, savedId, QString{});
 
-  // Emit the REST warning AFTER formSaveFinished so QML can close the dialog
-  // first and then show the non-blocking banner.
-  if (restApplyFailed) {
-    emit configApplyFailed(savedId, restApplyErr);
+  if (needsPost) {
+    // Emit formSaveFinished now — the DB row is committed and the dialog
+    // can close. The REST push continues in the background; failures land
+    // later as configApplyFailed so the UI can show a non-blocking banner.
+    // (Replaces the old QEventLoop wait that blocked the UI thread up to
+    // 15 s during Save.)
+    emit formSaveFinished(true, savedId, QString{});
+
+    // Hand off to the async apply path. m_formSaveInProgress stays true
+    // until finishPendingApply() runs; onConfigAppliedPending() will clear
+    // it on success or on the 15 s safety timer.
+    m_pendingApply.loggerId        = savedId;
+    m_pendingApply.isAdd           = isAdd;
+    m_pendingApply.stationCode     = code;
+    m_pendingApply.probedRevision  = m_probedRevision;
+    m_pendingApply.appliedRevision = -1;
+    m_pendingApply.responded       = false;
+    if (!m_pendingApply.timeout) {
+      m_pendingApply.timeout = new QTimer(this);
+      m_pendingApply.timeout->setSingleShot(true);
+    }
+    m_pendingApply.timeout->disconnect(this);
+    connect(m_pendingApply.timeout, &QTimer::timeout, this, [this]() {
+      if (!m_pendingApply.responded) {
+        qWarning() << "LoggerFormController: REST apply timeout for logger"
+                   << m_pendingApply.loggerId;
+        finishPendingApply(false, QStringLiteral("Config push timed out."));
+      }
+    });
+    m_pendingApply.timeout->start(15000);
+
+    m_restConfig->applyConfig(savedId, m_probedRevision, patchJson);
+  } else {
+    m_formSaveInProgress = false;
+    clearProbedConfig();
+    emit formSaveFinished(true, savedId, QString{});
   }
+}
+
+void LoggerFormController::onConfigAppliedPending(qint64 loggerId, bool ok,
+                                                  int httpStatus,
+                                                  QString rawJson,
+                                                  QString errorMessage)
+{
+  if (m_pendingApply.loggerId != loggerId || m_pendingApply.responded) {
+    return;
+  }
+  m_pendingApply.responded = true;
+  if (m_pendingApply.timeout) {
+    m_pendingApply.timeout->stop();
+  }
+  if (ok) {
+    const auto result =
+        Network::RestConfigParser::parseApplyResponse(rawJson.toUtf8());
+    m_pendingApply.appliedRevision = result.appliedRevision;
+  }
+  finishPendingApply(ok,
+                     errorMessage.isEmpty() && !ok
+                         ? QStringLiteral("HTTP %1").arg(httpStatus)
+                         : errorMessage);
+}
+
+void LoggerFormController::finishPendingApply(bool ok,
+                                              const QString &errorMessage)
+{
+  const qint64 loggerId = m_pendingApply.loggerId;
+  const bool isAdd = m_pendingApply.isAdd;
+  const QString stationCode = m_pendingApply.stationCode;
+  const int probedRevision = m_pendingApply.probedRevision;
+  int appliedRevision = m_pendingApply.appliedRevision;
+
+  m_pendingApply.loggerId = -1;
+  m_pendingApply.isAdd = false;
+  m_pendingApply.stationCode.clear();
+  m_pendingApply.probedRevision = -1;
+  m_pendingApply.appliedRevision = -1;
+  m_pendingApply.responded = false;
+
+  if (!ok) {
+    qWarning() << "LoggerFormController: REST config push failed for logger"
+               << loggerId << "—" << errorMessage
+               << "(logger already saved to local DB)";
+    if (m_dashboard) {
+      m_dashboard->logEvent(
+          loggerId, QStringLiteral("Warning"),
+          QStringLiteral("Config push to device failed: %1").arg(errorMessage));
+    }
+  }
+
+  if (appliedRevision < 0) {
+    appliedRevision = probedRevision;
+  }
+  if (ok && appliedRevision != probedRevision) {
+    Data::LoggerRepository repo(m_db->connection());
+    QString revErr;
+    if (const auto row = repo.findById(loggerId, &revErr)) {
+      Data::LoggerInfo info = *row;
+      info.lastRevision = appliedRevision;
+      if (!repo.update(info, &revErr)) {
+        qWarning().noquote()
+            << "[save] warning: lastRevision update failed —" << revErr;
+      }
+    }
+  }
+
+  m_formSaveInProgress = false;
+  clearProbedConfig();
+  // formSaveFinished was already emitted synchronously when the DB row
+  // committed; here we only report the (async) REST outcome.
+  if (!ok) {
+    // Emitted after formSaveFinished so the dialog can close first and the
+    // non-blocking banner appears afterwards.
+    emit configApplyFailed(loggerId, errorMessage);
+  }
+  // Silence unused-variable warnings for the kept-for-debug params.
+  Q_UNUSED(isAdd);
+  Q_UNUSED(stationCode);
+}
+
+void LoggerFormController::beginConfigApply(qint64 loggerId,
+                                            int expectedRevision,
+                                            const QJsonObject &patch)
+{
+  // Reserved for a future fully-non-blocking refactor where the caller can
+  // queue multiple apply requests. Currently saveLoggerFromForm fires the
+  // apply directly via m_restConfig->applyConfig; this slot is kept so
+  // future code can route through a single funnel.
+  Q_UNUSED(loggerId);
+  Q_UNUSED(expectedRevision);
+  Q_UNUSED(patch);
 }
 
 void LoggerFormController::onProbeConfigFetched(bool ok, int httpStatus,

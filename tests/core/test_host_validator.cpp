@@ -14,6 +14,8 @@ private slots:
     void hostnameAccepts();
     void hostnameRejects();
     void isValidHostCombines();
+    void ipv6Accepts();
+    void ipv6Rejects();
 };
 
 void TestHostValidator::ipv4Accepts()
@@ -55,6 +57,26 @@ void TestHostValidator::isValidHostCombines()
     QVERIFY(!HostValidator::isValidHost(QStringLiteral("192.168.1")));
     QVERIFY(!HostValidator::isValidHost(QStringLiteral("abc!!!")));
     QVERIFY(!HostValidator::isValidHost(QStringLiteral("  ")));
+}
+
+void TestHostValidator::ipv6Accepts()
+{
+    QVERIFY(HostValidator::isValidHost(QStringLiteral("::1")));
+    QVERIFY(HostValidator::isValidHost(QStringLiteral("2001:db8::1")));
+    QVERIFY(HostValidator::isValidHost(QStringLiteral("fe80::1")));
+}
+
+void TestHostValidator::ipv6Rejects()
+{
+    // Bracketed form — callers must strip brackets; the validator takes
+    // the bare literal.
+    QVERIFY(!HostValidator::isValidHost(QStringLiteral("[::1]")));
+    // Bare IPv4 is still accepted; the validator must NOT confuse it with
+    // an IPv6 literal.
+    QVERIFY(!HostValidator::isValidHost(QStringLiteral("192.168.1")));
+    // Hostnames with ':' are no longer accepted after enabling IPv6 — that
+    // byte is reserved for the IPv6 colon separator.
+    QVERIFY(!HostValidator::isValidHost(QStringLiteral("bad:host")));
 }
 
 QTEST_MAIN(TestHostValidator)

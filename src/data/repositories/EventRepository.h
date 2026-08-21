@@ -25,6 +25,12 @@ public:
 
     bool insert(SystemEvent &event, QString *errorOut = nullptr);
 
+    /// Drop rows older than `cutoffUtc` in chunks. Returns the number of
+    /// rows deleted; -1 on error. Mirrors SensorReadingRepository::purgeOlderThan.
+    int purgeOlderThan(const QDateTime &cutoffUtc,
+                       QString *errorOut = nullptr,
+                       int chunkSize = 1000);
+
     QVector<SystemEvent> listRecent(int limit = 20, QString *errorOut = nullptr) const;
 
     /// LEFT JOIN against `logger_info` so callers (RecentEventsModel) can

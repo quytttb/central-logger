@@ -119,13 +119,26 @@ void SensorMonitoringTableModel::setRows(const QVector<SensorLiveRow> &rows)
 
     if (oldCount == newCount && oldCount > 0) {
         m_rows = rows;
+        // Emit dataChanged for every role the QML delegate binds to,
+        // including ones that rarely change (NameRole, UnitRole,
+        // TimestampRole, SensorTypeRole). Otherwise, when a Fetch-config
+        // rewrites the catalog's display name / unit / timestamp for an
+        // already-known sensor, the existing row keeps stale text.
         const QVector<int> rowRoles = {
             Qt::DisplayRole,
+            SensorIdRole,
+            NameRole,
             ValueRole,
+            UnitRole,
             DisplayStatusRole,
-            AlarmTypeRole,
             AttachDiTypeCodesRole,
             AttachDiTypeLabelsRole,
+            AlarmTypeRole,
+            SensorTypeRole,
+            ValidRole,
+            AlarmRole,
+            StaleRole,
+            TimestampRole,
         };
         emit dataChanged(index(0, 0),
                          index(oldCount - 1, ColumnCount - 1),

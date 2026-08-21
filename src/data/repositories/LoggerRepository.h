@@ -34,6 +34,11 @@ public:
 
     QVector<LoggerInfo> findAll(QString *errorOut = nullptr) const;
 
+    /// COUNT-based stats for dashboard aggregates. Cheaper than findAll() when
+    /// only totals are needed (audit H-A / M-2).
+    int countTotal(QString *errorOut = nullptr) const;
+    int countOnline(QString *errorOut = nullptr) const;
+
     /// Joins `logger_sensor` so each row carries its catalog count.
     QVector<LoggerListRow> findAllWithSensorCounts(QString *errorOut = nullptr) const;
 
