@@ -35,9 +35,6 @@ public:
     void setDatabasePath(const QString &path) { m_databasePath = path; }
     void setFlushIntervalSeconds(int seconds);
 
-    /// Number of snapshots currently waiting in the queue (thread-safe).
-    int pendingCount() const;
-
     /// Requests an immediate async flush. Returns at once — the caller must
     /// not block. Watch flushFinished() if completion notification is needed.
     /// Audit H-D: replaces the old blocking spin-wait implementation.

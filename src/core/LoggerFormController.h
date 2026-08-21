@@ -12,6 +12,7 @@
 
 class QJSEngine;
 class QQmlEngine;
+class QTimer;
 
 namespace CentralLogger::Data {
 class Database;
@@ -167,13 +168,14 @@ private:
     void onProbeConfigFetched(bool ok, int httpStatus, QString rawJson, QString errorMessage);
     void onConfigFetchedForForm(qint64 loggerId, bool ok, int httpStatus,
                                 QString rawJson, QString errorMessage);
+    void onConfigAppliedPending(qint64 loggerId, bool ok, int httpStatus,
+                                QString rawJson, QString errorMessage);
 
     void storeProbedFromParsed(const Network::RestConfigParser::ConfigPayload &parsed,
                                qint64 loggerIdForSensors);
     bool upsertProbedCatalog(qint64 loggerId, QString *errorOut);
-    bool waitForConfigApply(qint64 loggerId, int expectedRevision,
-                            const QJsonObject &patch, int *appliedRevisionOut,
-                            QString *errorOut);
+    void beginConfigApply(qint64 loggerId, int expectedRevision,
+                          const QJsonObject &patch);
 
     Data::Database             *m_db        = nullptr;
     Network::RestConfigService *m_restConfig = nullptr;
@@ -185,8 +187,27 @@ private:
     int         m_probedModbusUnitId = -1;
     QVector<CentralLogger::Data::LoggerSensor> m_probedSensors;
 
-    qint64 m_formLoadLoggerId   = -1;
+    qint64 m_formLoadLoggerId = -1;
     bool   m_formSaveInProgress = false;
+
+    /// Per-save pending REST state. Set when an apply is in flight after
+    /// a successful DB commit; cleared once the response (or timeout) is
+    /// consumed and formSaveFinished has been emitted. Replaces the old
+    /// QEventLoop-based waitForConfigApply to keep the UI thread
+    /// re-entrant (M-2 follow-up).
+    struct PendingApply
+    {
+        qint64       loggerId         = -1;
+        bool         isAdd            = false;
+        QString      stationCode;
+        int          probedRevision   = -1;
+        int          appliedRevision  = -1;
+        QTimer      *timeout          = nullptr; // owned by this, parented to controller
+        bool         responded        = false;
+    };
+    PendingApply m_pendingApply;
+
+    void finishPendingApply(bool ok, const QString &errorMessage);
 };
 
 } // namespace CentralLogger::Core

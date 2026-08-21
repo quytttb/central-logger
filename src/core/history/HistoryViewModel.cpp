@@ -256,20 +256,31 @@ void HistoryViewModel::refresh(const QString &fromDate, const QString &toDate, q
     // timer guards against the signal never arriving (e.g. writer not started).
     auto done = std::make_shared<bool>(false);
     auto conn = std::make_shared<QMetaObject::Connection>();
+    // Disconnect the flushFinished connection regardless of which path
+    // (signal or fallback timer) ran the search, so we don't leak a
+    // QMetaObject::Connection registration per Refresh click.
     auto runSearch = [this, fromDate, toDate, sensorId, done, conn]() {
         if (*done)
             return;
         *done = true;
-        if (conn && *conn)
-            QObject::disconnect(*conn);
         search(fromDate, toDate, sensorId);
+    };
+    auto disconnectConn = [conn]() {
+        if (*conn)
+            QObject::disconnect(*conn);
     };
 
     *conn = QObject::connect(
         g_historyWriter, &Network::HistoryWriterWorker::flushFinished,
-        this, [runSearch]() { runSearch(); });
+        this, [runSearch, disconnectConn]() {
+            disconnectConn();
+            runSearch();
+        });
     // Fallback: if flushFinished did not fire within 2 s, search anyway.
-    QTimer::singleShot(2000, this, [runSearch]() { runSearch(); });
+    QTimer::singleShot(2000, this, [runSearch, disconnectConn]() {
+        disconnectConn();
+        runSearch();
+    });
 
     g_historyWriter->flushPending();
 }

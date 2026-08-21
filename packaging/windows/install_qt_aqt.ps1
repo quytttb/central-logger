@@ -1,7 +1,7 @@
 # Install Qt 6.11.1 + MinGW via aqtinstall (local dev; CI uses install-qt-action).
 $ErrorActionPreference = "Stop"
 
-$version = if ($env:QT_VERSION) { $env:QT_VERSION } else { "6.11.1" }
+$version = if ($env:QT_VERSION) { $env:QT_VERSION } else { "6.11.2" }
 if ($env:QT_INSTALL_DIR) {
     $outDir = $env:QT_INSTALL_DIR
 } elseif ($env:GITHUB_WORKSPACE) {

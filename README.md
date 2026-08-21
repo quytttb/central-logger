@@ -16,7 +16,7 @@ Yêu cầu: **Qt 6.11**, CMake 3.16+. Cài qua [Qt Online Installer](https://doc
 
 | Cần cho repo | Tên trong Maintenance Tool | Ghi chú |
 |--------------|----------------------------|---------|
-| Bắt buộc | **Qt 6.11.1** → *Desktop* → **GCC 64-bit** | Quick, Qml, Sql, Network, Test, … |
+| Bắt buộc | **Qt 6.11.2** → *Desktop* → **GCC 64-bit** | Quick, Qml, Sql, Network, Test, … |
 | Modbus | **Qt Serial Bus** | |
 | (phụ thuộc) | **Qt Serial Port** | Bắt buộc khi cài Serial Bus |
 | Biểu đồ | **Qt Graphs** | Thay **Qt Charts** (deprecated 6.11) |
@@ -26,12 +26,12 @@ Yêu cầu: **Qt 6.11**, CMake 3.16+. Cài qua [Qt Online Installer](https://doc
 
 **Không cài / gỡ nếu còn:** **Qt Charts** — deprecated; dùng Qt Graphs.
 
-ID gói (CLI `MaintenanceTool search`): `qt.qt6.6111.linux_gcc_64`, `qt.qt6.6111.addons.qtserialbus.linux_gcc_64`, `qt.qt6.6111.addons.qtserialport.linux_gcc_64`, `qt.qt6.6111.addons.qtgraphs.linux_gcc_64`.
+ID gói (CLI `MaintenanceTool search`): `qt.qt6.6112.linux_gcc_64`, `qt.qt6.6112.addons.qtserialbus.linux_gcc_64`, `qt.qt6.6112.addons.qtserialport.linux_gcc_64`, `qt.qt6.6112.addons.qtgraphs.linux_gcc_64`.
 
-Cài Qt (ví dụ `~/Qt/6.11.1/gcc_64`), rồi:
+Cài Qt (ví dụ `~/Qt/6.11.2/gcc_64`), rồi:
 
 ```bash
-export CMAKE_PREFIX_PATH=~/Qt/6.11.1/gcc_64${CMAKE_PREFIX_PATH:+:$CMAKE_PREFIX_PATH}
+export CMAKE_PREFIX_PATH=~/Qt/6.11.2/gcc_64${CMAKE_PREFIX_PATH:+:$CMAKE_PREFIX_PATH}
 
 cmake -B build -DCMAKE_BUILD_TYPE=Debug
 cmake --build build

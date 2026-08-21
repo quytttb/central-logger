@@ -318,7 +318,6 @@ void ModbusService::readHeader(LoggerState &state)
             finishCycle(*s, false, QStringLiteral("invalid header (HR0 != 1)"));
             return;
         }
-        s->lastHeader = s->currentSnapshot.header;
         readAnalogChunks(*s);
     });
 }

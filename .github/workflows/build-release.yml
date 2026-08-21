@@ -17,7 +17,7 @@ concurrency:
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
-  QT_VERSION: "6.11.1"
+  QT_VERSION: "6.11.2"
   QT_MODULES: qtserialbus qtserialport qtgraphs qttasktree qtquick3d qtshadertools
   AQT_SOURCE: git+https://github.com/miurahr/aqtinstall.git@8c3695d4a4e1ceabf6a74dc6c79681656dc6b74b
 
@@ -83,7 +83,7 @@ jobs:
           install-deps: false
           aqtsource: ${{ env.AQT_SOURCE }}
           cache: true
-          cache-key-prefix: qt611-linux
+          cache-key-prefix: qt6112-linux
 
       - name: Build .deb
         run: |
@@ -112,7 +112,7 @@ jobs:
           echo "PATH=$($filtered -join ';')" >> $env:GITHUB_ENV
 
       - name: Setup CMake and Ninja
-        uses: lukka/get-cmake@latest
+        uses: lukka/get-cmake@d520f901a2ed42124ad7f4b06593b60dd648072e # v3.x
         with:
           cmakeVersion: "~3.28.0"
           ninjaVersion: latest
@@ -140,7 +140,7 @@ jobs:
           add-tools-to-path: true
           aqtsource: ${{ env.AQT_SOURCE }}
           cache: true
-          cache-key-prefix: qt611-win
+          cache-key-prefix: qt6112-win
 
       - name: Configure and build Release
         shell: pwsh
@@ -190,7 +190,7 @@ jobs:
         run: find release-assets -type f -ls
 
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@v3
+        uses: softprops/action-gh-release@v4
         with:
           tag_name: ${{ needs.prepare.outputs.tag }}
           name: Central Logger ${{ needs.prepare.outputs.version }}

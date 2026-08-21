@@ -10,11 +10,6 @@ WindowsFramelessHelper::WindowsFramelessHelper()
 {
 }
 
-void WindowsFramelessHelper::setTopBarHeight(int height)
-{
-    m_topBarHeight = height;
-}
-
 bool WindowsFramelessHelper::nativeEventFilter(const QByteArray &eventType, void *message, qintptr *result)
 {
 #ifdef Q_OS_WIN
@@ -59,6 +54,13 @@ bool WindowsFramelessHelper::nativeEventFilter(const QByteArray &eventType, void
                 frameY = GetSystemMetrics(SM_CYFRAME) + GetSystemMetrics(SM_CXPADDEDBORDER);
             }
 
+            // When the window is maximized the OS adds a hidden resize border
+            // on every side so a maximized window can be dragged back; ignore it
+            // so our hit zones stay inside the actual screen rect.
+            if (IsZoomed(msg->hwnd)) {
+                return false;
+            }
+
             bool isLeft = (pt.x >= rw.left && pt.x < rw.left + frameX);
             bool isRight = (pt.x < rw.right && pt.x >= rw.right - frameX);
             bool isTop = (pt.y >= rw.top && pt.y < rw.top + frameY);
@@ -75,6 +77,29 @@ bool WindowsFramelessHelper::nativeEventFilter(const QByteArray &eventType, void
 
             // Normal client area
             *result = HTCLIENT;
+            return true;
+        }
+        case WM_GETMINMAXINFO: {
+            // Without this hook, a frameless window that responds to
+            // WM_NCCALCSIZE by collapsing the non-client area would, when
+            // maximized, cover the taskbar / spill off-screen by the hidden
+            // border width. Constrain the maximized tracking size and position
+            // to the monitor's work area so the window snaps to it.
+            MINMAXINFO *mmi = reinterpret_cast<MINMAXINFO *>(msg->lParam);
+            HMONITOR mon = MonitorFromWindow(msg->hwnd, MONITOR_DEFAULTTONEAREST);
+            if (mon) {
+                MONITORINFO mi;
+                mi.cbSize = sizeof(MONITORINFO);
+                if (GetMonitorInfoW(mon, &mi)) {
+                    mmi->ptMaxPosition.x = mi.rcWork.left - mi.rcMonitor.left;
+                    mmi->ptMaxPosition.y = mi.rcWork.top  - mi.rcMonitor.top;
+                    mmi->ptMaxSize.x     = mi.rcWork.right  - mi.rcWork.left;
+                    mmi->ptMaxSize.y     = mi.rcWork.bottom - mi.rcWork.top;
+                    mmi->ptMaxTrackSize.x = mmi->ptMaxSize.x;
+                    mmi->ptMaxTrackSize.y = mmi->ptMaxSize.y;
+                }
+            }
+            *result = 0;
             return true;
         }
         }

@@ -24,6 +24,17 @@ find_package(Qt6 6.11 REQUIRED COMPONENTS
 
 qt_standard_project_setup(REQUIRES 6.11)
 
+# Aggregate a `qmllint` target across every QML module so CI can lint every
+# `.qml` file in one shot via `cmake --build build --target qmllint`.
+# `qt_add_qml_module(...)` below creates per-module `<target>_qmllint`
+# siblings; we fold them into one alias.
+add_custom_target(qmllint)
+foreach(_module IN ITEMS central_logger_components central_logger_theme central_logger_app)
+    if(TARGET "${_module}_qmllint")
+        add_dependencies(qmllint "${_module}_qmllint")
+    endif()
+endforeach()
+
 # Qt 6.11 qmllint / Qt Creator expect QML module output under the URI target path
 # (CentralLogger.Core → …/CentralLogger/Core). Static qt_add_qml_module targets
 # otherwise default to CMAKE_CURRENT_BINARY_DIR only (e.g. build/.../src/core).

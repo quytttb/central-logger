@@ -48,9 +48,14 @@ constexpr int kPurgeIntervalMs = 3600 * 1000;
 
 // Number of pages freed per PRAGMA incremental_vacuum step.
 constexpr int kVacuumChunkPages = 1000;
+// Upper bound on incremental_vacuum iterations per purge cycle. Each
+// iteration frees up to kVacuumChunkPages; cap so a misbehaving DB can't
+// pin the retention thread forever.
+constexpr int kMaxVacuumIterations = 64;
 
 struct PurgeResult {
-  int deleted = 0;
+  int deletedReadings = 0;
+  int deletedEvents   = 0;
   QString error;
 };
 
@@ -77,18 +82,25 @@ PurgeResult executeRetentionPurge(const QString &dbPath, const QDateTime &cutoff
 
   {
     Data::SensorReadingRepository repo(db);
-    result.deleted = repo.purgeOlderThan(cutoff, &result.error);
+    result.deletedReadings = repo.purgeOlderThan(cutoff, &result.error);
+  }
+  if (result.error.isEmpty()) {
+    Data::EventRepository events(db);
+    result.deletedEvents = events.purgeOlderThan(cutoff, &result.error);
   }
 
-  if (result.deleted > 0) {
+  if (result.deletedReadings + result.deletedEvents > 0) {
     // Reclaim freed pages in chunks; incremental_vacuum only works when
     // auto_vacuum = INCREMENTAL (ensured by Database::open).
+    // Bound the loop: incremental_vacuum returns success even when no
+    // pages are freed (e.g. another writer is holding a lock); without
+    // a cap we could spin forever on a misconfigured or stale DB.
     QSqlQuery q(db);
     int freeList = -1;
     if (q.exec(QStringLiteral("PRAGMA freelist_count")) && q.next()) {
       freeList = q.value(0).toInt();
     }
-    while (freeList > 0) {
+    for (int iters = 0; iters < kMaxVacuumIterations && freeList > 0; ++iters) {
       if (!q.exec(QStringLiteral("PRAGMA incremental_vacuum(%1)")
                       .arg(kVacuumChunkPages))) {
         break;
@@ -334,17 +346,22 @@ void DashboardController::purgeOldData() {
   if (dbPath == Data::Database::memoryPath()) {
     PurgeResult result;
     {
-      Data::SensorReadingRepository repo(m_db->connection());
-      result.deleted = repo.purgeOlderThan(cutoff, &result.error);
+      Data::SensorReadingRepository readings(m_db->connection());
+      result.deletedReadings = readings.purgeOlderThan(cutoff, &result.error);
+      if (result.error.isEmpty()) {
+        Data::EventRepository events(m_db->connection());
+        result.deletedEvents = events.purgeOlderThan(cutoff, &result.error);
+      }
     }
-    if (result.deleted < 0 || !result.error.isEmpty()) {
+    if (!result.error.isEmpty()) {
       m_purgeRunning = false;
       qWarning() << "DashboardController::purgeOldData error:" << result.error;
       return;
     }
+    const int totalDeleted = result.deletedReadings + result.deletedEvents;
     m_purgeRunning = false;
-    emit retentionPurgeCompleted(result.deleted);
-    if (result.deleted > 0) {
+    emit retentionPurgeCompleted(totalDeleted);
+    if (totalDeleted > 0) {
       refreshReadingsChart();
     }
     return;
@@ -357,14 +374,16 @@ void DashboardController::purgeOldData() {
             const PurgeResult result = watcher->result();
             watcher->deleteLater();
 
-            if (result.deleted < 0 || !result.error.isEmpty()) {
+            if (!result.error.isEmpty()) {
               qWarning() << "DashboardController::purgeOldData error:"
                          << result.error;
               return;
             }
 
-            emit retentionPurgeCompleted(result.deleted);
-            if (result.deleted > 0) {
+            const int totalDeleted =
+                result.deletedReadings + result.deletedEvents;
+            emit retentionPurgeCompleted(totalDeleted);
+            if (totalDeleted > 0) {
               refreshReadingsChart();
             }
           });
@@ -473,12 +492,16 @@ void DashboardController::onSnapshotApplied(
 
   if (m_appState) {
     // Push live alarm state so AppState.alarmCount reflects current device
-    // state, not historical system_event rows.
+    // state, not historical system_event rows. updateAlarmState already
+    // triggers a refreshFromDatabase() when the alarm bit flips; here we
+    // also refresh when the status itself transitioned so totalLoggers /
+    // onlineLoggers stay accurate without forcing two COUNT queries per
+    // poll on the UI thread when nothing changed.
     m_appState->updateAlarmState(loggerId,
                                  online && snapshot.header.isAnyAlarm());
-    // ModbusBridge persists status to DB before this slot; refresh totals
-    // even when alarm state did not change (updateAlarmState may no-op).
-    m_appState->refreshFromDatabase();
+    if (prevStatus != newStatus) {
+      m_appState->refreshFromDatabase();
+    }
   }
 }
 

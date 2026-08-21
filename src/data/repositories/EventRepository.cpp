@@ -5,6 +5,7 @@
 #include <QSqlError>
 #include <QSqlQuery>
 #include <QVariant>
+#include <QDateTime>
 
 namespace CentralLogger::Data {
 
@@ -12,18 +13,31 @@ namespace {
 
 using CentralLogger::Utils::parseUtc;
 
+// Column positions for the listRecent / listRecentWithLoggerName SELECT
+// lists. Using positional access avoids qt.sql.qsqlquery "unknown field name"
+// warnings on prepared queries and is faster than named lookups.
+enum ColEvent {
+    ColEventId = 0,
+    ColEventLoggerId,
+    ColEventEventType,
+    ColEventMessage,
+    ColEventLevel,
+    ColEventCreatedAt,
+    ColEventLoggerName, // only present in the JOIN variant
+};
+
 SystemEvent rowToModel(const QSqlQuery &q)
 {
     SystemEvent e;
-    e.id        = q.value(QStringLiteral("id")).toLongLong();
-    const QVariant lid = q.value(QStringLiteral("logger_id"));
+    e.id        = q.value(ColEventId).toLongLong();
+    const QVariant lid = q.value(ColEventLoggerId);
     if (!lid.isNull()) {
         e.loggerId = lid.toLongLong();
     }
-    e.eventType = q.value(QStringLiteral("event_type")).toString();
-    e.message   = q.value(QStringLiteral("message")).toString();
-    e.level     = q.value(QStringLiteral("level")).toString();
-    e.createdAt = parseUtc(q.value(QStringLiteral("created_at")).toString());
+    e.eventType = q.value(ColEventEventType).toString();
+    e.message   = q.value(ColEventMessage).toString();
+    e.level     = q.value(ColEventLevel).toString();
+    e.createdAt = parseUtc(q.value(ColEventCreatedAt).toString());
     return e;
 }
 
@@ -35,6 +49,47 @@ void setErr(QString *out, const QSqlQuery &q)
 }
 
 } // namespace
+
+int EventRepository::purgeOlderThan(const QDateTime &cutoffUtc,
+                                    QString *errorOut,
+                                    int chunkSize)
+{
+    const QString cutoff = CentralLogger::Utils::isoUtc(cutoffUtc);
+    QSqlQuery q(m_db);
+
+    if (chunkSize <= 0) {
+        q.prepare(QStringLiteral("DELETE FROM system_event WHERE created_at < :cutoff"));
+        q.bindValue(QStringLiteral(":cutoff"), cutoff);
+        if (!q.exec()) {
+            if (errorOut) *errorOut = q.lastError().text();
+            return -1;
+        }
+        return q.numRowsAffected();
+    }
+
+    q.prepare(QStringLiteral(
+        "DELETE FROM system_event WHERE id IN ("
+        "SELECT id FROM system_event WHERE created_at < :cutoff "
+        "ORDER BY created_at LIMIT :lim)"));
+    int deleted = 0;
+    for (;;) {
+        q.bindValue(QStringLiteral(":cutoff"), cutoff);
+        q.bindValue(QStringLiteral(":lim"), chunkSize);
+        if (!q.exec()) {
+            if (errorOut) *errorOut = q.lastError().text();
+            return -1;
+        }
+        const int affected = q.numRowsAffected();
+        if (affected <= 0) {
+            break;
+        }
+        deleted += affected;
+        if (affected < chunkSize) {
+            break;
+        }
+    }
+    return deleted;
+}
 
 bool EventRepository::insert(SystemEvent &event, QString *errorOut)
 {
@@ -104,7 +159,7 @@ QVector<SystemEventListItem> EventRepository::listRecentWithLoggerName(
     while (q.next()) {
         SystemEventListItem item;
         item.event      = rowToModel(q);
-        item.loggerName = q.value(QStringLiteral("logger_name")).toString();
+        item.loggerName = q.value(ColEventLoggerName).toString();
         result.append(item);
     }
     return result;

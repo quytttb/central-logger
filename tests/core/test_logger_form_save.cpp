@@ -235,6 +235,8 @@ void TestLoggerFormSave::successPath_dbCommitted()
                               QStringLiteral("tok"),
                               1, 2, 5);
 
+    // formSaveFinished is emitted synchronously when the DB row is committed
+    // (M-2 follow-up: the REST POST itself is now async, no QEventLoop).
     QVERIFY2(saveOk, qPrintable(QStringLiteral("DB commit failed: %1").arg(saveErr)));
     QVERIFY2(!restFailed, "configApplyFailed must NOT fire on REST success");
 
@@ -243,7 +245,9 @@ void TestLoggerFormSave::successPath_dbCommitted()
     QCOMPARE(all.size(), 1);
     QCOMPARE(all.first().name, QStringLiteral("New Name"));
 
-    QCOMPARE(h.edge.postCount(), 1);
+    // The POST itself is async (fire-and-forget after the DB commit).
+    // Spin the event loop until the fake server sees the request.
+    QTRY_VERIFY_WITH_TIMEOUT(h.edge.postCount() == 1, 2000);
 }
 
 // ---- Regression: REST POST fails → DB MUST still be committed -----------
@@ -278,11 +282,12 @@ void TestLoggerFormSave::restFail_dbStillCommitted()
                               QStringLiteral("tok"),
                               1, 2, 5);
 
+    // formSaveFinished is emitted synchronously when the DB row is committed;
+    // the REST POST is async and configApplyFailed lands later.
     QVERIFY2(saveOk,
              "DB must be committed even when REST POST fails (regression test)");
 
-    QVERIFY2(restFailed,
-             "configApplyFailed must be emitted so the UI can warn the user");
+    QTRY_VERIFY_WITH_TIMEOUT(restFailed, 2000);
     QVERIFY2(!restErr.isEmpty(),
              "configApplyFailed error message must not be empty");
 

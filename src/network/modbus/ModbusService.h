@@ -86,7 +86,6 @@ private:
         // lambdas capture the epoch at send time and drop stale replies that
         // arrive after a reconnect destroyed the client they belonged to.
         quint64               clientEpoch    = 0;
-        ModbusHeader          lastHeader;      // cached for plan reuse
         PollSnapshot          currentSnapshot; // built up across PDUs
         QVector<AnalogSample> analogAccum;
         QVector<PollPdu>      analogPlan;      // sequential chunk list, set in readAnalogChunks

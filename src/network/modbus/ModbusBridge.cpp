@@ -260,9 +260,22 @@ QVector<Data::SensorReading> ModbusBridge::buildReadings(const PollSnapshot &sna
         m_lastWrittenMs.insert(sensorId, nowMs);
     };
 
+    // Reuse the per-instance catalog cache populated by applyLiveSnapshot on
+    // the bridge thread (and by this thread's own first miss). Without the
+    // cache we would UPSERT+SELECT for every analog sample on every poll —
+    // 2 SQL statements per Na per snapshot — which is exactly what the M-2
+    // audit fixed for the live pipeline. The writer-side bridge keeps its
+    // own cache, so no cross-thread sharing.
+    auto &cache = catalogCacheFor(snapshot.loggerId, db);
     for (const auto &sample : snapshot.analogs) {
-        const qint64 sensorId = catalog.ensureExists(snapshot.loggerId, sample.edgeSensorId,
-                                                     QStringLiteral("ANALOG"));
+        qint64 sensorId = cache.analogIds.value(sample.edgeSensorId, 0);
+        if (sensorId <= 0) {
+            sensorId = catalog.ensureExists(snapshot.loggerId, sample.edgeSensorId,
+                                            QStringLiteral("ANALOG"));
+            if (sensorId > 0) {
+                cache.analogIds.insert(sample.edgeSensorId, sensorId);
+            }
+        }
         if (sensorId <= 0) {
             continue;
         }
@@ -270,6 +283,8 @@ QVector<Data::SensorReading> ModbusBridge::buildReadings(const PollSnapshot &sna
                         sample.isValid(), sample.isAlarm(), sample.isStale());
     }
 
+    // The catalog list is used only for DI/DO bit mapping; cache it too so
+    // we avoid the per-snapshot SELECT on the writer thread.
     const auto catalogRows = catalog.listByLoggerId(snapshot.loggerId);
     for (const auto &sensor : catalogRows) {
         if (!sensor.active || sensor.id <= 0) {

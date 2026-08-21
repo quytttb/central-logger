@@ -4,6 +4,7 @@
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
+#include <QStandardPaths>
 #include <QSqlError>
 #include <QSqlQuery>
 #include <QStringList>
@@ -86,8 +87,18 @@ Database::~Database()
 
 QString Database::defaultPath()
 {
-    const QString home = QDir::homePath();
-    return QDir(home).filePath(QStringLiteral(".central-logger/central-logger.db"));
+    // Place the database alongside the log file (AppDataLocation) so users
+    // only have to look in one place for Central Logger's per-user data.
+    // On Linux this is ~/.local/share/4M Technologies/Central Logger/
+    // (matching main.cpp's log file path); on Windows it is %APPDATA%.
+    const QString appData =
+        QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
+    if (appData.isEmpty()) {
+        // Fallback for restricted environments without AppDataLocation.
+        const QString home = QDir::homePath();
+        return QDir(home).filePath(QStringLiteral(".central-logger/central-logger.db"));
+    }
+    return QDir(appData).filePath(QStringLiteral("central-logger.db"));
 }
 
 bool Database::open(const QString &connectionName,
