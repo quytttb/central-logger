@@ -6,9 +6,11 @@
 
 qt_add_qml_module(central_logger_core
     URI CentralLogger.Core
-    VERSION 1.0
+    VERSION ${QML_MODULE_VERSION}
     STATIC
     SOURCES
+        AppDefaults.h
+        AppDefaults.cpp
         AppState.h
         AppState.cpp
         SettingsController.h

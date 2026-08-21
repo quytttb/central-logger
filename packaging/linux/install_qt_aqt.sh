@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Install Qt 6.11.1 + addons via aqtinstall (same modules as CI workflows).
+# Install Qt 6.11.2 + addons via aqtinstall (same modules as CI workflows).
 set -euo pipefail
 
 version="${QT_VERSION:-6.11.2}"

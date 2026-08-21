@@ -2,6 +2,7 @@
 
 #include "data/db/Database.h"
 #include "data/repositories/LoggerRepository.h"
+#include "utils/FormatConstants.h"
 
 #include <QJSEngine>
 #include <QQmlEngine>
@@ -31,7 +32,7 @@ AppState *AppState::create(QQmlEngine *, QJSEngine *)
 void AppState::refreshFromDatabase()
 {
     if (!m_db || !m_db->isOpen()) {
-        const QString text = QStringLiteral("Database not open");
+        const QString text = QLatin1String(CentralLogger::Format::kErrDatabaseNotOpen);
         if (m_statusText != text) {
             m_statusText = text;
             emit statusTextChanged();

@@ -14,7 +14,7 @@ set_source_files_properties(layout/AppNotifier.qml         PROPERTIES QT_QML_SIN
 
 qt_add_qml_module(central_logger_components
     URI CentralLogger.Components
-    VERSION 1.0
+    VERSION ${QML_MODULE_VERSION}
     STATIC
     QML_FILES
         # shell

@@ -3,6 +3,9 @@
 #include "RestConfigParser.h"
 #include "data/db/Database.h"
 #include "data/repositories/LoggerRepository.h"
+#include "utils/AppConstants.h"
+#include "utils/FormatConstants.h"
+#include "utils/Version.h"
 
 #include <QFile>
 #include <QJsonDocument>
@@ -118,7 +121,7 @@ void RestConfigService::fetchConfig(qint64 loggerId)
 
     // M-7: GET requests carry no body — do not send Content-Type.
     QNetworkRequest req{ QUrl(ep.baseUrl + QStringLiteral("/config")) };
-    req.setTransferTimeout(10000); // M-6: prevent indefinite hang on slow device
+    req.setTransferTimeout(CentralLogger::Defaults::kRestTransferTimeoutMs); // M-6: prevent indefinite hang on slow device
     if (!ep.token.isEmpty()) {
         req.setRawHeader("Authorization", "Bearer " + ep.token.toUtf8());
     }
@@ -172,7 +175,7 @@ void RestConfigService::applyConfig(qint64 loggerId,
 
     QNetworkRequest req{ QUrl(ep.baseUrl + QStringLiteral("/config")) };
     req.setHeader(QNetworkRequest::ContentTypeHeader, QStringLiteral("application/json"));
-    req.setTransferTimeout(10000); // M-6: prevent indefinite hang on slow device
+    req.setTransferTimeout(CentralLogger::Defaults::kRestTransferTimeoutMs); // M-6: prevent indefinite hang on slow device
     if (!ep.token.isEmpty()) {
         req.setRawHeader("Authorization", "Bearer " + ep.token.toUtf8());
     }
@@ -215,13 +218,13 @@ void RestConfigService::fetchReadingsDebug(qint64 loggerId)
     if (ep.token.isEmpty()) {
         releaseGuard(loggerId, Endpoint::Readings);
         emit readingsDebugFetched(loggerId, false, 0, QString{},
-            QStringLiteral("Device REST token empty — Scan QR on logger"));
+            CentralLogger::Format::kErrRestTokenEmpty);
         return;
     }
 
     QNetworkRequest req{ QUrl(ep.baseUrl + QStringLiteral("/readings")) };
     req.setRawHeader("Authorization", "Bearer " + ep.token.toUtf8());
-    req.setTransferTimeout(10000); // M-6: prevent indefinite hang on slow device
+    req.setTransferTimeout(CentralLogger::Defaults::kRestTransferTimeoutMs); // M-6: prevent indefinite hang on slow device
 
     QNetworkReply *reply = m_nam->get(req);
     connect(reply, &QNetworkReply::finished, this, [this, reply, loggerId]() {
@@ -262,8 +265,8 @@ QString humanizeProbeError(int httpStatus,
          || transportError.contains(QLatin1String("not found"), Qt::CaseInsensitive))
             return QStringLiteral("Host not found. Check hostname or IP address.");
         return transportError.isEmpty()
-            ? QStringLiteral("Could not reach the logger. Check host, API port, and network.")
-            : QStringLiteral("Could not reach the logger: %1").arg(transportError);
+            ? QLatin1String(CentralLogger::Format::kErrLoggerUnreachable)
+            : QString(QLatin1String(CentralLogger::Format::kErrLoggerUnreachableFmt)).arg(transportError);
     }
     // Delegate to the shared error formatter for HTTP-level errors.
     return RestConfigParser::formatRestError(httpStatus, body, transportError);
@@ -295,7 +298,7 @@ void RestConfigService::probeConfig(const QString &host, int apiPort, const QStr
     QNetworkRequest req{ QUrl(baseUrl + QStringLiteral("/config")) };
     // M-7: GET /config carries no body — don't send Content-Type. (Apply
     // below does the same, so probe and fetch stay consistent.)
-    req.setTransferTimeout(8000); // 8s timeout for probe
+    req.setTransferTimeout(CentralLogger::Defaults::kRestProbeTimeoutMs); // 8s timeout for probe
     if (!token.trimmed().isEmpty()) {
         req.setRawHeader("Authorization", "Bearer " + token.trimmed().toUtf8());
     }
@@ -343,7 +346,7 @@ void RestConfigService::downloadLatestReport(qint64 loggerId, const QString &sav
     }
     if (ep.token.isEmpty()) {
         emit reportDownloaded(loggerId, false, QString{},
-            QStringLiteral("Device REST token empty — Scan QR on logger"));
+            CentralLogger::Format::kErrRestTokenEmpty);
         return;
     }
 
@@ -351,7 +354,7 @@ void RestConfigService::downloadLatestReport(qint64 loggerId, const QString &sav
 
     QNetworkRequest req{ QUrl(ep.baseUrl + QStringLiteral("/reports/latest")) };
     req.setRawHeader("Authorization", "Bearer " + ep.token.toUtf8());
-    req.setTransferTimeout(30000); // M-6: reports may be large; allow 30s transfer
+    req.setTransferTimeout(CentralLogger::Defaults::kRestReportTimeoutMs); // M-6: reports may be large; allow 30s transfer
 
     QNetworkReply *reply = m_nam->get(req);
     connect(reply, &QNetworkReply::finished, this, [this, reply, loggerId, savePath]() {
@@ -371,12 +374,12 @@ void RestConfigService::downloadLatestReport(qint64 loggerId, const QString &sav
 
         // M-8: guard against unbounded readAll() for potentially large files.
         // Check Content-Length first; if absent, cap at read time.
-        constexpr qint64 kMaxBytes = 50LL * 1024 * 1024; // 50 MB
+        constexpr qint64 kMaxBytes = CentralLogger::Defaults::kRestReportMaxBytes; // 50 MB
         const qint64 contentLength =
             reply->header(QNetworkRequest::ContentLengthHeader).toLongLong();
         if (contentLength > kMaxBytes) {
             emit reportDownloaded(loggerId, false, QString{},
-                QStringLiteral("Report too large (%1 MB, limit 50 MB)")
+                QString(QLatin1String(CentralLogger::Format::kErrReportTooLarge))
                     .arg(contentLength / (1024 * 1024)));
             return;
         }
@@ -384,7 +387,7 @@ void RestConfigService::downloadLatestReport(qint64 loggerId, const QString &sav
         const QByteArray data = reply->readAll();
         if (data.size() > kMaxBytes) {
             emit reportDownloaded(loggerId, false, QString{},
-                QStringLiteral("Report data exceeds 50 MB limit"));
+                CentralLogger::Format::kErrReportDataTooLarge);
             return;
         }
         QFile file(savePath);

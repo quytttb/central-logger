@@ -1,5 +1,7 @@
 #pragma once
 
+#include "utils/AppConstants.h"
+
 #include <QDateTime>
 #include <QString>
 
@@ -15,7 +17,7 @@ struct HistoryRow
     QString   sensorName;
     QString   unit;
     double    value = 0.0;
-    int       decimals = 4;        ///< display precision from logger_sensor.decimals
+    int       decimals = Defaults::kDecimalsDefault; ///< display precision from logger_sensor.decimals
     bool      valid = true;
     bool      alarm = false;
     bool      stale = false;

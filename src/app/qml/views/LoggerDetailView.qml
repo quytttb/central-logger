@@ -83,7 +83,7 @@ Item {
     function modbusOfflineDetail() {
         const err = detailVm.lastModbusError
         if (err && err.length > 0) {
-            return qsTr("Modbus polling failed: %1. REST/config may still work on the API port — verify Modbus host, port (default 5020), and unit ID.").arg(err)
+            return qsTr("Modbus polling failed: %1. REST/config may still work on the API port — verify Modbus host, port (default %2), and unit ID.").arg(err).arg(AppDefaults.modbusPort)
         }
         if (detailVm.hasApiToken) {
             return qsTr("Modbus live data is not available yet. Values in the table below are from config (WAIT) until polling succeeds. REST fetch/apply still works.")
@@ -106,7 +106,7 @@ Item {
                 detailText:  body,
                 detailTitle: qsTr("Modbus / logger offline"),
                 loggerId:    root.loggerId,
-                durationMs:  8000
+                durationMs:  AppDefaults.restProbeTimeoutMs
             }
         )
     }
@@ -261,7 +261,7 @@ Item {
 
                         SectionHeader {
                             Layout.fillWidth: true
-                            title: qsTr("Analog trending (last %1 samples)").arg(20)
+                            title: qsTr("Analog trending (last %1 samples)").arg(AppDefaults.chartDisplayPointCount)
                         }
 
                         TableContentStack {

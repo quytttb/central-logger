@@ -1,4 +1,4 @@
-# Install Qt 6.11.1 + MinGW via aqtinstall (local dev; CI uses install-qt-action).
+# Install Qt 6.11.2 + MinGW via aqtinstall (local dev; CI uses install-qt-action).
 $ErrorActionPreference = "Stop"
 
 $version = if ($env:QT_VERSION) { $env:QT_VERSION } else { "6.11.2" }

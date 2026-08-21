@@ -1,5 +1,8 @@
 #pragma once
 
+#include "utils/SensorConstants.h"
+
+#include <QLatin1String>
 #include <QString>
 
 namespace CentralLogger::Utils {
@@ -9,16 +12,18 @@ namespace CentralLogger::Utils {
 inline QString displayLevelForEvent(const QString &eventType,
                                     const QString &level) {
   const auto fromToken = [](const QString &token) -> QString {
-    if (token == QLatin1String("warning") ||
-        token == QLatin1String("offline")) {
-      return QStringLiteral("warning");
+    if (token == QLatin1String(CentralLogger::Sensor::kLevelWarning) ||
+        token == QLatin1String(CentralLogger::Sensor::kLevelOffline)) {
+      return QString::fromUtf8(CentralLogger::Sensor::kLevelWarning);
     }
-    if (token == QLatin1String("alarm") || token == QLatin1String("critical") ||
-        token == QLatin1String("error")) {
-      return QStringLiteral("critical");
+    if (token == QLatin1String(CentralLogger::Sensor::kLevelAlarm) ||
+        token == QLatin1String(CentralLogger::Sensor::kLevelCritical) ||
+        token == QLatin1String(CentralLogger::Sensor::kLevelError)) {
+      return QString::fromUtf8(CentralLogger::Sensor::kLevelCritical);
     }
-    if (token == QLatin1String("info") || token == QLatin1String("online")) {
-      return QStringLiteral("info");
+    if (token == QLatin1String(CentralLogger::Sensor::kLevelInfo) ||
+        token == QLatin1String(CentralLogger::Sensor::kLevelOnline)) {
+      return QString::fromUtf8(CentralLogger::Sensor::kLevelInfo);
     }
     return {};
   };
@@ -31,7 +36,7 @@ inline QString displayLevelForEvent(const QString &eventType,
   if (!fromLevel.isEmpty()) {
     return fromLevel;
   }
-  return QStringLiteral("info");
+  return QString::fromUtf8(CentralLogger::Sensor::kLevelInfo);
 }
 
 } // namespace CentralLogger::Utils

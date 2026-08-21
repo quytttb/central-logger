@@ -1,47 +1,23 @@
-qt_add_executable(test_database_repositories
-    test_database_repositories.cpp
+add_central_logger_test(
+    NAME    test_database_repositories
+    SOURCES test_database_repositories.cpp
+    LIBS    data
 )
 
-target_link_libraries(test_database_repositories
-    PRIVATE
-        data
-        Qt6::Test
+add_central_logger_test(
+    NAME    test_retention_purge
+    SOURCES test_retention_purge.cpp
+    LIBS    data
 )
 
-add_test(NAME test_database_repositories COMMAND test_database_repositories)
-
-qt_add_executable(test_retention_purge
-    test_retention_purge.cpp
+add_central_logger_test(
+    NAME    test_database_migrations
+    SOURCES test_database_migrations.cpp
+    LIBS    data
 )
 
-target_link_libraries(test_retention_purge
-    PRIVATE
-        data
-        Qt6::Test
+add_central_logger_test(
+    NAME    test_wal_contention
+    SOURCES test_wal_contention.cpp
+    LIBS    data
 )
-
-add_test(NAME test_retention_purge COMMAND test_retention_purge)
-
-qt_add_executable(test_database_migrations
-    test_database_migrations.cpp
-)
-
-target_link_libraries(test_database_migrations
-    PRIVATE
-        data
-        Qt6::Test
-)
-
-add_test(NAME test_database_migrations COMMAND test_database_migrations)
-
-qt_add_executable(test_wal_contention
-    test_wal_contention.cpp
-)
-
-target_link_libraries(test_wal_contention
-    PRIVATE
-        data
-        Qt6::Test
-)
-
-add_test(NAME test_wal_contention COMMAND test_wal_contention)

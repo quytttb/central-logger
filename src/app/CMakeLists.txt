@@ -8,7 +8,7 @@ qt_add_executable(app
 
 qt_add_qml_module(app
     URI CentralLogger.App
-    VERSION 1.0
+    VERSION ${QML_MODULE_VERSION}
     QML_FILES
         qml/Main.qml
         qml/FatalStartup.qml

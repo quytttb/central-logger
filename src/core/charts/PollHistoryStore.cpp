@@ -1,5 +1,10 @@
 #include "PollHistoryStore.h"
 
+#include "utils/AppConstants.h"
+#include "utils/FormatConstants.h"
+#include "utils/SensorConstants.h"
+#include "utils/UiConstants.h"
+
 namespace CentralLogger::Core {
 
 void PollHistoryStore::append(const Network::PollSnapshot &snapshot)
@@ -42,25 +47,27 @@ QVariantList PollHistoryStore::seriesForLogger(qint64 loggerId) const
         points.reserve(static_cast<QList<QVariant>::size_type>(deque.size()));
         for (const auto &pt : deque) {
             QVariantMap p;
-            p.insert(QStringLiteral("x"),
+            p.insert(QLatin1String(CentralLogger::Ui::kChartX),
                      static_cast<double>(pt.timestamp.toMSecsSinceEpoch()));
-            p.insert(QStringLiteral("y"), static_cast<double>(pt.value));
-            p.insert(QStringLiteral("time"),
-                     pt.timestamp.toLocalTime().toString(QStringLiteral("HH:mm:ss")));
+            p.insert(QLatin1String(CentralLogger::Ui::kChartY), static_cast<double>(pt.value));
+            p.insert(QLatin1String(CentralLogger::Ui::kChartTime),
+                     pt.timestamp.toLocalTime()
+                         .toString(QLatin1String(CentralLogger::Format::kTimeHhMmSs)));
             points.append(p);
         }
 
         QVariantMap series;
-        series.insert(QStringLiteral("edgeSensorId"), edgeSensorId);
+        series.insert(QLatin1String(CentralLogger::Ui::kChartEdgeSensorId), edgeSensorId);
         // L-21: prefer the catalog name stored via updateSensorNames();
         // fall back to "Sensor #N" when name is unavailable.
         const QString label = m_sensorNames.value(loggerId).value(
             edgeSensorId,
-            QStringLiteral("Sensor #%1").arg(edgeSensorId));
-        series.insert(QStringLiteral("label"), label);
-        series.insert(QStringLiteral("decimals"),
-                      m_sensorDecimals.value(loggerId).value(edgeSensorId, 4));
-        series.insert(QStringLiteral("points"), points);
+            QString(QLatin1String(CentralLogger::Sensor::kFallbackNameFmt)).arg(edgeSensorId));
+        series.insert(QLatin1String(CentralLogger::Ui::kChartLabel), label);
+        series.insert(QLatin1String(CentralLogger::Ui::kChartDecimals),
+                      m_sensorDecimals.value(loggerId).value(
+                          edgeSensorId, CentralLogger::Defaults::kDecimalsDefault));
+        series.insert(QLatin1String(CentralLogger::Ui::kChartPoints), points);
         result.append(series);
     }
 

@@ -1,0 +1,12 @@
+#pragma once
+
+// Auto-generated from project(central_logger VERSION x.y.z) in root CMakeLists.txt.
+// Do not edit — re-run CMake after bumping the project version.
+
+namespace CentralLogger::Version {
+
+inline constexpr int kAppMajor = @PROJECT_VERSION_MAJOR@;
+inline constexpr int kAppMinor = @PROJECT_VERSION_MINOR@;
+inline constexpr int kAppPatch = @PROJECT_VERSION_PATCH@;
+
+} // namespace CentralLogger::Version

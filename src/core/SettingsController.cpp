@@ -3,6 +3,7 @@
 #include "data/db/Database.h"
 #include "data/repositories/SettingsRepository.h"
 #include "utils/AppConstants.h"
+#include "utils/FormatConstants.h"
 
 #include <QDateTime>
 #include <QJSEngine>
@@ -75,7 +76,7 @@ void SettingsController::load()
     setError(QString{});
 
     if (!m_db || !m_db->isOpen()) {
-        setError(QStringLiteral("Database not open"));
+        setError(QLatin1String(CentralLogger::Format::kErrDatabaseNotOpen));
         return;
     }
     Data::SettingsRepository repo(m_db->connection());
@@ -97,7 +98,7 @@ void SettingsController::load()
 bool SettingsController::save()
 {
     if (!m_db || !m_db->isOpen()) {
-        setError(QStringLiteral("Database not open"));
+        setError(QLatin1String(CentralLogger::Format::kErrDatabaseNotOpen));
         return false;
     }
     Data::SettingsRepository repo(m_db->connection());
@@ -122,7 +123,7 @@ QString SettingsController::formatTimestamp(const QDateTime &dt) const
     if (!dt.isValid()) return QString();
     QTimeZone tz(m_settings.systemTimezone.toUtf8());
     const QDateTime local = tz.isValid() ? dt.toTimeZone(tz) : dt.toLocalTime();
-    return local.toString(QStringLiteral("yyyy-MM-dd HH:mm:ss"));
+    return local.toString(QLatin1String(CentralLogger::Format::kDateYyyyMmDdHms));
 }
 
 void SettingsController::setError(const QString &message)

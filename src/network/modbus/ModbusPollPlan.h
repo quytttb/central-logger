@@ -1,5 +1,7 @@
 #pragma once
 
+#include "utils/AppConstants.h"
+
 #include <QVector>
 #include <cstdint>
 
@@ -31,10 +33,11 @@ inline bool operator==(const PollPdu &a, const PollPdu &b)
 /// previous header for predictability).
 inline QVector<PollPdu> planPollReads(uint16_t na, uint16_t ndi, uint16_t ndo)
 {
+    using CentralLogger::Defaults::kMaxAnalogChunk;
     constexpr int kHeaderQty       = 10;
     constexpr int kAnalogStart     = 10;
     constexpr int kRegistersPerBlk = 8;
-    constexpr int kMaxAnalogChunk  = 15; // 15*8 = 120 ≤ 125-reg FC03 limit
+    // kMaxAnalogChunk lives in CentralLogger::Defaults — 15 blocks × 8 regs = 120 ≤ 125-reg FC03 limit.
 
     QVector<PollPdu> out;
     out.append(PollPdu{ PollPdu::Function::Fc03, 0, kHeaderQty });

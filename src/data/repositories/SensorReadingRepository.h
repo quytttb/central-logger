@@ -2,6 +2,7 @@
 
 #include "data/models/HistoryRow.h"
 #include "data/models/SensorReading.h"
+#include "utils/AppConstants.h"
 
 #include <QDateTime>
 #include <QSqlDatabase>
@@ -29,9 +30,9 @@ public:
     /// (or -1 on error).
     int purgeOlderThan(const QDateTime &cutoffUtc,
                        QString *errorOut = nullptr,
-                       int chunkSize = kDefaultPurgeChunkSize);
+                       int chunkSize = Defaults::kDefaultPurgeChunkSize);
 
-    static constexpr int kDefaultPurgeChunkSize = 50000;
+    static constexpr int kDefaultPurgeChunkSize = Defaults::kDefaultPurgeChunkSize;
 
     /// Convenience helper for tests / status panels.
     int countForSensor(qint64 sensorId, QString *errorOut = nullptr) const;
@@ -43,7 +44,7 @@ public:
                                       const QDateTime &fromUtc,
                                       const QDateTime &toUtc,
                                       qint64 sensorId = 0,
-                                      int limit = 5000,
+                                      int limit = Defaults::kHistorySearchLimit,
                                       QString *errorOut = nullptr) const;
 
     /// Same filters as searchHistory — total row count without LIMIT.

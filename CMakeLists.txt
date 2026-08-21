@@ -5,12 +5,23 @@ project(central_logger VERSION 0.1.1 LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-# Maintenance Tool IDs (Qt 6.11.1, linux_gcc_64) — see README.md § Qt components
-#   Essentials: qt.qt6.6111.linux_gcc_64  (Quick, Qml, Sql, Network, Test, …)
+# --- Single source of truth for build-time versions ---------------------------
+# Bump these in one place; everything else (find_package, qt_standard_project_setup,
+# packaging scripts, QML module VERSION) reads from them.
+set(QT_VERSION_REQUIRED "6.11" CACHE STRING "Minimum Qt version")
+set(QML_MODULE_VERSION  "1.0"  CACHE STRING "QML module URI version for qt_add_qml_module")
+
+# Maintenance Tool IDs (Qt 6.11.2, linux_gcc_64) — see README.md § Qt components
+#   Essentials: qt.qt6.6112.linux_gcc_64  (Quick, Qml, Sql, Network, Test, …)
 #   Modbus:     qtserialbus + qtserialport (SerialBus dependency)
 #   Charts UI:  qtgraphs + qtquick3d + qtshadertools (Graphs/Quick3D; not qtcharts — deprecated in 6.11)
 #   Qml base:   qttasktree (Qt 6.11 Qml asset downloader dependency)
-find_package(Qt6 6.11 REQUIRED COMPONENTS
+#
+# The patch version (6.11.2) and the install path must agree. See
+# packaging/linux/{install_qt_aqt.sh,ci_configure.sh,resolve_qt_prefix.sh}
+# and packaging/windows/{install_qt_aqt.ps1,build_installer.ps1} — update
+# both sides together.
+find_package(Qt6 ${QT_VERSION_REQUIRED} REQUIRED COMPONENTS
     Quick
     QuickControls2
     Qml
@@ -22,7 +33,19 @@ find_package(Qt6 6.11 REQUIRED COMPONENTS
     Test
 )
 
-qt_standard_project_setup(REQUIRES 6.11)
+qt_standard_project_setup(REQUIRES ${QT_VERSION_REQUIRED})
+
+# Generate src/utils/Version.h with kAppMajor/kAppMinor/kAppPatch from
+# project(VERSION) above. Output goes to the build tree (see utils/CMakeLists.txt
+# for include path).
+configure_file(
+    ${CMAKE_SOURCE_DIR}/src/utils/Version.h.in
+    ${CMAKE_BINARY_DIR}/generated/Version_generated.h
+    @ONLY
+)
+
+# Shared CMake helpers (Qt Test boilerplate, etc.).
+include(${CMAKE_SOURCE_DIR}/cmake/CentralLoggerTest.cmake)
 
 # Aggregate a `qmllint` target across every QML module so CI can lint every
 # `.qml` file in one shot via `cmake --build build --target qmllint`.

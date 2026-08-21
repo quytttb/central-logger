@@ -1,15 +1,18 @@
 #pragma once
 
+#include "utils/AppConstants.h"
+#include "utils/UiConstants.h"
+
 #include <QString>
 
 namespace CentralLogger::Data {
 
 struct AppSettings
 {
-    QString theme = QStringLiteral("dark");
-    QString systemTimezone = QStringLiteral("Asia/Ho_Chi_Minh");
-    int     dataRetentionDays = 30;
-    int     historyFlushIntervalS = 5;
+    QString theme = Ui::kThemeDark;
+    QString systemTimezone = Ui::kDefaultTimezone;
+    int     dataRetentionDays = Defaults::kDefaultRetentionDays;
+    int     historyFlushIntervalS = Defaults::kHistoryFlushIntervalS;
 };
 
 } // namespace CentralLogger::Data

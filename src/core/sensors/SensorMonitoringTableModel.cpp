@@ -1,5 +1,7 @@
 #include "core/sensors/SensorMonitoringTableModel.h"
 
+#include "utils/UiConstants.h"
+
 namespace CentralLogger::Core {
 
 namespace {
@@ -87,20 +89,20 @@ QVariant SensorMonitoringTableModel::headerData(int section,
 QHash<int, QByteArray> SensorMonitoringTableModel::roleNames() const
 {
     return {
-        { Qt::DisplayRole,          "display" },
-        { SensorIdRole,             "sensorId" },
-        { NameRole,                 "name" },
-        { ValueRole,                "value" },
-        { UnitRole,                 "unit" },
-        { DisplayStatusRole,        "displayStatus" },
-        { AttachDiTypeCodesRole,    "attachDiTypeCodes" },
-        { AttachDiTypeLabelsRole,   "attachDiTypeLabels" },
-        { AlarmTypeRole,            "alarmType" },
-        { SensorTypeRole,           "sensorType" },
-        { ValidRole,                "valid" },
-        { AlarmRole,                "alarm" },
-        { StaleRole,                "stale" },
-        { TimestampRole,            "timestamp" },
+        { Qt::DisplayRole,          CentralLogger::Ui::kRoleDisplay },
+        { SensorIdRole,             CentralLogger::Ui::kRoleSensorId },
+        { NameRole,                 CentralLogger::Ui::kRoleName },
+        { ValueRole,                CentralLogger::Ui::kRoleValue },
+        { UnitRole,                 CentralLogger::Ui::kRoleUnit },
+        { DisplayStatusRole,        CentralLogger::Ui::kRoleDisplayStatus },
+        { AttachDiTypeCodesRole,    CentralLogger::Ui::kRoleAttachDiCodes },
+        { AttachDiTypeLabelsRole,   CentralLogger::Ui::kRoleAttachDiLabels },
+        { AlarmTypeRole,            CentralLogger::Ui::kRoleAlarmType },
+        { SensorTypeRole,           CentralLogger::Ui::kRoleSensorType },
+        { ValidRole,                CentralLogger::Ui::kRoleValid },
+        { AlarmRole,                CentralLogger::Ui::kRoleAlarm },
+        { StaleRole,                CentralLogger::Ui::kRoleStale },
+        { TimestampRole,            CentralLogger::Ui::kRoleTimestamp },
     };
 }
 

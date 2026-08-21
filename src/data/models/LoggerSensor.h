@@ -1,5 +1,8 @@
 #pragma once
 
+#include "utils/AppConstants.h"
+#include "utils/SensorConstants.h"
+
 #include <QString>
 #include <QVector>
 #include <optional>
@@ -11,14 +14,14 @@ struct LoggerSensor
     qint64               id = 0;
     qint64               loggerId = 0;
     int                  edgeSensorId = 0;
-    QString              sensorType = QStringLiteral("UNKNOWN"); // ANALOG|DI|DO|UNKNOWN
+    QString              sensorType = Sensor::kTypeUnknown; // ANALOG|DI|DO|UNKNOWN
     QString              name;
     QString              unit;
     std::optional<double> minThreshold;
     std::optional<double> maxThreshold;
     /// Display precision for ANALOG values (synced from edge GET /config
     /// `decimals`; range 0–6, default 4). Ignored for DI/DO (shown ON/OFF).
-    int                  decimals = 4;
+    int                  decimals = Defaults::kDecimalsDefault;
     bool                 active = true;
     /// Edge PK of primary parent analog (from GET /config `parent_id`); null = top-level.
     std::optional<int>   parentEdgeSensorId;

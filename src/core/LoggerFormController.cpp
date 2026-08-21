@@ -9,6 +9,9 @@
 #include "network/rest/RestConfigParser.h"
 #include "network/rest/RestConfigService.h"
 #include "utils/AppConstants.h"
+#include "utils/FormatConstants.h"
+#include "utils/SensorConstants.h"
+#include "utils/UiConstants.h"
 #include "utils/network/HostValidator.h"
 
 #include <QDebug>
@@ -106,7 +109,7 @@ qint64 LoggerFormController::addLogger(const QString &stationCode,
 
   setError(QString{});
   if (m_dashboard) {
-    m_dashboard->logEvent(loggerId, QStringLiteral("Info"),
+    m_dashboard->logEvent(loggerId, CentralLogger::Sensor::kEventTypeInfo,
                           QStringLiteral("Logger added: %1").arg(code));
     m_dashboard->afterMutation();
   }
@@ -161,7 +164,7 @@ bool LoggerFormController::updateLogger(qint64 id, const QString &stationCode,
 
   setError(QString{});
   if (m_dashboard) {
-    m_dashboard->logEvent(id, QStringLiteral("Info"),
+    m_dashboard->logEvent(id, CentralLogger::Sensor::kEventTypeInfo,
                           QStringLiteral("Logger updated: %1").arg(code));
     m_dashboard->afterMutation();
   }
@@ -192,7 +195,7 @@ bool LoggerFormController::removeLogger(qint64 id) {
   if (m_dashboard) {
     // App-wide event (logger_id = NULL) so the FK CASCADE doesn't wipe it
     // along with the row we just removed.
-    m_dashboard->logEvent(0, QStringLiteral("Info"),
+    m_dashboard->logEvent(0, CentralLogger::Sensor::kEventTypeInfo,
                           QStringLiteral("Logger removed: %1")
                               .arg(existing->stationCode));
     m_dashboard->afterMutation();
@@ -233,7 +236,7 @@ QVariantMap LoggerFormController::getLoggerFormData(qint64 id) const {
 
 bool LoggerFormController::ensureDatabase() {
   if (!m_db || !m_db->isOpen()) {
-    setError(QStringLiteral("Database not open"));
+    setError(QLatin1String(CentralLogger::Format::kErrDatabaseNotOpen));
     return false;
   }
   return true;
@@ -294,7 +297,7 @@ void LoggerFormController::probeConfig(const QString &host, int apiPort,
   if (!m_restConfig) {
     qWarning().noquote() << "[probe] aborted: REST service not available";
     emit probeConfigResult(false,
-                           QStringLiteral("REST service not available."));
+                           QLatin1String(CentralLogger::Format::kErrRestUnavailable));
     return;
   }
   if (!HostValidator::isValidHost(host)) {
@@ -353,7 +356,7 @@ QString LoggerFormController::probedStationCode() const {
 void LoggerFormController::loadConfigForForm(int loggerId) {
   if (!m_restConfig) {
     emit configLoadForFormFinished(
-        false, QStringLiteral("REST service not available."));
+        false, QLatin1String(CentralLogger::Format::kErrRestUnavailable));
     return;
   }
   if (loggerId < 0) {
@@ -376,7 +379,7 @@ void LoggerFormController::onConfigFetchedForForm(qint64 loggerId, bool ok,
   if (!ok) {
     clearProbedConfig();
     const QString msg = errorMessage.isEmpty()
-                            ? QStringLiteral("HTTP %1").arg(httpStatus)
+                            ? QString(QLatin1String(CentralLogger::Format::kErrHttpFmt)).arg(httpStatus)
                             : errorMessage;
     emit configLoadForFormFinished(false, msg);
     return;
@@ -603,7 +606,7 @@ void LoggerFormController::saveLoggerFromForm(
   // any, will land later via formSaveFinished (already emitted below for
   // the synchronous no-POST path) and configApplyFailed.
   if (m_dashboard) {
-    m_dashboard->logEvent(savedId, QStringLiteral("Info"),
+    m_dashboard->logEvent(savedId, CentralLogger::Sensor::kEventTypeInfo,
                           isAdd ? QStringLiteral("Logger added: %1").arg(code)
                                 : QStringLiteral("Logger updated: %1").arg(code));
     m_dashboard->afterMutation();
@@ -677,7 +680,7 @@ void LoggerFormController::onConfigAppliedPending(qint64 loggerId, bool ok,
   }
   finishPendingApply(ok,
                      errorMessage.isEmpty() && !ok
-                         ? QStringLiteral("HTTP %1").arg(httpStatus)
+                         ? QString(QLatin1String(CentralLogger::Format::kErrHttpFmt)).arg(httpStatus)
                          : errorMessage);
 }
 
@@ -703,7 +706,7 @@ void LoggerFormController::finishPendingApply(bool ok,
                << "(logger already saved to local DB)";
     if (m_dashboard) {
       m_dashboard->logEvent(
-          loggerId, QStringLiteral("Warning"),
+          loggerId, CentralLogger::Sensor::kEventTypeWarning,
           QStringLiteral("Config push to device failed: %1").arg(errorMessage));
     }
   }

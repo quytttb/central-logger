@@ -1,6 +1,7 @@
 #pragma once
 
 #include "data/models/SystemEvent.h"
+#include "utils/AppConstants.h"
 
 #include <QSqlDatabase>
 #include <QString>
@@ -29,15 +30,16 @@ public:
     /// rows deleted; -1 on error. Mirrors SensorReadingRepository::purgeOlderThan.
     int purgeOlderThan(const QDateTime &cutoffUtc,
                        QString *errorOut = nullptr,
-                       int chunkSize = 1000);
+                       int chunkSize = Defaults::kVacuumChunkPages);
 
-    QVector<SystemEvent> listRecent(int limit = 20, QString *errorOut = nullptr) const;
+    QVector<SystemEvent> listRecent(int limit = Defaults::kRecentEventsLimit,
+                                    QString *errorOut = nullptr) const;
 
     /// LEFT JOIN against `logger_info` so callers (RecentEventsModel) can
     /// render a station name without re-querying per row. Same ordering
     /// as `listRecent`.
     QVector<SystemEventListItem> listRecentWithLoggerName(
-        int limit = 20, QString *errorOut = nullptr) const;
+        int limit = Defaults::kRecentEventsLimit, QString *errorOut = nullptr) const;
 
 private:
     QSqlDatabase m_db;

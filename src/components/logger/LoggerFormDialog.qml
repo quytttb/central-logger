@@ -91,11 +91,11 @@ Dialog {
         stationCodeField.text    = root.initialData.stationCode           ?? "";
         nameField.text           = root.initialData.name                  ?? "";
         hostField.text           = root.initialData.host                  ?? "";
-        modbusPortSpin.value     = root.initialData.modbusPort            ?? 5020;
-        modbusUnitIdSpin.value   = root.initialData.modbusUnitId          ?? 1;
-        pollIntervalSpin.value   = root.initialData.centralPollIntervalS ?? 2;
-        timeoutSpin.value        = root.initialData.timeoutS              ?? 2;
-        apiPortSpin.value        = root.initialData.apiPort               ?? 8080;
+        modbusPortSpin.value     = root.initialData.modbusPort            ?? AppDefaults.modbusPort;
+        modbusUnitIdSpin.value   = root.initialData.modbusUnitId          ?? AppDefaults.modbusUnitId;
+        pollIntervalSpin.value   = root.initialData.centralPollIntervalS ?? AppDefaults.pollIntervalSec;
+        timeoutSpin.value        = root.initialData.timeoutS              ?? AppDefaults.timeoutSec;
+        apiPortSpin.value        = root.initialData.apiPort               ?? AppDefaults.apiPort;
         apiTokenField.text       = root.initialData.apiToken              ?? "";
         root.configLoaded = false;
         root.configLoading = false;
@@ -243,7 +243,7 @@ Dialog {
                 Layout.fillWidth: true
                 Material.containerStyle: Material.Outlined
                 from: 1; to: 65535
-                value: 5020
+                value: AppDefaults.modbusPort
                 editable: true
                 live: true
             }
@@ -282,7 +282,7 @@ Dialog {
                 Layout.fillWidth: true
                 Material.containerStyle: Material.Outlined
                 from: 1; to: 247
-                value: 1
+                value: AppDefaults.modbusUnitId
                 editable: true
                 live: true
             }
@@ -333,8 +333,8 @@ Dialog {
                 Layout.column: 1
                 Layout.fillWidth: true
                 Material.containerStyle: Material.Outlined
-                from: 1; to: 3600
-                value: 2
+                from: AppDefaults.minIntervalSec; to: AppDefaults.maxIntervalSec
+                value: AppDefaults.pollIntervalSec
                 editable: true
                 live: true
                 enabled: root.configLoaded
@@ -352,7 +352,7 @@ Dialog {
                 Layout.fillWidth: true
                 Material.containerStyle: Material.Outlined
                 from: 1; to: 60
-                value: 2
+                value: AppDefaults.timeoutSec
                 editable: true
                 live: true
             }
@@ -376,7 +376,7 @@ Dialog {
                 Layout.fillWidth: true
                 Material.containerStyle: Material.Outlined
                 from: 1; to: 65535
-                value: 8080
+                value: AppDefaults.apiPort
                 editable: true
                 live: true
                 onValueChanged: if (root.visible) root.invalidateConfig()
