@@ -2,6 +2,7 @@
 
 #include "ModbusTypes.h"
 #include "data/models/LoggerSensor.h"
+#include "utils/AppConstants.h"
 
 #include <QHash>
 #include <QList>
@@ -101,7 +102,7 @@ private:
     QHash<qint64, double> m_lastValue;
     QHash<qint64, int>    m_lastFlags;   // valid|alarm|stale bitmask
     QHash<qint64, qint64> m_lastWrittenMs;
-    static constexpr qint64 kHeartbeatMs = 15 * 60 * 1000; // force-write cadence
+    static constexpr qint64 kHeartbeatMs = Defaults::kModbusHeartbeatMs;
 };
 
 } // namespace CentralLogger::Network

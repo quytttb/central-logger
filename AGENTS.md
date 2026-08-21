@@ -77,3 +77,25 @@ Write **new** Qt Test / CTest in this repo — do not reference legacy pytest.
 - `find_package` Qt6 components: Quick, Qml, Sql, Network, **SerialBus** (Modbus FC01/02/03), **Graphs** (thay Qt Charts — deprecated 6.11)
 - Enable `CMAKE_AUTOMOC`, `CMAKE_AUTORCC` when adding C++ types
 - CMake target `app` in `src/app` (binary `central_logger`); static lib `data` in `src/data` (alias `central_logger::data`)
+- Bump `QT_VERSION_REQUIRED` / `QML_MODULE_VERSION` in root `CMakeLists.txt` — they propagate to `find_package`, `qt_standard_project_setup`, and every `qt_add_qml_module(VERSION ...)`. Patch versions in packaging scripts must match.
+
+## Constants — single source of truth
+
+All magic numbers and duplicated string literals live under `src/utils/`. When
+adding a new constant, put it in the right header and include it. Don't
+hardcode in source.
+
+| Header | What |
+|--------|------|
+| `utils/AppConstants.h`     | Operational defaults — `CentralLogger::Defaults::*` (ports, intervals, batch sizes, decimals, log rotation, retention) |
+| `utils/Version.h`          | Protocol / schema versions — `CentralLogger::Version::*` (DB schema, REST API, Modbus map) |
+| `utils/DbConstants.h`      | SQL table + bind-param names — `CentralLogger::Data::Db::*` |
+| `utils/UiConstants.h`      | QML role names + chart payload keys — `CentralLogger::Ui::*` |
+| `utils/FormatConstants.h`  | Date/time formats + reusable error messages — `CentralLogger::Format::*` |
+| `utils/SensorConstants.h`  | Sensor / status / alarm type / event level strings — `CentralLogger::Sensor::*` |
+
+QML-side defaults come from the `AppDefaults` QML singleton in
+`src/core/AppDefaults.{h,cpp}` (auto-generated, registered as
+`CentralLogger.Core.AppDefaults`); QML code should reference
+`AppDefaults.modbusPort`, `AppDefaults.chartDisplayPointCount`, etc.
+instead of hardcoded literals.

@@ -9,7 +9,7 @@ set_source_files_properties(AppTypography.qml PROPERTIES QT_QML_SINGLETON_TYPE T
 
 qt_add_qml_module(central_logger_theme
     URI CentralLogger.Theme
-    VERSION 1.0
+    VERSION ${QML_MODULE_VERSION}
     STATIC
     QML_FILES
         QuickControlsConfig.qml

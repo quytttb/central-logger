@@ -1,5 +1,6 @@
 #include "EventRepository.h"
 
+#include "utils/DbConstants.h"
 #include "utils/time/DateTimeUtils.h"
 
 #include <QSqlError>
@@ -58,8 +59,9 @@ int EventRepository::purgeOlderThan(const QDateTime &cutoffUtc,
     QSqlQuery q(m_db);
 
     if (chunkSize <= 0) {
-        q.prepare(QStringLiteral("DELETE FROM system_event WHERE created_at < :cutoff"));
-        q.bindValue(QStringLiteral(":cutoff"), cutoff);
+        q.prepare(QStringLiteral("DELETE FROM %1 WHERE created_at < :cutoff")
+                      .arg(QString::fromLatin1(CentralLogger::Data::Db::kTableSystemEvent)));
+        q.bindValue(QLatin1String(CentralLogger::Data::Db::kBindCutoff), cutoff);
         if (!q.exec()) {
             if (errorOut) *errorOut = q.lastError().text();
             return -1;
@@ -68,13 +70,14 @@ int EventRepository::purgeOlderThan(const QDateTime &cutoffUtc,
     }
 
     q.prepare(QStringLiteral(
-        "DELETE FROM system_event WHERE id IN ("
-        "SELECT id FROM system_event WHERE created_at < :cutoff "
-        "ORDER BY created_at LIMIT :lim)"));
+        "DELETE FROM %1 WHERE id IN ("
+        "SELECT id FROM %1 WHERE created_at < :cutoff "
+        "ORDER BY created_at LIMIT :lim)")
+        .arg(QString::fromLatin1(CentralLogger::Data::Db::kTableSystemEvent)));
     int deleted = 0;
     for (;;) {
-        q.bindValue(QStringLiteral(":cutoff"), cutoff);
-        q.bindValue(QStringLiteral(":lim"), chunkSize);
+        q.bindValue(QLatin1String(CentralLogger::Data::Db::kBindCutoff), cutoff);
+        q.bindValue(QLatin1String(CentralLogger::Data::Db::kBindLim), chunkSize);
         if (!q.exec()) {
             if (errorOut) *errorOut = q.lastError().text();
             return -1;
@@ -95,14 +98,15 @@ bool EventRepository::insert(SystemEvent &event, QString *errorOut)
 {
     QSqlQuery q(m_db);
     q.prepare(QStringLiteral(
-        "INSERT INTO system_event (logger_id, event_type, message, level) "
-        "VALUES (:logger_id, :event_type, :message, :level)"));
-    q.bindValue(QStringLiteral(":logger_id"),
+        "INSERT INTO %1 (logger_id, event_type, message, level) "
+        "VALUES (:logger_id, :event_type, :message, :level)")
+        .arg(QString::fromLatin1(CentralLogger::Data::Db::kTableSystemEvent)));
+    q.bindValue(QLatin1String(CentralLogger::Data::Db::kBindLoggerId),
                 event.loggerId ? QVariant(*event.loggerId)
                                : QVariant(QMetaType(QMetaType::LongLong)));
-    q.bindValue(QStringLiteral(":event_type"), event.eventType);
-    q.bindValue(QStringLiteral(":message"),    event.message);
-    q.bindValue(QStringLiteral(":level"),      event.level);
+    q.bindValue(QLatin1String(CentralLogger::Data::Db::kBindEventType), event.eventType);
+    q.bindValue(QLatin1String(CentralLogger::Data::Db::kBindMessage),    event.message);
+    q.bindValue(QLatin1String(CentralLogger::Data::Db::kBindLevel),      event.level);
     if (!q.exec()) {
         setErr(errorOut, q);
         return false;
@@ -114,8 +118,9 @@ bool EventRepository::insert(SystemEvent &event, QString *errorOut)
     // separate fetch to render the correct timestamp).
     QSqlQuery sel(m_db);
     sel.prepare(QStringLiteral(
-        "SELECT created_at FROM system_event WHERE id = :id"));
-    sel.bindValue(QStringLiteral(":id"), event.id);
+        "SELECT created_at FROM %1 WHERE id = :id")
+        .arg(QString::fromLatin1(CentralLogger::Data::Db::kTableSystemEvent)));
+    sel.bindValue(QLatin1String(CentralLogger::Data::Db::kBindId), event.id);
     if (sel.exec() && sel.next()) {
         event.createdAt = parseUtc(sel.value(0).toString());
     }
@@ -127,8 +132,9 @@ QVector<SystemEvent> EventRepository::listRecent(int limit, QString *errorOut) c
     QVector<SystemEvent> result;
     QSqlQuery q(m_db);
     q.prepare(QStringLiteral(
-        "SELECT * FROM system_event ORDER BY created_at DESC, id DESC LIMIT :limit"));
-    q.bindValue(QStringLiteral(":limit"), limit);
+        "SELECT * FROM %1 ORDER BY created_at DESC, id DESC LIMIT :limit")
+        .arg(QString::fromLatin1(CentralLogger::Data::Db::kTableSystemEvent)));
+    q.bindValue(QLatin1String(CentralLogger::Data::Db::kBindLimit), limit);
     if (!q.exec()) {
         setErr(errorOut, q);
         return result;
@@ -148,10 +154,12 @@ QVector<SystemEventListItem> EventRepository::listRecentWithLoggerName(
         "SELECT e.id AS id, e.logger_id AS logger_id, e.event_type AS event_type, "
         "       e.message AS message, e.level AS level, e.created_at AS created_at, "
         "       l.name AS logger_name "
-        "FROM system_event e "
-        "LEFT JOIN logger_info l ON l.id = e.logger_id "
-        "ORDER BY e.created_at DESC, e.id DESC LIMIT :limit"));
-    q.bindValue(QStringLiteral(":limit"), limit);
+        "FROM %1 e "
+        "LEFT JOIN %2 l ON l.id = e.logger_id "
+        "ORDER BY e.created_at DESC, e.id DESC LIMIT :limit")
+        .arg(QString::fromLatin1(CentralLogger::Data::Db::kTableSystemEvent),
+             QString::fromLatin1(CentralLogger::Data::Db::kTableLoggerInfo)));
+    q.bindValue(QLatin1String(CentralLogger::Data::Db::kBindLimit), limit);
     if (!q.exec()) {
         setErr(errorOut, q);
         return result;

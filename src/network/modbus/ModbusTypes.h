@@ -1,5 +1,7 @@
 #pragma once
 
+#include "utils/Version.h"
+
 #include <QDateTime>
 #include <QString>
 #include <QVector>
@@ -17,7 +19,7 @@ struct ModbusHeader
     quint16  ndi           = 0; // HR5 — DI bit count
     quint16  ndo           = 0; // HR6 — DO bit count
 
-    bool isValid()         const { return mapVersion == 1; }
+    bool isValid()         const { return mapVersion == CentralLogger::Version::kModbusMapVersion; }
     bool isPolling()       const { return (statusFlags & 0x01) != 0; }
     bool isRtuConnected()  const { return (statusFlags & 0x02) != 0; }
     bool isAnyAlarm()      const { return (statusFlags & 0x04) != 0; }

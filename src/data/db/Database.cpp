@@ -1,5 +1,9 @@
 #include "Database.h"
 
+#include "utils/AppConstants.h"
+#include "utils/DbConstants.h"
+#include "utils/Version.h"
+
 #include <QDebug>
 #include <QDir>
 #include <QFile>
@@ -13,8 +17,11 @@ namespace CentralLogger::Data {
 
 namespace {
 
-constexpr auto kSchemaResource = ":/db/schema/001_initial.sql";
-constexpr int  kSchemaVersion  = 6;
+using CentralLogger::Defaults::kSqliteBusyTimeoutMs;
+using CentralLogger::Defaults::kSqliteMmapSize;
+using CentralLogger::Version::kSchemaVersion;
+
+constexpr auto kSchemaResource = CentralLogger::Data::Db::kSchemaResource;
 
 QString readResourceSql(const char *resourcePath, QString *errorOut)
 {
@@ -77,7 +84,7 @@ bool ensureAutoVacuumIncremental(QSqlDatabase db, QString *errorOut)
 
 int Database::schemaVersion()
 {
-    return kSchemaVersion;
+    return CentralLogger::Version::kSchemaVersion;
 }
 
 Database::~Database()
@@ -120,7 +127,7 @@ bool Database::open(const QString &connectionName,
     const bool freshBefore = !QFileInfo::exists(databasePath)
                              || databasePath == memoryPath();
 
-    m_db = QSqlDatabase::addDatabase(QStringLiteral("QSQLITE"), connectionName);
+    m_db = QSqlDatabase::addDatabase(QLatin1String(CentralLogger::Data::Db::kSqliteDriver), connectionName);
     m_db.setDatabaseName(databasePath);
     if (!m_db.open()) {
         if (errorOut) {
@@ -235,7 +242,8 @@ bool Database::isFreshDatabase() const
 {
     QSqlQuery query(m_db);
     if (!query.exec(QStringLiteral(
-            "SELECT name FROM sqlite_master WHERE type='table' AND name='app_settings'"))) {
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='%1'")
+            .arg(QString::fromLatin1(CentralLogger::Data::Db::kTableAppSettings)))) {
         return true;
     }
     return !query.next();
@@ -305,7 +313,7 @@ bool Database::reopenConnection(const QString &databasePath,
                                 QString *errorOut)
 {
     m_connectionName = connectionName;
-    m_db = QSqlDatabase::addDatabase(QStringLiteral("QSQLITE"), connectionName);
+    m_db = QSqlDatabase::addDatabase(QLatin1String(CentralLogger::Data::Db::kSqliteDriver), connectionName);
     m_db.setDatabaseName(databasePath);
     if (!m_db.open()) {
         if (errorOut) {
@@ -336,10 +344,10 @@ bool Database::applyPerformancePragmas(QSqlDatabase db, QString *errorOut)
 
     const QStringList statements = {
         QStringLiteral("PRAGMA journal_mode = WAL"),
-        QStringLiteral("PRAGMA busy_timeout = 5000"),
+        QStringLiteral("PRAGMA busy_timeout = %1").arg(kSqliteBusyTimeoutMs),
         QStringLiteral("PRAGMA synchronous = NORMAL"),
         QStringLiteral("PRAGMA temp_store = MEMORY"),
-        QStringLiteral("PRAGMA mmap_size = 268435456"),
+        QStringLiteral("PRAGMA mmap_size = %1").arg(kSqliteMmapSize),
     };
 
     QSqlQuery q(db);

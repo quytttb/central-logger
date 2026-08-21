@@ -46,7 +46,7 @@ Re-build khi tag đã có (không đổi git): GitHub → Actions → **Build Re
 ### Build local
 
 ```bash
-export CMAKE_PREFIX_PATH=~/Qt/6.11.1/gcc_64
+export CMAKE_PREFIX_PATH=~/Qt/6.11.2/gcc_64
 ./packaging/linux/cpack_deb.sh
 # → dist/central-logger-app_<version>_amd64.deb
 ```

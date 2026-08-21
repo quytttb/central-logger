@@ -6,6 +6,8 @@
 #include "data/repositories/LoggerRepository.h"
 #include "data/repositories/SensorCatalogRepository.h"
 #include "data/repositories/SensorReadingRepository.h"
+#include "utils/DbConstants.h"
+#include "utils/SensorConstants.h"
 
 #include <QDateTime>
 #include <QSqlError>
@@ -34,7 +36,7 @@ void ModbusBridge::start()
             const QString connName =
                 QStringLiteral("modbus_live_%1")
                     .arg(reinterpret_cast<quintptr>(QThread::currentThreadId()));
-            m_dedicatedConn = QSqlDatabase::addDatabase(QStringLiteral("QSQLITE"), connName);
+            m_dedicatedConn = QSqlDatabase::addDatabase(QLatin1String(CentralLogger::Data::Db::kSqliteDriver), connName);
             m_dedicatedConn.setDatabaseName(m_databasePath);
             if (!m_dedicatedConn.open()) {
                 qWarning() << "ModbusBridge: cannot open dedicated connection:"
@@ -90,11 +92,11 @@ ModbusBridge::CatalogCacheEntry &ModbusBridge::catalogCacheFor(qint64 loggerId,
         if (!s.active || s.id <= 0) {
             continue;
         }
-        if (s.sensorType == QStringLiteral("ANALOG")) {
+        if (s.sensorType == CentralLogger::Sensor::kTypeAnalog) {
             entry.analogIds.insert(s.edgeSensorId, s.id);
-        } else if (s.sensorType == QStringLiteral("DI")) {
+        } else if (s.sensorType == CentralLogger::Sensor::kTypeDi) {
             entry.diIds.insert(s.edgeSensorId, s.id);
-        } else if (s.sensorType == QStringLiteral("DO")) {
+        } else if (s.sensorType == CentralLogger::Sensor::kTypeDo) {
             entry.doIds.insert(s.edgeSensorId, s.id);
         }
     }
@@ -127,7 +129,7 @@ void ModbusBridge::applyLiveSnapshot(const PollSnapshot &snapshot)
         : QDateTime::currentDateTimeUtc();
 
     if (!snapshot.success) {
-        loggers.updateStatus(snapshot.loggerId, QStringLiteral("offline"));
+        loggers.updateStatus(snapshot.loggerId, CentralLogger::Sensor::kLoggerOffline);
         const int sensorCount = catalog.listByLoggerId(snapshot.loggerId).size();
         emit snapshotApplied(snapshot, sensorCount,
                              QVector<Data::LoggerSensor>{});
@@ -141,7 +143,7 @@ void ModbusBridge::applyLiveSnapshot(const PollSnapshot &snapshot)
     }
 
     loggers.updateStatusAndLastSeen(snapshot.loggerId,
-                                    QStringLiteral("online"),
+                                    CentralLogger::Sensor::kLoggerOnline,
                                     now);
 
     // Audit M-2: ensureExists is only needed for sensors the cache does not
@@ -154,7 +156,7 @@ void ModbusBridge::applyLiveSnapshot(const PollSnapshot &snapshot)
             }
             const qint64 id = catalog.ensureExists(snapshot.loggerId,
                                                    sample.edgeSensorId,
-                                                   QStringLiteral("ANALOG"));
+                                                   CentralLogger::Sensor::kTypeAnalog);
             if (id > 0) {
                 cached.analogIds.insert(sample.edgeSensorId, id);
             }
@@ -271,7 +273,7 @@ QVector<Data::SensorReading> ModbusBridge::buildReadings(const PollSnapshot &sna
         qint64 sensorId = cache.analogIds.value(sample.edgeSensorId, 0);
         if (sensorId <= 0) {
             sensorId = catalog.ensureExists(snapshot.loggerId, sample.edgeSensorId,
-                                            QStringLiteral("ANALOG"));
+                                            CentralLogger::Sensor::kTypeAnalog);
             if (sensorId > 0) {
                 cache.analogIds.insert(sample.edgeSensorId, sensorId);
             }
@@ -290,14 +292,14 @@ QVector<Data::SensorReading> ModbusBridge::buildReadings(const PollSnapshot &sna
         if (!sensor.active || sensor.id <= 0) {
             continue;
         }
-        if (sensor.sensorType == QStringLiteral("DI")) {
+        if (sensor.sensorType == CentralLogger::Sensor::kTypeDi) {
             const int bit = sensor.edgeSensorId;
             if (bit < 0 || bit >= snapshot.diBits.size()) {
                 continue;
             }
             appendIfChanged(sensor.id, snapshot.diBits.at(bit) ? 1.0 : 0.0,
                             true, false, false);
-        } else if (sensor.sensorType == QStringLiteral("DO")) {
+        } else if (sensor.sensorType == CentralLogger::Sensor::kTypeDo) {
             const int bit = sensor.edgeSensorId;
             if (bit < 0 || bit >= snapshot.doBits.size()) {
                 continue;

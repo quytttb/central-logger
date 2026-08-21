@@ -16,6 +16,9 @@
 #include "data/repositories/LoggerRepository.h"
 #include "data/repositories/SensorCatalogRepository.h"
 #include "network/rest/RestConfigService.h"
+#include "utils/FormatConstants.h"
+#include "utils/SensorConstants.h"
+#include "utils/UiConstants.h"
 
 #include <QtDebug>
 
@@ -205,7 +208,7 @@ void LoggerDetailViewModel::fetchReadingsDebug()
         return;
     }
     if (!m_hasApiToken) {
-        setError(QStringLiteral("Device REST token empty — Scan QR on logger"));
+        setError(QString::fromUtf8(CentralLogger::Format::kErrRestTokenEmpty));
         return;
     }
     setBusy(true);
@@ -231,7 +234,7 @@ void LoggerDetailViewModel::downloadReport(const QUrl &fileUrl)
     }
     if (!m_hasApiToken) {
         emit reportDownloaded(false, QString{},
-                              QStringLiteral("Device REST token empty — Scan QR on logger"));
+                              QString::fromUtf8(CentralLogger::Format::kErrRestTokenEmpty));
         return;
     }
     if (savePath.isEmpty()) {
@@ -253,7 +256,7 @@ void LoggerDetailViewModel::onReadingsDebug(qint64 loggerId, bool ok, int httpSt
     setReadingsDebug(rawJson);
     if (!ok) {
         setError(errorMessage.isEmpty()
-            ? QStringLiteral("HTTP %1").arg(httpStatus)
+            ? QString(QLatin1String(CentralLogger::Format::kErrHttpFmt)).arg(httpStatus)
             : errorMessage);
     }
     emit readingsDebugReady(ok);
@@ -271,10 +274,10 @@ void LoggerDetailViewModel::onReportDownloaded(qint64 loggerId, bool ok,
             const QString absPath = QFileInfo(savePath).absoluteFilePath();
             g_dashboard->logEvent(
                 loggerId,
-                QStringLiteral("Info"),
+                CentralLogger::Sensor::kEventTypeInfo,
                 DesktopService::reportSavedMessagePrefix() + absPath);
         } else {
-            g_dashboard->logEvent(loggerId, QStringLiteral("Warning"),
+            g_dashboard->logEvent(loggerId, CentralLogger::Sensor::kEventTypeWarning,
                                   QStringLiteral("Report download failed: %1").arg(errorMessage));
         }
     }
@@ -351,8 +354,8 @@ QVariantMap LoggerDetailViewModel::snapTrendingChart(double mouseX,
                                                      double plotW,
                                                      double plotH) const
 {
-    const double xMin = m_chartAxisRange.value(QStringLiteral("xMin")).toDouble();
-    const double xMax = m_chartAxisRange.value(QStringLiteral("xMax")).toDouble();
+    const double xMin = m_chartAxisRange.value(CentralLogger::Ui::kChartXMin).toDouble();
+    const double xMax = m_chartAxisRange.value(CentralLogger::Ui::kChartXMax).toDouble();
     return Core::snapTrendingChart(m_trendingSeries,
                                   xMin,
                                   xMax,

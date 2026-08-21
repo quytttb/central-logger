@@ -1,5 +1,8 @@
 #include "core/sensors/SensorMerger.h"
 
+#include "utils/AppConstants.h"
+#include "utils/FormatConstants.h"
+#include "utils/SensorConstants.h"
 #include "utils/sensors/AttachDiTypeHelper.h"
 
 #include <QHash>
@@ -12,24 +15,27 @@ using CentralLogger::Utils::AttachDiTypeHelper;
 
 namespace {
 
-constexpr auto kAnalog = "ANALOG";
-constexpr auto kDi = "DI";
-constexpr auto kDo = "DO";
-constexpr auto kUnknown = "UNKNOWN";
+using CentralLogger::Defaults::kDecimalsMax;
+using CentralLogger::Defaults::kDecimalsMin;
+using CentralLogger::Sensor::kTypeAnalog;
+using CentralLogger::Sensor::kTypeDi;
+using CentralLogger::Sensor::kTypeDo;
+using CentralLogger::Sensor::kTypeUnknown;
 
 QString formatAnalog(float value, int decimals) {
   // Per-sensor precision (synced from edge `decimals`, default 4). Keeps the
   // Detail live table and the persisted History value in agreement for the
   // same reading and sensor.
   return QString::number(static_cast<double>(value), 'f',
-                         std::clamp(decimals, 0, 6));
+                         std::clamp(decimals, kDecimalsMin, kDecimalsMax));
 }
 
 QString fallbackName(const QString &sensorType, int edgeSensorId) {
-  if (!sensorType.isEmpty() && sensorType != QLatin1String(kUnknown)) {
-    return QStringLiteral("%1#%2").arg(sensorType).arg(edgeSensorId);
+  if (!sensorType.isEmpty() && sensorType != kTypeUnknown) {
+    return QString(QLatin1String(CentralLogger::Sensor::kFallbackTypeFmt))
+        .arg(sensorType).arg(edgeSensorId);
   }
-  return QStringLiteral("Sensor #%1").arg(edgeSensorId);
+  return QString(QLatin1String(CentralLogger::Sensor::kFallbackNameFmt)).arg(edgeSensorId);
 }
 
 struct ThresholdBreach {
@@ -63,16 +69,16 @@ QString computeAlarmType(double value, bool alarmBit,
   const ThresholdBreach breach =
       checkThresholdBreach(value, minThreshold, maxThreshold);
   if (breach.min && breach.max) {
-    return QStringLiteral("min+max");
+    return QLatin1String(CentralLogger::Sensor::kAlarmMinMax);
   }
   if (breach.min) {
-    return QStringLiteral("min");
+    return QLatin1String(CentralLogger::Sensor::kAlarmMin);
   }
   if (breach.max) {
-    return QStringLiteral("max");
+    return QLatin1String(CentralLogger::Sensor::kAlarmMax);
   }
   if (alarmBit) {
-    return QStringLiteral("device");
+    return QLatin1String(CentralLogger::Sensor::kAlarmDevice);
   }
   return {};
 }
@@ -88,14 +94,15 @@ bool diLinksToAnalog(const Data::LoggerSensor &child, int parentEdgeSensorId) {
 QString catalogNameForAttachCode(const QVector<Data::LoggerSensor> &catalog,
                                  int parentEdgeSensorId, const QString &code) {
   for (const auto &child : catalog) {
-    if (child.sensorType != QLatin1String(kDi) || !child.active) {
+    if (child.sensorType != kTypeDi || !child.active) {
       continue;
     }
     if (!diLinksToAnalog(child, parentEdgeSensorId)) {
       continue;
     }
     const QString childCode = AttachDiTypeHelper::normalizeCode(
-        child.diType.isEmpty() ? QStringLiteral("00") : child.diType);
+        child.diType.isEmpty() ? QLatin1String(CentralLogger::Sensor::kAttachCodeMonitoring)
+                               : child.diType);
     if (childCode == code) {
       return child.name;
     }
@@ -122,7 +129,7 @@ QStringList resolveAttachDiCodes(const QVector<Data::LoggerSensor> &catalog,
   QStringList codes;
 
   for (const auto &child : catalog) {
-    if (child.sensorType != QLatin1String(kDi)) {
+    if (child.sensorType != kTypeDi) {
       continue;
     }
     if (!child.active || !diLinksToAnalog(child, parentEdgeSensorId)) {
@@ -136,7 +143,8 @@ QStringList resolveAttachDiCodes(const QVector<Data::LoggerSensor> &catalog,
     }
 
     const QString code = AttachDiTypeHelper::normalizeCode(
-        child.diType.isEmpty() ? QStringLiteral("00") : child.diType);
+        child.diType.isEmpty() ? QLatin1String(CentralLogger::Sensor::kAttachCodeMonitoring)
+                               : child.diType);
     if (!AttachDiTypeHelper::isAttachActiveCode(code) || seen.contains(code)) {
       continue;
     }
@@ -168,17 +176,17 @@ void applyAnalogStatus(SensorLiveRow &row, bool active, bool rtuConnected,
   row.alarmType.clear();
 
   if (!active) {
-    row.displayStatus = QStringLiteral("WAIT");
+    row.displayStatus = QLatin1String(CentralLogger::Sensor::kStatusWait);
     return;
   }
   // Edge sets sensor ERR on connection_lost while polling; HR1=0 during TCP
   // warm-up is not the same as RTU disconnected.
   if (!valid || (!rtuConnected && pollingActive)) {
-    row.displayStatus = QStringLiteral("ERR");
+    row.displayStatus = QLatin1String(CentralLogger::Sensor::kStatusErr);
     return;
   }
   if (stale) {
-    row.displayStatus = QStringLiteral("STALE");
+    row.displayStatus = QLatin1String(CentralLogger::Sensor::kStatusStale);
     return;
   }
 
@@ -187,10 +195,10 @@ void applyAnalogStatus(SensorLiveRow &row, bool active, bool rtuConnected,
   if (alarm) {
     row.alarmType =
         computeAlarmType(value, alarmBit, minThreshold, maxThreshold);
-    row.displayStatus = QStringLiteral("ALARM");
+    row.displayStatus = QLatin1String(CentralLogger::Sensor::kStatusAlarm);
     return;
   }
-  row.displayStatus = QStringLiteral("OK");
+  row.displayStatus = QLatin1String(CentralLogger::Sensor::kStatusOk);
 }
 
 } // namespace
@@ -209,14 +217,14 @@ SensorMerger::buildRows(qint64 loggerId, const Network::PollSnapshot &snapshot,
   analogByEdgeId.reserve(catalog.size());
   for (const auto &sensor : catalog) {
     if (sensor.loggerId == loggerId &&
-        sensor.sensorType == QLatin1String(kAnalog)) {
+        sensor.sensorType == kTypeAnalog) {
       analogByEdgeId.insert(sensor.edgeSensorId, &sensor);
     }
   }
 
   const QString timestamp =
       snapshot.measuredAt.isValid()
-          ? snapshot.measuredAt.toUTC().toString(QStringLiteral("HH:mm:ss"))
+          ? snapshot.measuredAt.toUTC().toString(QLatin1String(CentralLogger::Format::kTimeHhMmSs))
           : QString();
 
   QVector<SensorLiveRow> rows;
@@ -233,7 +241,7 @@ SensorMerger::buildRows(qint64 loggerId, const Network::PollSnapshot &snapshot,
 
     SensorLiveRow row;
     row.edgeSensorId = sample.edgeSensorId;
-    row.sensorType = cat ? cat->sensorType : QStringLiteral("UNKNOWN");
+    row.sensorType = cat ? cat->sensorType : QLatin1String(CentralLogger::Sensor::kTypeUnknown);
     row.unit = cat ? cat->unit : QString();
     row.name = (cat && !cat->name.isEmpty())
                    ? cat->name
@@ -241,7 +249,8 @@ SensorMerger::buildRows(qint64 loggerId, const Network::PollSnapshot &snapshot,
     row.valid = sample.isValid();
     row.alarm = sample.isAlarm();
     row.stale = sample.isStale();
-    row.value = formatAnalog(sample.value, cat ? cat->decimals : 4);
+    row.value = formatAnalog(sample.value, cat ? cat->decimals
+                                              : CentralLogger::Defaults::kDecimalsDefault);
     row.timestamp = timestamp;
 
     const bool active = cat ? cat->active : true;
@@ -261,7 +270,7 @@ SensorMerger::buildRows(qint64 loggerId, const Network::PollSnapshot &snapshot,
     if (sensor.loggerId != loggerId) {
       continue;
     }
-    if (sensor.sensorType != QLatin1String(kAnalog) || !sensor.active) {
+    if (sensor.sensorType != kTypeAnalog || !sensor.active) {
       continue;
     }
     if (seenAnalogIds.contains(sensor.edgeSensorId)) {
@@ -275,8 +284,8 @@ SensorMerger::buildRows(qint64 loggerId, const Network::PollSnapshot &snapshot,
     row.name = sensor.name.isEmpty()
                    ? fallbackName(sensor.sensorType, sensor.edgeSensorId)
                    : sensor.name;
-    row.value = QStringLiteral("—");
-    row.displayStatus = QStringLiteral("WAIT");
+    row.value = QString::fromUtf8(CentralLogger::Sensor::kValuePlaceholder);
+    row.displayStatus = QLatin1String(CentralLogger::Sensor::kStatusWait);
     row.timestamp = QString();
     row.valid = false;
     row.alarm = false;
@@ -301,14 +310,15 @@ SensorMerger::buildRows(qint64 loggerId, const Network::PollSnapshot &snapshot,
     row.valid = true;
     row.alarm = false;
     row.stale = false;
-    row.value = on ? QStringLiteral("ON") : QStringLiteral("OFF");
+    row.value = on ? QLatin1String(CentralLogger::Sensor::kBitOn)
+                   : QLatin1String(CentralLogger::Sensor::kBitOff);
     row.timestamp = timestamp;
     if (!cat.active) {
-      row.displayStatus = QStringLiteral("WAIT");
+      row.displayStatus = QLatin1String(CentralLogger::Sensor::kStatusWait);
     } else if (!rtuConnected && pollingActive) {
-      row.displayStatus = QStringLiteral("ERR");
+      row.displayStatus = QLatin1String(CentralLogger::Sensor::kStatusErr);
     } else {
-      row.displayStatus = QStringLiteral("OK");
+      row.displayStatus = QLatin1String(CentralLogger::Sensor::kStatusOk);
     }
     rows.append(row);
   };
@@ -319,13 +329,13 @@ SensorMerger::buildRows(qint64 loggerId, const Network::PollSnapshot &snapshot,
     if (sensor.loggerId != loggerId) {
       continue;
     }
-    if (sensor.sensorType == QLatin1String(kDi)) {
+    if (sensor.sensorType == kTypeDi) {
       if (seenDiBitIds.contains(sensor.edgeSensorId)) {
         continue;
       }
       seenDiBitIds.insert(sensor.edgeSensorId);
       appendBitRow(sensor, snapshot.diBits);
-    } else if (sensor.sensorType == QLatin1String(kDo)) {
+    } else if (sensor.sensorType == kTypeDo) {
       if (seenDoBitIds.contains(sensor.edgeSensorId)) {
         continue;
       }
@@ -335,13 +345,13 @@ SensorMerger::buildRows(qint64 loggerId, const Network::PollSnapshot &snapshot,
   }
 
   auto typeRank = [](const QString &t) -> int {
-    if (t == QLatin1String(kAnalog)) {
+    if (t == kTypeAnalog) {
       return 0;
     }
-    if (t == QLatin1String(kDi)) {
+    if (t == kTypeDi) {
       return 1;
     }
-    if (t == QLatin1String(kDo)) {
+    if (t == kTypeDo) {
       return 2;
     }
     return 3;
@@ -368,17 +378,17 @@ QVector<SensorLiveRow> SensorMerger::buildCatalogPlaceholders(
     if (cat.loggerId != loggerId) {
       continue;
     }
-    if (cat.sensorType != QLatin1String(kAnalog) &&
-        cat.sensorType != QLatin1String(kDi) &&
-        cat.sensorType != QLatin1String(kDo)) {
+    if (cat.sensorType != kTypeAnalog &&
+        cat.sensorType != kTypeDi &&
+        cat.sensorType != kTypeDo) {
       continue;
     }
-    if (cat.sensorType == QLatin1String(kDi)) {
+    if (cat.sensorType == kTypeDi) {
       if (seenDiIds.contains(cat.edgeSensorId)) {
         continue;
       }
       seenDiIds.insert(cat.edgeSensorId);
-    } else if (cat.sensorType == QLatin1String(kDo)) {
+    } else if (cat.sensorType == kTypeDo) {
       if (seenDoIds.contains(cat.edgeSensorId)) {
         continue;
       }
@@ -392,8 +402,8 @@ QVector<SensorLiveRow> SensorMerger::buildCatalogPlaceholders(
     row.name = cat.name.isEmpty()
                    ? fallbackName(cat.sensorType, cat.edgeSensorId)
                    : cat.name;
-    row.value = QStringLiteral("—");
-    row.displayStatus = QStringLiteral("WAIT");
+    row.value = QString::fromUtf8(CentralLogger::Sensor::kValuePlaceholder);
+    row.displayStatus = QLatin1String(CentralLogger::Sensor::kStatusWait);
     row.timestamp = QString();
     row.valid = false;
     row.alarm = false;
@@ -402,13 +412,13 @@ QVector<SensorLiveRow> SensorMerger::buildCatalogPlaceholders(
   }
 
   auto typeRank = [](const QString &t) -> int {
-    if (t == QLatin1String(kAnalog)) {
+    if (t == kTypeAnalog) {
       return 0;
     }
-    if (t == QLatin1String(kDi)) {
+    if (t == kTypeDi) {
       return 1;
     }
-    if (t == QLatin1String(kDo)) {
+    if (t == kTypeDo) {
       return 2;
     }
     return 3;

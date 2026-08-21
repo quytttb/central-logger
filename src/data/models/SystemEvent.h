@@ -1,5 +1,7 @@
 #pragma once
 
+#include "utils/SensorConstants.h"
+
 #include <QDateTime>
 #include <QString>
 #include <optional>
@@ -12,7 +14,7 @@ struct SystemEvent
     std::optional<qint64> loggerId;                 // empty for app-wide events
     QString               eventType;                // Alarm|Offline|Online|Warning|Info
     QString               message;
-    QString               level = QStringLiteral("info"); // critical|warning|error|info
+    QString               level = Sensor::kLevelInfo; // critical|warning|error|info
     QDateTime             createdAt;
 };
 

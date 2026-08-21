@@ -3,6 +3,7 @@
 #include "data/db/Database.h"
 #include "network/modbus/ModbusBridge.h"
 #include "utils/AppConstants.h"
+#include "utils/DbConstants.h"
 
 #include <QElapsedTimer>
 #include <QSqlError>
@@ -53,7 +54,7 @@ void HistoryWriterWorker::start()
 
     m_connectionName = QStringLiteral("history_writer");
 
-    m_db = QSqlDatabase::addDatabase(QStringLiteral("QSQLITE"), m_connectionName);
+    m_db = QSqlDatabase::addDatabase(QLatin1String(CentralLogger::Data::Db::kSqliteDriver), m_connectionName);
     m_db.setDatabaseName(m_databasePath);
     if (!m_db.open()) {
         qWarning() << "HistoryWriterWorker: cannot open database:" << m_db.lastError().text();

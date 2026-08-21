@@ -1,5 +1,9 @@
 #include "SensorCatalogRepository.h"
 
+#include "utils/AppConstants.h"
+#include "utils/DbConstants.h"
+#include "utils/SensorConstants.h"
+
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QSqlError>
@@ -10,6 +14,9 @@
 #include <algorithm>
 
 namespace CentralLogger::Data {
+
+using CentralLogger::Defaults::kDecimalsMax;
+using CentralLogger::Defaults::kDecimalsMin;
 
 namespace {
 
@@ -116,13 +123,14 @@ qint64 SensorCatalogRepository::ensureExists(qint64 loggerId,
     // re-added it. Set active=1 so it reappears in live tables immediately.
     QSqlQuery q(m_db);
     q.prepare(QStringLiteral(
-        "INSERT INTO logger_sensor "
+        "INSERT INTO %1 "
         "  (logger_id, edge_sensor_id, sensor_type, name, unit, active) "
         "VALUES (:logger_id, :edge_sensor_id, :sensor_type, '', '', 1) "
-        "ON CONFLICT(logger_id, sensor_type, edge_sensor_id) DO UPDATE SET active = 1"));
-    q.bindValue(QStringLiteral(":logger_id"),      loggerId);
-    q.bindValue(QStringLiteral(":edge_sensor_id"), edgeSensorId);
-    q.bindValue(QStringLiteral(":sensor_type"),    sensorType);
+        "ON CONFLICT(logger_id, sensor_type, edge_sensor_id) DO UPDATE SET active = 1")
+        .arg(QString::fromLatin1(CentralLogger::Data::Db::kTableLoggerSensor)));
+    q.bindValue(QLatin1String(CentralLogger::Data::Db::kBindLoggerId),      loggerId);
+    q.bindValue(QLatin1String(CentralLogger::Data::Db::kBindEdgeSensorId), edgeSensorId);
+    q.bindValue(QLatin1String(CentralLogger::Data::Db::kBindSensorType),    sensorType);
     if (!q.exec()) {
         setErr(errorOut, q, "SensorCatalogRepository::ensureExists");
         return 0;
@@ -140,7 +148,7 @@ bool SensorCatalogRepository::upsert(LoggerSensor &sensor, QString *errorOut)
 {
     QSqlQuery q(m_db);
     q.prepare(QStringLiteral(
-        "INSERT INTO logger_sensor ("
+        "INSERT INTO %1 ("
         "  logger_id, edge_sensor_id, sensor_type, name, unit,"
         "  min_threshold, max_threshold, decimals, active,"
         "  parent_edge_sensor_id, di_type, all_parent_ids"
@@ -161,25 +169,27 @@ bool SensorCatalogRepository::upsert(LoggerSensor &sensor, QString *errorOut)
         "  active                = excluded.active,"
         "  parent_edge_sensor_id = excluded.parent_edge_sensor_id,"
         "  di_type               = excluded.di_type,"
-        "  all_parent_ids        = excluded.all_parent_ids"));
-    q.bindValue(QStringLiteral(":logger_id"),      sensor.loggerId);
-    q.bindValue(QStringLiteral(":edge_sensor_id"), sensor.edgeSensorId);
-    q.bindValue(QStringLiteral(":sensor_type"),    sensor.sensorType);
-    q.bindValue(QStringLiteral(":name"),           sensor.name);
-    q.bindValue(QStringLiteral(":unit"),           sensor.unit);
-    q.bindValue(QStringLiteral(":min_threshold"),  optDouble(sensor.minThreshold));
-    q.bindValue(QStringLiteral(":max_threshold"),  optDouble(sensor.maxThreshold));
-    q.bindValue(QStringLiteral(":decimals"),       std::clamp(sensor.decimals, 0, 6));
-    q.bindValue(QStringLiteral(":active"),         sensor.active ? 1 : 0);
-    q.bindValue(QStringLiteral(":parent_edge_sensor_id"),
+        "  all_parent_ids        = excluded.all_parent_ids")
+        .arg(QString::fromLatin1(CentralLogger::Data::Db::kTableLoggerSensor)));
+    q.bindValue(QLatin1String(CentralLogger::Data::Db::kBindLoggerId),      sensor.loggerId);
+    q.bindValue(QLatin1String(CentralLogger::Data::Db::kBindEdgeSensorId), sensor.edgeSensorId);
+    q.bindValue(QLatin1String(CentralLogger::Data::Db::kBindSensorType),    sensor.sensorType);
+    q.bindValue(QLatin1String(CentralLogger::Data::Db::kBindName),           sensor.name);
+    q.bindValue(QLatin1String(CentralLogger::Data::Db::kBindUnit),           sensor.unit);
+    q.bindValue(QLatin1String(CentralLogger::Data::Db::kBindMinThreshold),  optDouble(sensor.minThreshold));
+    q.bindValue(QLatin1String(CentralLogger::Data::Db::kBindMaxThreshold),  optDouble(sensor.maxThreshold));
+    q.bindValue(QLatin1String(CentralLogger::Data::Db::kBindDecimals),
+                std::clamp(sensor.decimals, kDecimalsMin, kDecimalsMax));
+    q.bindValue(QLatin1String(CentralLogger::Data::Db::kBindActive),         sensor.active ? 1 : 0);
+    q.bindValue(QLatin1String(CentralLogger::Data::Db::kBindParentEdgeSensorId),
                 sensor.parentEdgeSensorId.has_value()
                     ? QVariant(*sensor.parentEdgeSensorId)
                     : QVariant(QMetaType(QMetaType::Int)));
-    q.bindValue(QStringLiteral(":di_type"),
+    q.bindValue(QLatin1String(CentralLogger::Data::Db::kBindDiType),
                 sensor.diType.isEmpty() ? QVariant() : sensor.diType);
     {
         const QString ids = serializeParentIds(sensor.allParentIds);
-        q.bindValue(QStringLiteral(":all_parent_ids"), ids.isEmpty() ? QVariant() : ids);
+        q.bindValue(QLatin1String(CentralLogger::Data::Db::kBindAllParentIds), ids.isEmpty() ? QVariant() : ids);
     }
 
     if (!q.exec()) {
@@ -205,11 +215,12 @@ SensorCatalogRepository::findByLoggerAndEdgeId(qint64 loggerId,
 {
     QSqlQuery q(m_db);
     q.prepare(QStringLiteral(
-        "SELECT * FROM logger_sensor "
-        "WHERE logger_id = :lid AND edge_sensor_id = :eid AND sensor_type = :stype"));
-    q.bindValue(QStringLiteral(":lid"),   loggerId);
-    q.bindValue(QStringLiteral(":eid"),   edgeSensorId);
-    q.bindValue(QStringLiteral(":stype"), sensorType);
+        "SELECT * FROM %1 "
+        "WHERE logger_id = :lid AND edge_sensor_id = :eid AND sensor_type = :stype")
+        .arg(QString::fromLatin1(CentralLogger::Data::Db::kTableLoggerSensor)));
+    q.bindValue(QLatin1String(CentralLogger::Data::Db::kBindLid),   loggerId);
+    q.bindValue(QLatin1String(CentralLogger::Data::Db::kBindEid),   edgeSensorId);
+    q.bindValue(QLatin1String(CentralLogger::Data::Db::kBindStype), sensorType);
     if (!q.exec()) {
         setErr(errorOut, q);
         return std::nullopt;
@@ -226,8 +237,9 @@ SensorCatalogRepository::listByLoggerId(qint64 loggerId, QString *errorOut) cons
     QVector<LoggerSensor> result;
     QSqlQuery q(m_db);
     q.prepare(QStringLiteral(
-        "SELECT * FROM logger_sensor WHERE logger_id = :lid ORDER BY edge_sensor_id"));
-    q.bindValue(QStringLiteral(":lid"), loggerId);
+        "SELECT * FROM %1 WHERE logger_id = :lid ORDER BY edge_sensor_id")
+        .arg(QString::fromLatin1(CentralLogger::Data::Db::kTableLoggerSensor)));
+    q.bindValue(QLatin1String(CentralLogger::Data::Db::kBindLid), loggerId);
     if (!q.exec()) {
         setErr(errorOut, q);
         return result;
@@ -254,13 +266,16 @@ int SensorCatalogRepository::pruneOrphanSensors(qint64 loggerId,
             placeholders.append(QStringLiteral(":a%1").arg(i));
         }
         const QString sql = QStringLiteral(
-            "UPDATE logger_sensor SET active = 0 "
-            "WHERE logger_id = :lid AND sensor_type = 'ANALOG' AND active != 0 "
-            "AND edge_sensor_id NOT IN (%1)").arg(placeholders.join(QLatin1Char(',')));
+            "UPDATE %1 SET active = 0 "
+            "WHERE logger_id = :lid AND sensor_type = '%2' AND active != 0 "
+            "AND edge_sensor_id NOT IN (%3)")
+            .arg(QString::fromLatin1(CentralLogger::Data::Db::kTableLoggerSensor),
+                 CentralLogger::Sensor::kTypeAnalog,
+                 placeholders.join(QLatin1Char(',')));
 
         QSqlQuery q(m_db);
         q.prepare(sql);
-        q.bindValue(QStringLiteral(":lid"), loggerId);
+        q.bindValue(QLatin1String(CentralLogger::Data::Db::kBindLid), loggerId);
         for (int i = 0; i < liveAnalogEdgeIds.size(); ++i) {
             q.bindValue(QStringLiteral(":a%1").arg(i), liveAnalogEdgeIds.at(i));
         }
@@ -273,8 +288,8 @@ int SensorCatalogRepository::pruneOrphanSensors(qint64 loggerId,
 
     struct TypeLimit { const char *type; int max; };
     const TypeLimit digitalLimits[] = {
-        {"DI", maxDi},
-        {"DO", maxDo},
+        { CentralLogger::Sensor::kTypeDi, maxDi },
+        { CentralLogger::Sensor::kTypeDo, maxDo },
     };
 
     // C-8 fix: set active=0 instead of DELETE to preserve sensor_reading history.
@@ -284,12 +299,13 @@ int SensorCatalogRepository::pruneOrphanSensors(qint64 loggerId,
         }
         QSqlQuery q(m_db);
         q.prepare(QStringLiteral(
-            "UPDATE logger_sensor SET active = 0 "
+            "UPDATE %1 SET active = 0 "
             "WHERE logger_id = :lid AND sensor_type = :stype AND edge_sensor_id >= :max"
-            "  AND active != 0"));
-        q.bindValue(QStringLiteral(":lid"),   loggerId);
-        q.bindValue(QStringLiteral(":stype"), QString::fromLatin1(tl.type));
-        q.bindValue(QStringLiteral(":max"),   tl.max);
+            "  AND active != 0")
+            .arg(QString::fromLatin1(CentralLogger::Data::Db::kTableLoggerSensor)));
+        q.bindValue(QLatin1String(CentralLogger::Data::Db::kBindLid),   loggerId);
+        q.bindValue(QLatin1String(CentralLogger::Data::Db::kBindStype), QString::fromLatin1(tl.type));
+        q.bindValue(QLatin1String(CentralLogger::Data::Db::kBindMax),   tl.max);
         if (!q.exec()) {
             setErr(errorOut, q);
             return -1;

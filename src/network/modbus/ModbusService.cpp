@@ -1,6 +1,7 @@
 #include "ModbusService.h"
 
 #include "ModbusMapParser.h"
+#include "utils/AppConstants.h"
 
 #include <QModbusDataUnit>
 #include <QModbusReply>
@@ -14,10 +15,11 @@ namespace CentralLogger::Network {
 
 namespace {
 
-// Abort a connection attempt stuck in ConnectingState after this multiple of
-// the configured timeout (C-2 fix), with a hard fallback when timeout is unset.
-constexpr int kConnectTimeoutMultiplier = 2;
-constexpr int kConnectTimeoutFallbackMs = 4000;
+using CentralLogger::Defaults::kConnectTimeoutFallbackMs;
+using CentralLogger::Defaults::kConnectTimeoutMultiplier;
+
+// kConnectTimeoutMultiplier / kConnectTimeoutFallbackMs live in
+// CentralLogger::Defaults (utils/AppConstants.h). See C-2 fix.
 
 QVector<quint16> regsFromUnit(const QModbusDataUnit &unit)
 {

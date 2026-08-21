@@ -1,6 +1,7 @@
 #include "RecentEventsModel.h"
 
 #include "data/db/Database.h"
+#include "utils/UiConstants.h"
 #include "utils/events/EventLevels.h"
 
 namespace CentralLogger::Core {
@@ -49,14 +50,14 @@ QVariant RecentEventsModel::data(const QModelIndex &index, int role) const {
 
 QHash<int, QByteArray> RecentEventsModel::roleNames() const {
   return {
-      {IdRole, "id"},
-      {LoggerIdRole, "loggerId"},
-      {LoggerNameRole, "loggerName"},
-      {EventTypeRole, "eventType"},
-      {MessageRole, "message"},
-      {LevelRole, "level"},
-      {DisplayLevelRole, "displayLevel"},
-      {CreatedAtRole, "createdAt"},
+      {IdRole,          CentralLogger::Ui::kRoleId},
+      {LoggerIdRole,    CentralLogger::Ui::kRoleLoggerId},
+      {LoggerNameRole,  CentralLogger::Ui::kRoleLoggerName},
+      {EventTypeRole,   CentralLogger::Ui::kRoleEventType},
+      {MessageRole,     CentralLogger::Ui::kRoleMessage},
+      {LevelRole,       CentralLogger::Ui::kRoleLevel},
+      {DisplayLevelRole, CentralLogger::Ui::kRoleDisplayLevel},
+      {CreatedAtRole,   CentralLogger::Ui::kRoleCreatedAt},
   };
 }
 

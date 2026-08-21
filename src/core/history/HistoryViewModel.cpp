@@ -5,6 +5,10 @@
 #include "data/repositories/LoggerRepository.h"
 #include "data/repositories/SensorReadingRepository.h"
 #include "network/workers/HistoryWriterWorker.h"
+#include "utils/AppConstants.h"
+#include "utils/DbConstants.h"
+#include "utils/FormatConstants.h"
+#include "utils/UiConstants.h"
 
 #include <QDateTime>
 #include <QFile>
@@ -23,7 +27,7 @@ namespace CentralLogger::Core {
 
 namespace {
 
-constexpr int kHistorySearchLimit = 5000;
+using CentralLogger::Defaults::kHistorySearchLimit;
 
 QVariantMap filterItem(qint64 id, const QString &name)
 {
@@ -60,7 +64,7 @@ HistorySearchResult executeHistorySearch(HistorySearchParams params)
     const QString connName = QStringLiteral("history_search_%1").arg(
         reinterpret_cast<quintptr>(QThread::currentThreadId()));
 
-    QSqlDatabase db = QSqlDatabase::addDatabase(QStringLiteral("QSQLITE"), connName);
+    QSqlDatabase db = QSqlDatabase::addDatabase(QLatin1String(CentralLogger::Data::Db::kSqliteDriver), connName);
     db.setDatabaseName(params.dbPath);
     if (!db.open()) {
         result.error = db.lastError().text();
@@ -195,8 +199,8 @@ void HistoryViewModel::search(const QString &fromDate, const QString &toDate, qi
         }
     }
 
-    const QDate fromDate2 = QDate::fromString(fromDate, QStringLiteral("dd/MM/yyyy"));
-    const QDate toDate2   = QDate::fromString(toDate,   QStringLiteral("dd/MM/yyyy"));
+    const QDate fromDate2 = QDate::fromString(fromDate, QLatin1String(CentralLogger::Format::kDateDdMmYyyy));
+    const QDate toDate2   = QDate::fromString(toDate,   QLatin1String(CentralLogger::Format::kDateDdMmYyyy));
     const QDateTime fromDt = fromDate2.isValid()
         ? QDateTime(fromDate2, QTime(0, 0), tz).toUTC()
         : QDateTime();
@@ -335,11 +339,13 @@ void HistoryViewModel::exportCsv(const QUrl &fileUrl)
 
     for (const auto &r : rows) {
         out << csvEscape(r.recordedAt.toLocalTime()
-                              .toString(QStringLiteral("dd/MM/yyyy HH:mm:ss"))) << ','
+                              .toString(QLatin1String(CentralLogger::Format::kDateTimeDdMmYyyyHms))) << ','
             << csvEscape(r.loggerName) << ','
             << csvEscape(r.sensorName) << ','
             << csvEscape(r.unit) << ','
-            << QString::number(r.value, 'f', qBound(0, r.decimals, 6)) << ','
+            << QString::number(r.value, 'f', qBound(CentralLogger::Defaults::kDecimalsMin,
+                                                   r.decimals,
+                                                   CentralLogger::Defaults::kDecimalsMax)) << ','
             << HistoryTableModel::statusText(r) << '\n';
     }
 

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "network/modbus/ModbusTypes.h"
+#include "utils/AppConstants.h"
 
 #include <QList>
 #include <QMutex>
@@ -22,12 +23,12 @@ class HistoryWriterWorker : public QObject
     Q_OBJECT
 
 public:
-    static constexpr int kMaxBatchSize            = 20;
-    static constexpr int kDefaultFlushIntervalS   = 5;
+    static constexpr int kMaxBatchSize            = Defaults::kHistoryMaxBatchSize;
+    static constexpr int kDefaultFlushIntervalS   = Defaults::kHistoryFlushIntervalS;
     /// Audit H-D: cap the in-memory enqueue queue so a slow/blocked disk
     /// cannot grow memory without bound. When full, the oldest snapshot is
     /// dropped (with a qWarning) — bounded data loss beats unbounded RAM.
-    static constexpr int kMaxQueueSize            = 5000;
+    static constexpr int kMaxQueueSize            = Defaults::kHistoryMaxQueueSize;
 
     explicit HistoryWriterWorker(QObject *parent = nullptr);
     ~HistoryWriterWorker() override;
@@ -70,7 +71,7 @@ private:
     QQueue<PollSnapshot> m_queue;
     bool                 m_quit           = false;
     bool                 m_flushRequested = false;
-    std::atomic<int>     m_flushIntervalMs{kDefaultFlushIntervalS * 1000};
+    std::atomic<int>     m_flushIntervalMs{kDefaultFlushIntervalS * Defaults::kMsPerSecond};
 };
 
 } // namespace CentralLogger::Network

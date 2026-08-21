@@ -18,6 +18,8 @@
 #include "network/modbus/ModbusService.h"
 #include "network/modbus/ModbusTypes.h"
 #include "utils/AppConstants.h"
+#include "utils/DbConstants.h"
+#include "utils/SensorConstants.h"
 #include "utils/charts/ChartDisplayLimits.h"
 
 #include <QDateTime>
@@ -38,20 +40,17 @@ namespace CentralLogger::Core {
 
 using CentralLogger::Utils::displayLevelForEvent;
 using CentralLogger::Utils::kChartDisplayPointCount;
+using CentralLogger::Defaults::kPurgeIntervalMs;
+using CentralLogger::Defaults::kVacuumChunkPages;
+using CentralLogger::Defaults::kMaxVacuumIterations;
 
 namespace {
 
 DashboardController *g_instance = nullptr;
 
-// Retention purge cadence — hourly (Task 16 / FE-016).
-constexpr int kPurgeIntervalMs = 3600 * 1000;
-
-// Number of pages freed per PRAGMA incremental_vacuum step.
-constexpr int kVacuumChunkPages = 1000;
-// Upper bound on incremental_vacuum iterations per purge cycle. Each
-// iteration frees up to kVacuumChunkPages; cap so a misbehaving DB can't
-// pin the retention thread forever.
-constexpr int kMaxVacuumIterations = 64;
+// Retention purge cadence — hourly (Task 16 / FE-016). kPurgeIntervalMs in Defaults.
+// Number of pages freed per PRAGMA incremental_vacuum step. kVacuumChunkPages in Defaults.
+// Upper bound on incremental_vacuum iterations per purge cycle. kMaxVacuumIterations in Defaults.
 
 struct PurgeResult {
   int deletedReadings = 0;
@@ -69,7 +68,7 @@ PurgeResult executeRetentionPurge(const QString &dbPath, const QDateTime &cutoff
 
   const QString connName = QStringLiteral("retention_purge_%1").arg(
       reinterpret_cast<quintptr>(QThread::currentThreadId()));
-  QSqlDatabase db = QSqlDatabase::addDatabase(QStringLiteral("QSQLITE"), connName);
+  QSqlDatabase db = QSqlDatabase::addDatabase(QLatin1String(CentralLogger::Data::Db::kSqliteDriver), connName);
   db.setDatabaseName(dbPath);
   if (!db.open()) {
     result.error = db.lastError().text();
@@ -126,7 +125,7 @@ QVector<ReadingBucketPoint> executeChartQuery(const QString &dbPath,
 {
   const QString connName = QStringLiteral("chart_query_%1").arg(
       reinterpret_cast<quintptr>(QThread::currentThreadId()));
-  QSqlDatabase db = QSqlDatabase::addDatabase(QStringLiteral("QSQLITE"), connName);
+  QSqlDatabase db = QSqlDatabase::addDatabase(QLatin1String(CentralLogger::Data::Db::kSqliteDriver), connName);
   db.setDatabaseName(dbPath);
   if (!db.open()) {
     db = QSqlDatabase();
@@ -272,13 +271,14 @@ void DashboardController::refreshReadingsChart() {
     data.reserve(points.size());
     for (const auto &pt : points) {
       QVariantMap m;
-      m.insert(QStringLiteral("label"), pt.label);
-      m.insert(QStringLiteral("bucketMs"), pt.bucketMs);
-      m.insert(QStringLiteral("count"), pt.count);
+      m.insert(QLatin1String(CentralLogger::Ui::kChartLabel), pt.label);
+      m.insert(QLatin1String(CentralLogger::Ui::kChartBucketMs), pt.bucketMs);
+      m.insert(QLatin1String(CentralLogger::Ui::kChartCount), pt.count);
       data.append(m);
     }
     const auto presentation =
-        buildReadingsChartPresentation(data, kChartDisplayPointCount, 5, tz);
+        buildReadingsChartPresentation(data, kChartDisplayPointCount,
+                                      CentralLogger::Defaults::kChartDefaultBucketMin, tz);
     m_readingsChartPlotPoints = presentation.plotPoints;
     m_readingsChartAxis = presentation.axis;
     m_readingsChartHasData = false;
@@ -294,7 +294,7 @@ void DashboardController::refreshReadingsChart() {
   if (inMemory) {
     // :memory: DBs are per-connection; query synchronously on the main conn.
     ChartQueryService svc(m_db->connection());
-    applyPoints(svc.readingCountsLast24h(5, tz));
+    applyPoints(svc.readingCountsLast24h(CentralLogger::Defaults::kChartDefaultBucketMin, tz));
     m_chartQueryRunning = false;
     return;
   }
@@ -308,7 +308,8 @@ void DashboardController::refreshReadingsChart() {
             applyPoints(points);
           });
   QFuture<QVector<ReadingBucketPoint>> future =
-      QtConcurrent::run(executeChartQuery, dbPath, tz, 5);
+      QtConcurrent::run(executeChartQuery, dbPath, tz,
+                       CentralLogger::Defaults::kChartDefaultBucketMin);
   watcher->setFuture(future);
 }
 
@@ -324,7 +325,7 @@ void DashboardController::purgeOldData() {
 
   // Determine retention days: prefer the live SettingsController value,
   // fall back to reading from the DB directly.
-  int retentionDays = 30;
+  int retentionDays = CentralLogger::Defaults::kDefaultRetentionDays;
   if (m_settings) {
     retentionDays = m_settings->dataRetentionDays();
   } else {
@@ -445,7 +446,8 @@ void DashboardController::onSnapshotApplied(
   const qint64 loggerId = snapshot.loggerId;
   const bool online = snapshot.success;
   const QString newStatus =
-      online ? QStringLiteral("online") : QStringLiteral("offline");
+      online ? QLatin1String(CentralLogger::Sensor::kLoggerOnline)
+             : QLatin1String(CentralLogger::Sensor::kLoggerOffline);
 
   // Snapshot the previous status before patching the list model — once
   // updateLoggerRow runs the row reflects the new state.
@@ -470,10 +472,10 @@ void DashboardController::onSnapshotApplied(
     QHash<int, QString> nameMap;
     QHash<int, int> decimalsMap;
     for (const auto &row : catalogRows) {
-      if (row.sensorType == QStringLiteral("ANALOG")) {
+      if (row.sensorType == CentralLogger::Sensor::kTypeAnalog) {
         nameMap.insert(row.edgeSensorId,
                        row.name.isEmpty()
-                           ? QStringLiteral("Sensor #%1").arg(row.edgeSensorId)
+                           ? QString(QLatin1String(CentralLogger::Sensor::kFallbackNameFmt)).arg(row.edgeSensorId)
                            : row.name);
         decimalsMap.insert(row.edgeSensorId, row.decimals);
       }
@@ -517,7 +519,7 @@ void DashboardController::maybeLogStatusTransition(qint64 loggerId,
     // initial connection succeed. Skip Offline — the DB default is
     // already 'offline' and logging it would generate spurious events
     // for every unreachable logger at startup.
-    if (newStatus != QStringLiteral("online"))
+    if (newStatus != CentralLogger::Sensor::kLoggerOnline)
       return;
     // Fall through to log the Online event below.
   }
@@ -539,13 +541,13 @@ void DashboardController::maybeLogStatusTransition(qint64 loggerId,
   Data::EventRepository events(m_db->connection());
   Data::SystemEvent ev;
   ev.loggerId = loggerId;
-  if (newStatus == QStringLiteral("online")) {
-    ev.eventType = QStringLiteral("Online");
-    ev.level = QStringLiteral("info");
+  if (newStatus == CentralLogger::Sensor::kLoggerOnline) {
+    ev.eventType = CentralLogger::Sensor::kEventTypeOnline;
+    ev.level = CentralLogger::Sensor::kLevelInfo;
     ev.message = QStringLiteral("Logger %1 is online").arg(label);
   } else {
-    ev.eventType = QStringLiteral("Offline");
-    ev.level = QStringLiteral("warning");
+    ev.eventType = CentralLogger::Sensor::kEventTypeOffline;
+    ev.level = CentralLogger::Sensor::kLevelWarning;
     ev.message = QStringLiteral("Logger %1 went offline").arg(label);
   }
   if (events.insert(ev)) {
@@ -603,11 +605,12 @@ QVariantMap DashboardController::snapReadingsChart(double mouseX, double mouseY,
                                                    double plotW,
                                                    double plotH) const {
   const double xMin =
-      m_readingsChartAxis.value(QStringLiteral("xMin")).toDouble();
+      m_readingsChartAxis.value(CentralLogger::Ui::kChartXMin).toDouble();
   const double xMax =
-      m_readingsChartAxis.value(QStringLiteral("xMax")).toDouble();
+      m_readingsChartAxis.value(CentralLogger::Ui::kChartXMax).toDouble();
   return Core::snapReadingsChart(m_readingsChartPlotPoints, xMin, xMax, plotX,
-                                 plotY, plotW, plotH, mouseX, mouseY, 5);
+                                 plotY, plotW, plotH, mouseX, mouseY,
+                                 CentralLogger::Defaults::kChartDefaultBucketMin);
 }
 
 } // namespace CentralLogger::Core

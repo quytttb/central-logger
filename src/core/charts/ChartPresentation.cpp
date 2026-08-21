@@ -1,5 +1,9 @@
 #include "ChartPresentation.h"
 
+#include "utils/AppConstants.h"
+#include "utils/FormatConstants.h"
+#include "utils/UiConstants.h"
+
 #include <QDateTime>
 #include <QHash>
 
@@ -11,13 +15,13 @@ namespace CentralLogger::Core {
 
 namespace {
 
-const QString kLabelKey    = QStringLiteral("label");
-const QString kBucketMsKey = QStringLiteral("bucketMs");
-const QString kCountKey    = QStringLiteral("count");
-const QString kPointsKey   = QStringLiteral("points");
-const QString kXKey        = QStringLiteral("x");
-const QString kYKey        = QStringLiteral("y");
-const QString kTimeKey     = QStringLiteral("time");
+const QString kLabelKey    = QLatin1String(CentralLogger::Ui::kChartLabel);
+const QString kBucketMsKey = QLatin1String(CentralLogger::Ui::kChartBucketMs);
+const QString kCountKey    = QLatin1String(CentralLogger::Ui::kChartCount);
+const QString kPointsKey   = QLatin1String(CentralLogger::Ui::kChartPoints);
+const QString kXKey        = QLatin1String(CentralLogger::Ui::kChartX);
+const QString kYKey        = QLatin1String(CentralLogger::Ui::kChartY);
+const QString kTimeKey     = QLatin1String(CentralLogger::Ui::kChartTime);
 
 int nearestBucketIndex(const QVariantList &plotPoints, qint64 tsMs)
 {
@@ -75,9 +79,9 @@ ReadingsChartPresentation buildReadingsChartPresentation(const QVariantList &all
     if (visiblePointCount < 1)
         visiblePointCount = 1;
     if (bucketMinutes < 1)
-        bucketMinutes = 5;
+        bucketMinutes = CentralLogger::Defaults::kChartDefaultBucketMin;
 
-    const qint64 bucketMs = static_cast<qint64>(bucketMinutes) * 60 * 1000;
+    const qint64 bucketMs = static_cast<qint64>(bucketMinutes) * 60 * CentralLogger::Defaults::kMsPerSecond;
     const QTimeZone useTz = tz.isValid() ? tz : QTimeZone::systemTimeZone();
 
     QHash<qint64, QVariantMap> byBucket;
@@ -102,9 +106,9 @@ ReadingsChartPresentation buildReadingsChartPresentation(const QVariantList &all
         } else {
             row.insert(kBucketMsKey, bucketStart);
             row.insert(kCountKey, 0);
-            row.insert(kLabelKey,
-                       QDateTime::fromMSecsSinceEpoch(bucketStart, useTz)
-                           .toString(QStringLiteral("HH:mm")));
+        row.insert(kLabelKey,
+                   QDateTime::fromMSecsSinceEpoch(bucketStart, useTz)
+                       .toString(QLatin1String(CentralLogger::Format::kTimeHhMm)));
         }
         yMax = qMax(yMax, row.value(kCountKey).toInt());
         out.plotPoints.append(row);
@@ -116,9 +120,9 @@ ReadingsChartPresentation buildReadingsChartPresentation(const QVariantList &all
         out.plotPoints.last().toMap().value(kBucketMsKey).toDouble()
         + static_cast<double>(bucketMs);
 
-    out.axis = {{QStringLiteral("xMin"), xMin},
-                {QStringLiteral("xMax"), xMax},
-                {QStringLiteral("yMax"), static_cast<double>(yMax) * 1.1}};
+    out.axis = {{QLatin1String(CentralLogger::Ui::kChartXMin), xMin},
+                {QLatin1String(CentralLogger::Ui::kChartXMax), xMax},
+                {QLatin1String(CentralLogger::Ui::kChartYMax), static_cast<double>(yMax) * 1.1}};
 
     return out;
 }
@@ -153,14 +157,14 @@ QVariantMap snapReadingsChart(const QVariantList &plotPoints,
 
     QVariantList valueRows;
     QVariantMap valueRow;
-    valueRow.insert(QStringLiteral("text"),
+    valueRow.insert(QLatin1String(CentralLogger::Ui::kChartText),
                     QStringLiteral("Readings: %1 / %2 min").arg(count).arg(bucketMinutes));
     valueRows.append(valueRow);
 
     QVariantMap hit;
-    hit.insert(QStringLiteral("position"), position);
-    hit.insert(QStringLiteral("captionText"), row.value(kLabelKey));
-    hit.insert(QStringLiteral("valueRows"), valueRows);
+    hit.insert(QLatin1String(CentralLogger::Ui::kChartPosition), position);
+    hit.insert(QLatin1String(CentralLogger::Ui::kChartCaptionText), row.value(kLabelKey));
+    hit.insert(QLatin1String(CentralLogger::Ui::kChartValueRows), valueRows);
     return hit;
 }
 
@@ -190,10 +194,10 @@ QVariantMap computeTrendingAxisRange(const QVariantList &series)
 
     if (yMin > yMax) {
         const qint64 nowMs = QDateTime::currentDateTimeUtc().toMSecsSinceEpoch();
-        return {{QStringLiteral("yMin"), 0.0},
-                {QStringLiteral("yMax"), 1.0},
-                {QStringLiteral("xMin"), static_cast<double>(nowMs)},
-                {QStringLiteral("xMax"), static_cast<double>(nowMs + 1)}};
+        return {{QLatin1String(CentralLogger::Ui::kChartYMin), 0.0},
+                {QLatin1String(CentralLogger::Ui::kChartYMax), 1.0},
+                {QLatin1String(CentralLogger::Ui::kChartXMin), static_cast<double>(nowMs)},
+                {QLatin1String(CentralLogger::Ui::kChartXMax), static_cast<double>(nowMs + 1)}};
     }
 
     const double yRange = yMax - yMin;
@@ -210,10 +214,10 @@ QVariantMap computeTrendingAxisRange(const QVariantList &series)
         xMax += xPad;
     }
 
-    return {{QStringLiteral("yMin"), yMin - yPad},
-            {QStringLiteral("yMax"), yMax + yPad},
-            {QStringLiteral("xMin"), xMin},
-            {QStringLiteral("xMax"), xMax}};
+    return {{QLatin1String(CentralLogger::Ui::kChartYMin), yMin - yPad},
+            {QLatin1String(CentralLogger::Ui::kChartYMax), yMax + yPad},
+            {QLatin1String(CentralLogger::Ui::kChartXMin), xMin},
+            {QLatin1String(CentralLogger::Ui::kChartXMax), xMax}};
 }
 
 QVariantMap snapTrendingChart(const QVariantList &trendingSeries,
@@ -253,13 +257,16 @@ QVariantMap snapTrendingChart(const QVariantList &trendingSeries,
         const QVariantMap pt = pts.at(idx).toMap();
         if (caption.isEmpty())
             caption = pt.value(kTimeKey).toString();
-        const int decimals = qBound(0, series.value(QStringLiteral("decimals"), 4).toInt(), 6);
+        const int decimals = qBound(CentralLogger::Defaults::kDecimalsMin,
+                                    series.value(QLatin1String(CentralLogger::Ui::kChartDecimals),
+                                                 CentralLogger::Defaults::kDecimalsDefault).toInt(),
+                                    CentralLogger::Defaults::kDecimalsMax);
         QVariantMap row;
-        row.insert(QStringLiteral("text"),
+        row.insert(QLatin1String(CentralLogger::Ui::kChartText),
                    QStringLiteral("%1: %2")
-                       .arg(series.value(QStringLiteral("label")).toString())
+                       .arg(series.value(QLatin1String(CentralLogger::Ui::kChartLabel)).toString())
                        .arg(QString::number(pt.value(kYKey).toDouble(), 'f', decimals)));
-        row.insert(QStringLiteral("seriesIndex"), valueRows.size());
+        row.insert(QLatin1String(CentralLogger::Ui::kChartSeriesIndex), valueRows.size());
         valueRows.append(row);
 
         if (valueRows.size() == 1) {
@@ -276,9 +283,9 @@ QVariantMap snapTrendingChart(const QVariantList &trendingSeries,
     position.insert(kYKey, anchorY);
 
     QVariantMap hit;
-    hit.insert(QStringLiteral("position"), position);
-    hit.insert(QStringLiteral("captionText"), caption);
-    hit.insert(QStringLiteral("valueRows"), valueRows);
+    hit.insert(QLatin1String(CentralLogger::Ui::kChartPosition), position);
+    hit.insert(QLatin1String(CentralLogger::Ui::kChartCaptionText), caption);
+    hit.insert(QLatin1String(CentralLogger::Ui::kChartValueRows), valueRows);
     return hit;
 }
 

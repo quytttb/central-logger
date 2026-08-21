@@ -1,5 +1,7 @@
 #pragma once
 
+#include "utils/AppConstants.h"
+
 #include <QDateTime>
 #include <QSqlDatabase>
 #include <QString>
@@ -35,7 +37,7 @@ public:
     ///
     /// The results are sorted ascending by time so they can be plotted
     /// left-to-right as a line / bar chart.
-    QVector<ReadingBucketPoint> readingCountsLast24h(int bucketMinutes = 5,
+    QVector<ReadingBucketPoint> readingCountsLast24h(int bucketMinutes = Defaults::kChartDefaultBucketMin,
                                                      QTimeZone tz = QTimeZone::systemTimeZone()) const;
 
 private:

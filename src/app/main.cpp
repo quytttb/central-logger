@@ -11,6 +11,7 @@
 #include "network/modbus/ModbusTypes.h"
 #include "network/workers/HistoryWriterWorker.h"
 #include "network/rest/RestConfigService.h"
+#include "utils/AppConstants.h"
 
 #include <QCoreApplication>
 #include <QDateTime>
@@ -52,8 +53,7 @@ namespace {
 QFile  *g_logFile  = nullptr;
 QMutex  g_logMutex;
 QString g_logPath;                // full path for rotation
-constexpr qint64 kLogMaxBytes    = 5 * 1024 * 1024; // rotate at 5 MB
-constexpr int    kLogKeepBackups = 3;               // app.log.1 … app.log.3
+// kLogMaxBytes / kLogKeepBackups live in CentralLogger::Defaults.
 
 void fileMessageHandler(QtMsgType type, const QMessageLogContext &, const QString &msg)
 {
@@ -74,10 +74,10 @@ void fileMessageHandler(QtMsgType type, const QMessageLogContext &, const QStrin
     if (g_logFile && g_logFile->isOpen()) {
         // M-12 (audit P2 #19): rotate during the run, not only at startup,
         // so a 24/7 session cannot grow the log file without bound.
-        if (g_logFile->size() + line.size() > kLogMaxBytes) {
+        if (g_logFile->size() + line.size() > CentralLogger::Defaults::kLogMaxBytes) {
             g_logFile->close();
-            QFile::remove(g_logPath + QStringLiteral(".%1").arg(kLogKeepBackups));
-            for (int i = kLogKeepBackups - 1; i >= 1; --i) {
+            QFile::remove(g_logPath + QStringLiteral(".%1").arg(CentralLogger::Defaults::kLogKeepBackups));
+            for (int i = CentralLogger::Defaults::kLogKeepBackups - 1; i >= 1; --i) {
                 QFile::rename(g_logPath + QStringLiteral(".%1").arg(i),
                               g_logPath + QStringLiteral(".%1").arg(i + 1));
             }
@@ -108,9 +108,9 @@ QString initFileLogging()
     // Startup rotation (startup fallback kept for oversized leftovers).
     {
         QFileInfo fi(logPath);
-        if (fi.exists() && fi.size() > kLogMaxBytes) {
-            QFile::remove(logPath + QStringLiteral(".%1").arg(kLogKeepBackups));
-            for (int i = kLogKeepBackups - 1; i >= 1; --i) {
+        if (fi.exists() && fi.size() > CentralLogger::Defaults::kLogMaxBytes) {
+            QFile::remove(logPath + QStringLiteral(".%1").arg(CentralLogger::Defaults::kLogKeepBackups));
+            for (int i = CentralLogger::Defaults::kLogKeepBackups - 1; i >= 1; --i) {
                 QFile::rename(logPath + QStringLiteral(".%1").arg(i),
                               logPath + QStringLiteral(".%1").arg(i + 1));
             }

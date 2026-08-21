@@ -1,5 +1,7 @@
 #pragma once
 
+#include "utils/AppConstants.h"
+
 #include <QTimeZone>
 #include <QVariantList>
 #include <QVariantMap>
@@ -32,7 +34,7 @@ QVariantMap snapReadingsChart(const QVariantList &plotPoints,
                               double plotH,
                               double mouseX,
                               double mouseY,
-                              int bucketMinutes = 5);
+                              int bucketMinutes = Defaults::kChartDefaultBucketMin);
 
 /// Axis range for multi-series trending chart (from PollHistoryStore series list).
 QVariantMap computeTrendingAxisRange(const QVariantList &trendingSeries);

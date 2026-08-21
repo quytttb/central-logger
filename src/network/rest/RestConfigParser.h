@@ -1,6 +1,9 @@
 #pragma once
 
 #include "data/models/LoggerSensor.h"
+#include "utils/AppConstants.h"
+#include "utils/FormatConstants.h"
+#include "utils/SensorConstants.h"
 
 #include <QJsonArray>
 #include <QJsonDocument>
@@ -59,12 +62,12 @@ inline std::optional<double> readOptDouble(const QJsonObject &o, const char *key
 inline QString normaliseType(const QString &raw)
 {
     const QString upper = raw.trimmed().toUpper();
-    if (upper == QLatin1String("ANALOG")
-     || upper == QLatin1String("DI")
-     || upper == QLatin1String("DO")) {
+    if (upper == CentralLogger::Sensor::kTypeAnalog
+     || upper == CentralLogger::Sensor::kTypeDi
+     || upper == CentralLogger::Sensor::kTypeDo) {
         return upper;
     }
-    return QStringLiteral("UNKNOWN");
+    return CentralLogger::Sensor::kTypeUnknown;
 }
 
 /// Walks an array of sensor objects and converts each to a LoggerSensor.
@@ -78,7 +81,7 @@ inline QVector<Data::LoggerSensor> readSensors(qint64 loggerId, const QJsonArray
         Data::LoggerSensor s;
         s.loggerId     = loggerId;
         s.sensorType   = normaliseType(readStr(obj, "sensor_type"));
-        if (s.sensorType == QLatin1String("DI") || s.sensorType == QLatin1String("DO")) {
+        if (s.sensorType == CentralLogger::Sensor::kTypeDi || s.sensorType == CentralLogger::Sensor::kTypeDo) {
             s.edgeSensorId = readInt(obj, "register_address", -1);
             if (s.edgeSensorId < 0) {
                 s.edgeSensorId = readInt(obj, "sensor_id", -1);
@@ -97,8 +100,10 @@ inline QVector<Data::LoggerSensor> readSensors(qint64 loggerId, const QJsonArray
         s.unit         = readStr(obj, "unit");
         s.minThreshold = readOptDouble(obj, "min_threshold");
         s.maxThreshold = readOptDouble(obj, "max_threshold");
-        // Display precision (ANALOG). Edge field optional → default 4, clamp 0–6.
-        s.decimals     = std::clamp(readInt(obj, "decimals", 4), 0, 6);
+        // Display precision (ANALOG). Edge field optional → default kDecimalsDefault, clamp [kDecimalsMin, kDecimalsMax].
+        s.decimals     = std::clamp(readInt(obj, "decimals", CentralLogger::Defaults::kDecimalsDefault),
+                                    CentralLogger::Defaults::kDecimalsMin,
+                                    CentralLogger::Defaults::kDecimalsMax);
         const auto activeVal = obj.value(QLatin1String("active"));
         s.active             = activeVal.isBool() ? activeVal.toBool() : true;
         const int parentId   = readInt(obj, "parent_id", -1);
@@ -109,7 +114,7 @@ inline QVector<Data::LoggerSensor> readSensors(qint64 loggerId, const QJsonArray
         if (!diType.isEmpty()) {
             s.diType = diType;
         }
-        if (s.sensorType == QLatin1String("DI")) {
+        if (s.sensorType == CentralLogger::Sensor::kTypeDi) {
             if (parentId >= 0) {
                 s.allParentIds.append(parentId);
             }
@@ -252,32 +257,31 @@ inline QString formatRestError(int httpStatus, const QByteArray &body, const QSt
 
     if (httpStatus == 0) {
         return transportError.isEmpty()
-            ? QStringLiteral("Could not reach the logger. Check host, API port, and network.")
-            : QStringLiteral("Could not reach the logger: %1").arg(transportError);
+            ? QLatin1String(CentralLogger::Format::kErrLoggerUnreachable)
+            : QString(QLatin1String(CentralLogger::Format::kErrLoggerUnreachableFmt)).arg(transportError);
     }
     if (httpStatus == 401) {
         if (lower.contains(QLatin1String("not configured"))) {
-            return QStringLiteral("Device REST token empty — Scan QR on logger");
+            return QString::fromUtf8(CentralLogger::Format::kErrRestTokenEmpty);
         }
         if (lower.contains(QLatin1String("invalid bearer"))
          || lower.contains(QLatin1String("invalid token"))) {
-            return QStringLiteral("Token mismatch — Scan QR again on device");
+            return QString::fromUtf8(CentralLogger::Format::kErrRestTokenMismatch);
         }
-        return QStringLiteral("REST unauthorized (401)");
+        return QLatin1String(CentralLogger::Format::kErrRestUnauthorized);
     }
     if (httpStatus == 404) {
-        return QStringLiteral("Logger API not available. Update data-logger firmware.");
+        return QLatin1String(CentralLogger::Format::kErrApiNotAvailable);
     }
     if (httpStatus == 409
      || (httpStatus == 422 && detail::isRevisionConflict422(body, lower))) {
-        return QStringLiteral("Configuration changed on device. Connect again, then save.");
+        return QLatin1String(CentralLogger::Format::kErrRevisionConflict);
     }
     if (httpStatus == 422) {
         if (detail::isMissingConfigFields422(body)) {
-            return QStringLiteral(
-                "Device rejected config request (missing fields). Update Central Logger.");
+            return QLatin1String(CentralLogger::Format::kErrMissingFields);
         }
-        return QStringLiteral("Edge rejected payload (422). Check forbidden fields.");
+        return QLatin1String(CentralLogger::Format::kErrEdgeRejected422);
     }
 
     // Generic fallback: try to surface `errors[0].message` if present.
@@ -289,17 +293,17 @@ inline QString formatRestError(int httpStatus, const QByteArray &body, const QSt
             if (first.isObject()) {
                 const auto msg = first.toObject().value(QLatin1String("message")).toString();
                 if (!msg.isEmpty()) {
-                    return QStringLiteral("HTTP %1: %2").arg(httpStatus).arg(msg);
+                    return QString(QLatin1String(CentralLogger::Format::kErrHttpBodyFmt)).arg(httpStatus).arg(msg);
                 }
             }
         }
         const auto detail = doc.object().value(QLatin1String("detail")).toString();
         if (!detail.isEmpty()) {
-            return QStringLiteral("HTTP %1: %2").arg(httpStatus).arg(detail);
+            return QString(QLatin1String(CentralLogger::Format::kErrHttpBodyFmt)).arg(httpStatus).arg(detail);
         }
     }
 
-    return QStringLiteral("HTTP %1").arg(httpStatus);
+    return QString(QLatin1String(CentralLogger::Format::kErrHttpFmt)).arg(httpStatus);
 }
 
 /// Maps HTTP errors for `GET /reports/latest`. A 404 on this route (after Bearer
@@ -313,10 +317,9 @@ inline QString formatReportDownloadError(int httpStatus, const QByteArray &body,
         if (lower.contains(QLatin1String("report"))
             || lower.contains(QLatin1String("not found"))
             || body.trimmed().isEmpty()) {
-            return QStringLiteral(
-                "No latest report on device. Generate a report on the data-logger first.");
+            return QLatin1String(CentralLogger::Format::kErrNoLatestReport);
         }
-        return QStringLiteral("Report endpoint not found. Update data-logger firmware.");
+        return QLatin1String(CentralLogger::Format::kErrReportEndpointMissing);
     }
     return formatRestError(httpStatus, body, transportError);
 }
