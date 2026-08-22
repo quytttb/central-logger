@@ -17,6 +17,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+        with:
+          submodules: recursive
 
       - name: Install Qt / OpenGL system libs
         run: |
@@ -71,6 +73,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+        with:
+          submodules: recursive
 
       # OpenGL libs are needed because Qt6Gui / Qt6Quick fail to find their
       # WrapOpenGL dependency on a bare runner; qmllint itself doesn't
@@ -132,6 +136,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+        with:
+          submodules: recursive
 
       # OpenGL libs required for the CMake configure step to find
       # Qt6Gui / Qt6Quick's WrapOpenGL dependency on a bare runner.

@@ -54,6 +54,8 @@ jobs:
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v7
+        with:
+          submodules: recursive
 
       - name: Sync CMake project version
         env:
@@ -104,6 +106,8 @@ jobs:
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v7
+        with:
+          submodules: recursive
 
       - name: Exclude Windows Store Python stub from PATH
         shell: pwsh

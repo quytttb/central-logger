@@ -41,6 +41,17 @@ Greenfield **Qt 6 + C++ + QML** desktop app. Behavior tham khảo app PySide6 c�
 
 Do not change edge API without explicit user approval.
 
+## Shared UI kit (`shared/logger-ui-kit` — submodule)
+
+- Token M3 + component generic nằm trong **`LoggerKit.Theme` / `LoggerKit.Components`**
+  (git submodule, static QML modules). **Cấm** copy/duplicate component về local.
+- App chỉ giữ component đặc thù trong `CentralLogger.Components` (rail/topbar,
+  StatCard, SensorStatusChip wrapper, LoggerFormDialog…) + singleton domain
+  `OperationalStatus`/`AttachDiType` trong `CentralLogger.Theme`.
+- Theme mode bind 1 lần trong `Main.qml`: `ThemeMode.mode = Qt.binding(() => SettingsController.theme)`.
+- Đổi API của kit ⇒ update cả central_logger và data-logger (commit kit trước, bump submodule pointer sau).
+- UI guideline: [`docs/ui/material3-component-guidelines.md`](docs/ui/material3-component-guidelines.md).
+
 ## Architecture rules
 
 - MVVM: business logic in C++ ViewModels/Services, not in QML
