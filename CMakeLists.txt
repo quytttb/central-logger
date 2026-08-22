@@ -64,6 +64,9 @@ endforeach()
 # Qt 6.11 qmllint / Qt Creator expect QML module output under the URI target path
 # (CentralLogger.Core → …/CentralLogger/Core). Static qt_add_qml_module targets
 # otherwise default to CMAKE_CURRENT_BINARY_DIR only (e.g. build/.../src/core).
+# Required: source tree (src/...) deviates from URI layout (CentralLogger/...),
+# so point the build-tree QML root explicitly; without it qmllint/qmlcachegen
+# cannot resolve cross-module imports in this layout.
 set(QT_QML_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}" CACHE PATH
     "QML build-tree root; qt_add_qml_module appends URI path segments")
 

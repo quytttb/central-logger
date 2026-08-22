@@ -1,3 +1,5 @@
+pragma ComponentBehavior: Bound
+
 import QtQuick
 import QtQuick.Layouts
 import QtQuick.Window
@@ -58,14 +60,14 @@ Item {
 
             NavItem {
                 viewName: "dashboard"
-                label: "Dashboard"
+                label: qsTr("Dashboard")
                 iconName: "viewDashboard"
                 active: rail.currentView === "dashboard"
                 onNavigate: view => rail.navigate(view)
             }
             NavItem {
                 viewName: "loggers"
-                label: "Loggers"
+                label: qsTr("Loggers")
                 iconName: "server"
                 active: rail.currentView === "loggers"
                      || rail.currentView === "logger-detail"
@@ -73,14 +75,14 @@ Item {
             }
             NavItem {
                 viewName: "history"
-                label: "History"
+                label: qsTr("History")
                 iconName: "history"
                 active: rail.currentView === "history"
                 onNavigate: view => rail.navigate(view)
             }
             NavItem {
                 viewName: "settings"
-                label: "Settings"
+                label: qsTr("Settings")
                 iconName: "cog"
                 active: rail.currentView === "settings"
                 onNavigate: view => rail.navigate(view)
