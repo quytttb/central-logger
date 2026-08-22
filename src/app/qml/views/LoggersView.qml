@@ -7,6 +7,8 @@ import QtQuick.Layouts
 import CentralLogger.Core
 import CentralLogger.Components
 import CentralLogger.Theme
+import LoggerKit.Theme
+import LoggerKit.Components
 
 Item {
     id: root
@@ -26,7 +28,7 @@ Item {
                 {
                     detailText:  errorMessage,
                     detailTitle: qsTr("Config push error"),
-                    loggerId:    loggerId,
+                    contextId:   loggerId,
                     durationMs:  7000
                 }
             );

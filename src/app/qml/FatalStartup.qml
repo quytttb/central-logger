@@ -3,6 +3,7 @@ import QtQuick.Controls.Material
 
 import CentralLogger.Components
 import CentralLogger.Theme
+import LoggerKit.Theme
 
 // Shown when Database::open() fails before Main.qml loads.
 ApplicationWindow {

@@ -8,6 +8,8 @@ import QtQuick.Dialogs
 import CentralLogger.Core
 import CentralLogger.Components
 import CentralLogger.Theme
+import LoggerKit.Theme
+import LoggerKit.Components
 
 // Global History page — sidebar navigation.
 Item {

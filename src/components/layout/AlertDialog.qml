@@ -4,6 +4,8 @@ import QtQuick.Layouts
 
 import CentralLogger.Components
 import CentralLogger.Theme
+import LoggerKit.Theme
+import LoggerKit.Components
 
 // Reusable confirmation / alert dialog (Material + AppButton).
 Dialog {

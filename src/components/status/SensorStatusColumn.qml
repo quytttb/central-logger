@@ -3,6 +3,7 @@ pragma ComponentBehavior: Bound
 import QtQuick
 
 import CentralLogger.Theme
+import LoggerKit.Components
 
 /// Sensor table Status column: operational chip + active attach-DI type chips.
 Row {
@@ -18,7 +19,7 @@ Row {
     readonly property var activeTypeCodes: AttachDiType.activeTypeCodesList(attachDiTypeCodes)
     readonly property var activeTypeLabels: attachDiTypeLabels || []
 
-    StatusChip {
+    SensorStatusChip {
         displayStatus: String(root.displayStatus || "")
         alarmType: String(root.alarmType || "")
     }
@@ -26,7 +27,7 @@ Row {
     Repeater {
         model: root.activeTypeCodes
 
-        StatusChip {
+        SensorStatusChip {
             required property int index
             required property var modelData
             attachDiTypeCode: String(modelData)

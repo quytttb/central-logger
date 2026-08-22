@@ -3,6 +3,8 @@ import QtQuick.Layouts
 import QtQuick.Window
 
 import CentralLogger.Theme
+import LoggerKit.Theme
+import LoggerKit.Components
 
 // Frameless window chrome — minimize / maximize / close at the bottom of the rail.
 Item {

@@ -18,13 +18,16 @@ qt_add_qml_module(app
         qml/views/HistoryView.qml
         qml/views/SettingsView.qml
     DEPENDENCIES
+        LoggerKit.Theme
+        LoggerKit.Components
         central_logger_core
         central_logger_theme
         central_logger_components
 )
 
+# ThemeSetup.h now ships with the shared kit (LoggerKit.Theme).
 target_include_directories(app PRIVATE
-    ${CMAKE_SOURCE_DIR}/src/theme
+    ${CMAKE_SOURCE_DIR}/shared/logger-ui-kit/src/theme
 )
 
 set_target_properties(app PROPERTIES
@@ -47,7 +50,9 @@ target_link_libraries(app
         central_logger_coreplugin
         central_logger_componentsplugin
         central_logger_themeplugin
-        central_logger_theme_setup
+        logger_ui_kit_themeplugin
+        logger_ui_kit_componentsplugin
+        LoggerKit::theme_setup
         data
         network
         utils

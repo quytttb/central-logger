@@ -143,14 +143,14 @@ int main(int argc, char *argv[])
     }
 #endif
 
-    CentralLogger::Theme::applyQuickControlsStyle();
+    LoggerKit::Theme::applyQuickControlsStyle();
 
     QGuiApplication app(argc, argv);
     
     static WindowsFramelessHelper framelessHelper;
     app.installNativeEventFilter(&framelessHelper);
 
-    app.setWindowIcon(QIcon(QStringLiteral(":/qt/qml/CentralLogger/Components/resources/icons/brand_4m_technologies_blue.svg")));
+    app.setWindowIcon(QIcon(QStringLiteral(":/qt/qml/LoggerKit/Components/resources/icons/brand_4m_technologies_blue.svg")));
     QCoreApplication::setOrganizationName(QStringLiteral("4M Technologies"));
     QCoreApplication::setOrganizationDomain(QStringLiteral("4mtech.vn"));
     QCoreApplication::setApplicationName(QStringLiteral("Central Logger"));
@@ -160,7 +160,7 @@ int main(int argc, char *argv[])
 
     // Font path matches qt_add_qml_module(RESOURCES) alias in the generated qrc.
     const QString iconFontPath =
-        QStringLiteral(":/qt/qml/CentralLogger/Components/resources/fonts/MaterialSymbols/"
+        QStringLiteral(":/qt/qml/LoggerKit/Components/resources/fonts/MaterialSymbols/"
                        "MaterialSymbolsOutlined.ttf");
     const int fontId = QFontDatabase::addApplicationFont(iconFontPath);
     if (fontId < 0) {

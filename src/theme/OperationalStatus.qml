@@ -1,6 +1,8 @@
 pragma Singleton
 import QtQuick
 
+import LoggerKit.Theme
+
 /// Operational sensor chip text, icons, and colors (OK / ALARM / MIN / MAX / …).
 QtObject {
     function statusIconName(alarmType) {

@@ -35,6 +35,10 @@ find_package(Qt6 ${QT_VERSION_REQUIRED} REQUIRED COMPONENTS
 
 qt_standard_project_setup(REQUIRES ${QT_VERSION_REQUIRED})
 
+# Silence QTP0004 — generate a qmldir per QML source subdirectory so components
+# resolve each other via the implicit import.
+qt_policy(SET QTP0004 NEW)
+
 # Generate src/utils/Version.h with kAppMajor/kAppMinor/kAppPatch from
 # project(VERSION) above. Output goes to the build tree (see utils/CMakeLists.txt
 # for include path).
@@ -57,7 +61,6 @@ foreach(_module IN ITEMS central_logger_components central_logger_theme central_
         add_dependencies(qmllint "${_module}_qmllint")
     endif()
 endforeach()
-
 # Qt 6.11 qmllint / Qt Creator expect QML module output under the URI target path
 # (CentralLogger.Core → …/CentralLogger/Core). Static qt_add_qml_module targets
 # otherwise default to CMAKE_CURRENT_BINARY_DIR only (e.g. build/.../src/core).
@@ -65,6 +68,11 @@ set(QT_QML_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}" CACHE PATH
     "QML build-tree root; qt_add_qml_module appends URI path segments")
 
 include(GNUInstallDirs)
+
+# Shared UI kit (git submodule) — provides LoggerKit.Theme + LoggerKit.Components.
+# Built as STATIC QML modules; version tracks this app's QML module version.
+set(LOGGERKIT_QML_MODULE_VERSION ${QML_MODULE_VERSION})
+add_subdirectory(shared/logger-ui-kit)
 
 # Qt recommended layout — see cmake-get-started.html
 # Layers: utils → data → network (Modbus / REST) → core (C++ singletons) → components (reusable QML) → app (shell)

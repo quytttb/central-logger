@@ -6,7 +6,10 @@ import QtQuick.Layouts
 import QtQuick.Window
 
 import CentralLogger.Components
+import CentralLogger.Core
 import CentralLogger.Theme
+import LoggerKit.Theme
+import LoggerKit.Components
 
 ApplicationWindow {
     id: root
@@ -36,8 +39,11 @@ ApplicationWindow {
         y = scr.virtualY + Math.round((scr.availableHeight - height) / 2)
     }
 
-    Component.onCompleted: centerOnTargetScreen()
-    title: qsTr("Central Logger")
+    Component.onCompleted: {
+        // Bind the shared kit's theme mode to this app's settings controller.
+        ThemeMode.mode = Qt.binding(() => SettingsController.theme)
+        centerOnTargetScreen()
+    }    title: qsTr("Central Logger")
     flags: Qt.Window | (Qt.platform.os === "windows" ? 0 : Qt.FramelessWindowHint) | Qt.WindowSystemMenuHint
 
     Material.theme:   AppTheme.materialTheme
@@ -72,7 +78,8 @@ ApplicationWindow {
         id: msgDetailDialog
         parent: Overlay.overlay
         anchors.centerIn: parent
-        onNavigateToLogger: loggerId => root.selectLogger(loggerId)
+        contextActionText: qsTr("Open logger")
+        onContextActionRequested: loggerId => root.selectLogger(loggerId)
     }
 
     AppToastHost {

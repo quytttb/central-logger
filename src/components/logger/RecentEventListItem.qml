@@ -7,6 +7,8 @@ import QtQuick.Layouts
 import CentralLogger.Components
 import CentralLogger.Core
 import CentralLogger.Theme
+import LoggerKit.Theme
+import LoggerKit.Components
 
 Pane {
     id: root

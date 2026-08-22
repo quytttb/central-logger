@@ -2,6 +2,7 @@ import QtQuick
 import QtQuick.Window
 
 import CentralLogger.Theme
+import LoggerKit.Theme
 
 // Per-view toolbar host (no page title — navigation rail shows the screen).
 Item {

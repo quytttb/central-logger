@@ -7,6 +7,8 @@ import QtQuick.Layouts
 import CentralLogger.Core
 import CentralLogger.Components
 import CentralLogger.Theme
+import LoggerKit.Theme
+import LoggerKit.Components
 
 // Vertical-slice form for app_settings (row 1): timezone, retention.
 // Theme is controlled exclusively from the rail (ThemeToggle).

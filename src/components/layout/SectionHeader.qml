@@ -3,6 +3,7 @@ import QtQuick.Controls
 import QtQuick.Layouts
 
 import CentralLogger.Theme
+import LoggerKit.Theme
 
 // Section title row — titleMedium + optional trailing actions slot.
 RowLayout {

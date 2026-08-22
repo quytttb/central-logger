@@ -2,6 +2,8 @@ import QtQuick
 import QtQuick.Layouts
 
 import CentralLogger.Theme
+import LoggerKit.Theme
+import LoggerKit.Components
 
 // Compact inline notice for form dialogs (Connect fail, Save fail, probe status).
 // Unlike a toast, FormNotice stays visible inside the form until cleared.

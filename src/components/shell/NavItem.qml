@@ -4,6 +4,8 @@ import QtQuick.Controls.Material
 import QtQuick.Layouts
 
 import CentralLogger.Theme
+import LoggerKit.Theme
+import LoggerKit.Components
 
 // Navigation rail destination — icon above label (M3 collapsed rail).
 ItemDelegate {

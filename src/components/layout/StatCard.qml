@@ -3,6 +3,7 @@ import QtQuick.Controls.Material
 import QtQuick.Layouts
 
 import CentralLogger.Theme
+import LoggerKit.Theme
 
 // M3 stat card — elevation 0, surfaceContainerLow + elevatedBorder.
 Pane {

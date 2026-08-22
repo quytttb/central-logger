@@ -1,6 +1,8 @@
 pragma Singleton
 import QtQuick
 
+import LoggerKit.Theme
+
 /// Attach-DI `di_type` chip presentation: standard 00–03 + custom catalog labels.
 QtObject {
     function _palette(diTypeCode) {

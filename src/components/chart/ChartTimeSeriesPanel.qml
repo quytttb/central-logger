@@ -5,6 +5,8 @@ import QtGraphs
 
 import CentralLogger.Core
 import CentralLogger.Theme
+import LoggerKit.Theme
+import LoggerKit.Components
 
 // Binds ChartGraphsView to C++ chart presentation (single bucket series or multi trending).
 Item {
@@ -127,6 +129,7 @@ Item {
     ChartGraphsView {
         id: chartHost
         anchors.fill: parent
+        timezoneId: SettingsController.systemTimezone
 
         axisX: DateTimeAxis {
             id: axisX

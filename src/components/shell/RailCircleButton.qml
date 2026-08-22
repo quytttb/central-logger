@@ -2,6 +2,8 @@ import QtQuick
 import QtQuick.Controls
 
 import CentralLogger.Theme
+import LoggerKit.Theme
+import LoggerKit.Components
 
 // Outlined circular icon button for the navigation rail (40dp circle, 52dp row).
 Item {

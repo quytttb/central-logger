@@ -4,6 +4,8 @@ import QtQuick.Layouts
 
 import CentralLogger.Core
 import CentralLogger.Theme
+import LoggerKit.Theme
+import LoggerKit.Components
 
 // Add/Edit logger form. Config REST only here: Connect (Add / Edit retry) loads GET
 // snapshot; Save uses saveLoggerFromForm (DB transaction + POST patch).

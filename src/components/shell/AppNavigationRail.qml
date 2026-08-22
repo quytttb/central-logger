@@ -3,6 +3,7 @@ import QtQuick.Layouts
 import QtQuick.Window
 
 import CentralLogger.Theme
+import LoggerKit.Theme
 
 // Fixed 80px Material-style navigation rail (icon above label per destination).
 Item {
@@ -37,7 +38,7 @@ Item {
 
             Image {
                 anchors.centerIn: parent
-                source: "qrc:/qt/qml/CentralLogger/Components/resources/icons/brand_4m_technologies_blue.svg"
+                source: "qrc:/qt/qml/LoggerKit/Components/resources/icons/brand_4m_technologies_blue.svg"
                 sourceSize: Qt.size(60, 60)
                 fillMode: Image.PreserveAspectFit
             }

@@ -1,0 +1,3 @@
+[submodule "shared/logger-ui-kit"]
+	path = shared/logger-ui-kit
+	url = ../logger-ui-kit

@@ -7,6 +7,8 @@ import QtQuick.Dialogs
 import CentralLogger.Core
 import CentralLogger.Components
 import CentralLogger.Theme
+import LoggerKit.Theme
+import LoggerKit.Components
 
 Item {
     id: root
@@ -105,7 +107,7 @@ Item {
             {
                 detailText:  body,
                 detailTitle: qsTr("Modbus / logger offline"),
-                loggerId:    root.loggerId,
+                contextId:   root.loggerId,
                 durationMs:  AppDefaults.restProbeTimeoutMs
             }
         )
