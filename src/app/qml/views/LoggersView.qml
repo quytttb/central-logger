@@ -13,6 +13,10 @@ import LoggerKit.Components
 Item {
     id: root
 
+    // Hover hàng thay cho AppTableView.hoveredRow đã xóa khỏi kit
+    // (data-logger kiosk touch-only; central desktop giữ hover).
+    property int hoveredRow: -1
+
     property Component topBarToolbar: LoggersTopBar {}
     property string searchFilterText: ""
 
@@ -83,6 +87,9 @@ Item {
                     id: loggerTable
                     Layout.fillWidth: true
                     Layout.fillHeight: true
+                    HoverHandler {
+                        onHoveredChanged: if (!hovered) root.hoveredRow = -1
+                    }
                     model: searchProxy
                     colWeights:  [1, 1, 0, 0, 0, 0]
                     colMinimums: [96, 96, 76, 76, 96, 92]
@@ -109,7 +116,7 @@ Item {
                         implicitHeight: 56
                         padding: 0
                         hoverEnabled: true
-                        onHoveredChanged: if (hovered) loggerTable.hoveredRow = row
+                        onHoveredChanged: if (hovered) root.hoveredRow = row
 
                         onClicked: {
                             if (loggerCell.column !== 5)
@@ -117,7 +124,7 @@ Item {
                         }
 
                         background: TableCellBackground {
-                            cellHovered: loggerTable.hoveredRow === loggerCell.row
+                            cellHovered: root.hoveredRow === loggerCell.row
                         }
 
                         contentItem: Item {

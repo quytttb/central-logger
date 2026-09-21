@@ -15,6 +15,10 @@ import LoggerKit.Components
 Item {
     id: root
 
+    // Hover hàng thay cho AppTableView.hoveredRow đã xóa khỏi kit
+    // (data-logger kiosk touch-only; central desktop giữ hover).
+    property int hoveredRow: -1
+
     property Component topBarToolbar: HistoryTopBar {}
 
     HistoryViewModel {
@@ -79,6 +83,9 @@ Item {
                     id: histTableView
                     Layout.fillWidth: true
                     Layout.fillHeight: true
+                    HoverHandler {
+                        onHoveredChanged: if (!hovered) root.hoveredRow = -1
+                    }
                     model: histVm.tableModel
                     loading: histVm.loading
                     reuseItems: false
@@ -113,10 +120,10 @@ Item {
                         implicitHeight: 40
                         padding: 0
                         hoverEnabled: true
-                        onHoveredChanged: if (hovered) histTableView.hoveredRow = row
+                        onHoveredChanged: if (hovered) root.hoveredRow = row
 
                         background: TableCellBackground {
-                            cellHovered: histTableView.hoveredRow === histCell.row
+                            cellHovered: root.hoveredRow === histCell.row
                         }
 
                         contentItem: Item {
