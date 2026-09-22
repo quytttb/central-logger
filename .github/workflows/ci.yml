@@ -14,7 +14,7 @@ env:
 
 jobs:
   test:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
         with:
@@ -70,7 +70,7 @@ jobs:
     # unknown properties on registered types, signal/payload mismatches,
     # and broken imports. Runs against the same Debug build the test job
     # produces so it sees the same QML module output directory.
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
         with:
@@ -133,7 +133,7 @@ jobs:
     # and leaks at runtime — a class of issues static analysis misses.
     # Only runs against the in-tree unit tests (no GUI app — QPA offscreen
     # is unnecessary because tests don't open windows).
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
         with:
