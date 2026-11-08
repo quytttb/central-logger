@@ -201,6 +201,10 @@ Thứ tự implement gợi ý: **Task 1** DB → **2** shell QML → **3** logge
 
 **Next / Tiếp theo:** Manual Task 4 (edge/simulator) khi có hardware.
 
+**Dashboard summary + Average CSV (done 2026-11):**
+- **Dashboard `Detail`/`Summary` toggle** (`DashboardView.qml`): Summary = chart thời gian thực của **primary logger** (RAM `PollHistoryStore`, analog) + bảng "Other loggers" (mỗi logger một hàng, cột sensor analog động). Primary logger chọn ở **Settings** (`app_settings.primary_logger_id`, schema **v7**); chưa chọn → fallback logger online đầu tiên.
+- **History export menu:** "Export table CSV" (giữ nguyên), "Export hourly averages + 24h", "Export shift averages (8h)" — CSV layout chuẩn (header sensor + đơn vị, dòng giờ/ca, dòng trung bình cuối), chạy nền (`QtConcurrent` + connection riêng), chỉ tính reading `valid=1 AND stale=0`. Giờ bắt đầu ca chỉnh trực tiếp ở HistoryView (session-only).
+
 **UI modernization (done 2026-05):** [`docs/plan/ui-modernization-agent-prompts.md`](docs/plan/ui-modernization-agent-prompts.md) — **UI-M1** `Loader` navigation; **UI-M2** sensor `TableView` + `HorizontalHeaderView`; **UI-M3/M3b** loggers `QAbstractTableModel` (7 cột) + `headerData()`/`tr()` (không header `Pane` thủ công). Cột Status: `DisplayRole` + QML `display` = Online/Offline (C++ `tr()`).
 
 **M3 UI Migration (done 2026-05, pane parity 2026-05):** Material Design 3 on Qt Quick Controls Material — Teal primary + Indigo accent, no dynamic color.

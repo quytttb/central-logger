@@ -11,7 +11,6 @@
 #include <QVariantList>
 #include <QVector>
 #include <QtQmlIntegration/qqmlintegration.h>
-
 namespace CentralLogger::Data {
 class Database;
 } // namespace CentralLogger::Data
@@ -28,6 +27,14 @@ struct HistorySearchResult
     QVector<Data::HistoryRow> rows;
     int                       totalCount = 0;
     QString                   error;
+};
+
+/// Result of a background average-CSV export.
+struct AverageExportJobResult
+{
+    bool    ok = false;
+    QString path;
+    QString error;
 };
 
 /// ViewModel for the global History page (sidebar navigation).
@@ -82,6 +89,17 @@ public slots:
 
     Q_INVOKABLE void exportCsv(const QUrl &fileUrl);
 
+    /// Builds and saves the sensor-average CSV (hourly/shift rows + final
+    /// overall average).
+    /// Runs the SQL + CSV rendering on the thread pool with its own
+    /// connection so a multi-day range never blocks the UI.
+    /// @p shiftMode true = 8h shifts, false = hourly rows + 24h average.
+    Q_INVOKABLE void exportAverageCsv(const QUrl &fileUrl,
+                                      bool shiftMode,
+                                      int shiftStartHour,
+                                      const QString &fromDate,
+                                      const QString &toDate);
+
 signals:
     void loggerIdChanged();
     void loadingChanged();
@@ -97,6 +115,7 @@ signals:
 
 private slots:
     void onSearchCompleted();
+    void onAverageExportCompleted();
 
 private:
     void loadLoggerItems();
@@ -122,6 +141,8 @@ private:
     QVariantList m_sensorItems;
 
     QFutureWatcher<HistorySearchResult> *m_searchWatcher = nullptr;
+    QFutureWatcher<AverageExportJobResult> *m_averageExportWatcher = nullptr;
+    bool                                  m_averageExportRunning = false;
     quint64                              m_searchGeneration = 0;
     quint64                              m_activeSearchGeneration = 0;
 

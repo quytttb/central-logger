@@ -1,6 +1,7 @@
 #include "HistoryViewModel.h"
 
 #include "core/SettingsController.h"
+#include "core/history/AverageExportService.h"
 #include "data/db/Database.h"
 #include "data/repositories/LoggerRepository.h"
 #include "data/repositories/SensorReadingRepository.h"
@@ -102,6 +103,72 @@ HistorySearchResult executeHistorySearch(HistorySearchParams params)
     return result;
 }
 
+/// L-20 / M-7: single source for the configured display timezone (falls back
+/// to the process timezone when unset or invalid).
+QTimeZone configuredTimeZone()
+{
+    QTimeZone tz = QTimeZone::systemTimeZone();
+    if (auto *settings = SettingsController::instance()) {
+        if (!settings->systemTimezone().isEmpty()) {
+            const QTimeZone configured(settings->systemTimezone().toUtf8());
+            if (configured.isValid()) {
+                tz = configured;
+            }
+        }
+    }
+    return tz;
+}
+
+/// Worker: build the average CSV on a throw-away connection, then write it.
+AverageExportJobResult executeAverageExport(const QString &dbPath,
+                                            AverageExportParams params,
+                                            const QString &savePath)
+{
+    AverageExportJobResult result;
+
+    const QString connName = QStringLiteral("avg_export_%1").arg(
+        reinterpret_cast<quintptr>(QThread::currentThreadId()));
+
+    QSqlDatabase db = QSqlDatabase::addDatabase(QLatin1String(CentralLogger::Data::Db::kSqliteDriver), connName);
+    db.setDatabaseName(dbPath);
+    if (!db.open()) {
+        result.error = db.lastError().text();
+        db = QSqlDatabase();
+        QSqlDatabase::removeDatabase(connName);
+        return result;
+    }
+
+    Data::Database::applyPerformancePragmas(db, nullptr);
+
+    Core::AverageExportService service(db);
+    const Core::AverageExportResult built = service.build(params);
+
+    db.close();
+    db = QSqlDatabase();
+    QSqlDatabase::removeDatabase(connName);
+
+    if (!built.error.isEmpty()) {
+        result.error = built.error;
+        return result;
+    }
+
+    QFile file(savePath);
+    if (!file.open(QIODevice::WriteOnly | QIODevice::Text | QIODevice::Truncate)) {
+        result.error = QStringLiteral("Cannot open file: %1").arg(file.errorString());
+        return result;
+    }
+
+    QTextStream out(&file);
+    out.setEncoding(QStringConverter::Utf8);
+    out << "\xEF\xBB\xBF";
+    out << built.csv;
+    file.close();
+
+    result.ok   = true;
+    result.path = savePath;
+    return result;
+}
+
 } // namespace
 
 namespace {
@@ -122,9 +189,12 @@ void HistoryViewModel::registerHistoryWriter(Network::HistoryWriterWorker *worke
 HistoryViewModel::HistoryViewModel(QObject *parent)
     : QObject(parent)
     , m_searchWatcher(new QFutureWatcher<HistorySearchResult>(this))
+    , m_averageExportWatcher(new QFutureWatcher<AverageExportJobResult>(this))
 {
     connect(m_searchWatcher, &QFutureWatcher<HistorySearchResult>::finished,
             this, &HistoryViewModel::onSearchCompleted);
+    connect(m_averageExportWatcher, &QFutureWatcher<AverageExportJobResult>::finished,
+            this, &HistoryViewModel::onAverageExportCompleted);
     reloadFilters();
 }
 
@@ -133,6 +203,9 @@ HistoryViewModel::~HistoryViewModel()
     abortWorker();
     if (m_searchWatcher->isRunning()) {
         m_searchWatcher->waitForFinished();
+    }
+    if (m_averageExportWatcher->isRunning()) {
+        m_averageExportWatcher->waitForFinished();
     }
 }
 
@@ -351,6 +424,76 @@ void HistoryViewModel::exportCsv(const QUrl &fileUrl)
 
     file.close();
     emit exportFinished(true, path);
+}
+
+void HistoryViewModel::exportAverageCsv(const QUrl &fileUrl,
+                                        bool shiftMode,
+                                        int shiftStartHour,
+                                        const QString &fromDate,
+                                        const QString &toDate)
+{
+    if (m_averageExportRunning) {
+        emit exportFinished(false, tr("An average export is already running."));
+        return;
+    }
+    if (!g_db || !g_db->isOpen()) {
+        emit exportFinished(false, tr("Database not available."));
+        return;
+    }
+    if (m_loggerId <= 0) {
+        emit exportFinished(false,
+                            tr("Select a single logger before exporting averages."));
+        return;
+    }
+
+    const QString path = fileUrl.toLocalFile();
+    if (path.isEmpty()) {
+        emit exportFinished(false, tr("No save path specified."));
+        return;
+    }
+
+    const QTimeZone tz = configuredTimeZone();
+    const QDate fromDay = QDate::fromString(fromDate, QLatin1String(CentralLogger::Format::kDateDdMmYyyy));
+    const QDate toDay   = QDate::fromString(toDate,   QLatin1String(CentralLogger::Format::kDateDdMmYyyy));
+    if (!fromDay.isValid() || !toDay.isValid()) {
+        emit exportFinished(false, tr("Invalid date format. Use dd/MM/yyyy."));
+        return;
+    }
+    if (fromDay > toDay) {
+        emit exportFinished(false, tr("Start date must be before end date."));
+        return;
+    }
+
+    AverageExportParams params;
+    params.loggerId      = m_loggerId;
+    params.timeZone      = tz;
+    params.shiftStartHour = qBound(0, shiftStartHour, 23);
+    params.mode          = shiftMode ? AverageExportMode::Shift
+                                     : AverageExportMode::Hourly;
+    params.fromUtc = QDateTime(fromDay, QTime(0, 0), tz).toUTC();
+    params.toUtc   = QDateTime(toDay.addDays(1), QTime(0, 0), tz)
+                         .addMSecs(-1)
+                         .toUTC();
+
+    m_averageExportRunning = true;
+    const QString dbPath = g_db->connection().databaseName();
+    m_averageExportWatcher->setFuture(QtConcurrent::run(
+        [dbPath, params, path]() {
+            return executeAverageExport(dbPath, params, path);
+        }));
+}
+
+void HistoryViewModel::onAverageExportCompleted()
+{
+    m_averageExportRunning = false;
+    const AverageExportJobResult result = m_averageExportWatcher->result();
+    if (!result.ok) {
+        emit exportFinished(false, result.error.isEmpty()
+                                       ? tr("Average export failed.")
+                                       : result.error);
+        return;
+    }
+    emit exportFinished(true, result.path);
 }
 
 void HistoryViewModel::abortWorker()

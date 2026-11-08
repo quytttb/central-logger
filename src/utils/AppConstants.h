@@ -66,6 +66,13 @@ inline constexpr int kChartDisplayPointCount  = 20;
 inline constexpr int kReadingsChartRefreshMs  = 30'000;
 inline constexpr int kChartDefaultBucketMin   = 5;
 
+// --- Dashboard summary / average export --------------------------------------
+inline constexpr int    kNoPrimaryLoggerId  = 0;
+inline constexpr int    kShiftLengthHours   = 8;
+inline constexpr int    kShiftCount         = 3;
+inline constexpr int    kHoursPerDay        = 24;
+inline constexpr int    kHourBucketSeconds  = kSecondsPerHour;
+
 // --- Sensor display precision -----------------------------------------------
 inline constexpr int kDecimalsMin     = 0;
 inline constexpr int kDecimalsMax     = 6;

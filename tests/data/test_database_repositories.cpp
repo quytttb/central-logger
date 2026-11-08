@@ -102,17 +102,20 @@ void TestDatabaseRepositories::seedAppSettings()
     QCOMPARE(s.systemTimezone,    QStringLiteral("Asia/Ho_Chi_Minh"));
     QCOMPARE(s.dataRetentionDays, 30);
     QCOMPARE(s.historyFlushIntervalS, 5);
+    QCOMPARE(s.primaryLoggerId, qint64(0));
 
     AppSettings updated = s;
     updated.theme                 = QStringLiteral("light");
     updated.dataRetentionDays     = 7;
     updated.historyFlushIntervalS = 10;
+    updated.primaryLoggerId       = 42;
     QVERIFY(repo.update(updated));
 
     const AppSettings reloaded = repo.get();
     QCOMPARE(reloaded.theme,                 QStringLiteral("light"));
     QCOMPARE(reloaded.dataRetentionDays,     7);
     QCOMPARE(reloaded.historyFlushIntervalS, 10);
+    QCOMPARE(reloaded.primaryLoggerId,       qint64(42));
 }
 
 void TestDatabaseRepositories::stationCodeUnique()

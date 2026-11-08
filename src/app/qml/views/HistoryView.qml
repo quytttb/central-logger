@@ -1,6 +1,7 @@
 pragma ComponentBehavior: Bound
 
 import QtQuick
+import QtQuick.Controls
 import QtQuick.Controls.Material
 import QtQuick.Layouts
 import QtQuick.Dialogs
@@ -18,6 +19,12 @@ Item {
     // Hover hàng thay cho AppTableView.hoveredRow đã xóa khỏi kit
     // (data-logger kiosk touch-only; central desktop giữ hover).
     property int hoveredRow: -1
+
+    // Export CSV trung bình: false = theo giờ + 24h, true = theo ca 8h.
+    property bool pendingAverageShiftMode: false
+    property string exportFromDate: ""
+    property string exportToDate: ""
+    property int exportShiftStart: 0
 
     property Component topBarToolbar: HistoryTopBar {}
 
@@ -50,6 +57,21 @@ Item {
         nameFilters: [qsTr("CSV files (*.csv)"), qsTr("All files (*)")]
         defaultSuffix: "csv"
         onAccepted: histVm.exportCsv(selectedFile)
+    }
+
+    FileDialog {
+        id: averageSaveDialog
+        title: root.pendingAverageShiftMode
+               ? qsTr("Export shift averages (CSV)")
+               : qsTr("Export hourly averages (CSV)")
+        fileMode: FileDialog.SaveFile
+        nameFilters: [qsTr("CSV files (*.csv)"), qsTr("All files (*)")]
+        defaultSuffix: "csv"
+        onAccepted: histVm.exportAverageCsv(selectedFile,
+                                            root.pendingAverageShiftMode,
+                                            root.exportShiftStart,
+                                            root.exportFromDate,
+                                            root.exportToDate)
     }
 
     ColumnLayout {
@@ -309,7 +331,28 @@ Item {
             onClicked: historyTopBar.runRefresh()
         }
 
+        Label {
+            text: qsTr("Shift start")
+            color: AppColors.textMuted
+            font: AppTypography.bodyMedium
+            Layout.alignment: Qt.AlignVCenter
+        }
+
+        SpinBox {
+            id: shiftStartSpin
+            Layout.preferredWidth: 82
+            Layout.preferredHeight: 40
+            Layout.alignment: Qt.AlignVCenter
+            from: 0
+            to: 23
+            value: 0
+            editable: true
+            ToolTip.visible: hovered
+            ToolTip.text: qsTr("Shift start hour used by the shift-average export (3 × 8h shifts).")
+        }
+
         AppButton {
+            id: exportButton
             kind: AppButton.Neutral
             forceDarkText: false
             iconOnly: true
@@ -317,9 +360,45 @@ Item {
             iconSide: 20
             iconName: "download"
             Layout.alignment: Qt.AlignVCenter
-            enabled: histVm.recordCount > 0
+            enabled: histVm.recordCount > 0 || histVm.loggerId > 0
             tooltipText: qsTr("Export CSV")
-            onClicked: csvSaveDialog.open()
+            onClicked: exportMenu.popup()
+        }
+
+        Menu {
+            id: exportMenu
+
+            MenuItem {
+                text: qsTr("Export table CSV")
+                enabled: histVm.recordCount > 0
+                onTriggered: csvSaveDialog.open()
+            }
+
+            MenuSeparator {}
+
+            MenuItem {
+                text: qsTr("Export hourly averages + 24h")
+                enabled: histVm.loggerId > 0
+                onTriggered: {
+                    root.pendingAverageShiftMode = false
+                    root.exportShiftStart = shiftStartSpin.value
+                    root.exportFromDate = fromField.text
+                    root.exportToDate = toField.text
+                    averageSaveDialog.open()
+                }
+            }
+
+            MenuItem {
+                text: qsTr("Export shift averages (8h)")
+                enabled: histVm.loggerId > 0
+                onTriggered: {
+                    root.pendingAverageShiftMode = true
+                    root.exportShiftStart = shiftStartSpin.value
+                    root.exportFromDate = fromField.text
+                    root.exportToDate = toField.text
+                    averageSaveDialog.open()
+                }
+            }
         }
     }
 }

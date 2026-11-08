@@ -26,7 +26,8 @@ AppSettings SettingsRepository::get(QString *errorOut) const
     AppSettings result;
     QSqlQuery q(m_db);
     if (!q.exec(QStringLiteral(
-            "SELECT theme, system_timezone, data_retention_days, history_flush_interval_s "
+            "SELECT theme, system_timezone, data_retention_days, history_flush_interval_s, "
+            "       primary_logger_id "
             "FROM %1 WHERE id = 1")
             .arg(QString::fromLatin1(CentralLogger::Data::Db::kTableAppSettings)))) {
         setErr(errorOut, q);
@@ -39,6 +40,7 @@ AppSettings SettingsRepository::get(QString *errorOut) const
     result.systemTimezone    = q.value(1).toString();
     result.dataRetentionDays = q.value(2).toInt();
     result.historyFlushIntervalS = q.value(3).toInt();
+    result.primaryLoggerId   = q.value(4).toLongLong();
     if (result.historyFlushIntervalS <= 0) {
         result.historyFlushIntervalS = kHistoryFlushIntervalS;
     }
@@ -53,13 +55,15 @@ bool SettingsRepository::update(const AppSettings &settings, QString *errorOut)
         "  theme = :theme,"
         "  system_timezone = :tz,"
         "  data_retention_days = :retention,"
-        "  history_flush_interval_s = :history_flush "
+        "  history_flush_interval_s = :history_flush,"
+        "  primary_logger_id = :primary_logger "
         "WHERE id = 1")
         .arg(QString::fromLatin1(CentralLogger::Data::Db::kTableAppSettings)));
     q.bindValue(QLatin1String(CentralLogger::Data::Db::kBindTheme),       settings.theme);
     q.bindValue(QLatin1String(CentralLogger::Data::Db::kBindTz),          settings.systemTimezone);
     q.bindValue(QLatin1String(CentralLogger::Data::Db::kBindRetention),   settings.dataRetentionDays);
     q.bindValue(QLatin1String(CentralLogger::Data::Db::kBindHistoryFlush), settings.historyFlushIntervalS);
+    q.bindValue(QLatin1String(CentralLogger::Data::Db::kBindPrimaryLogger), settings.primaryLoggerId);
     if (!q.exec()) {
         setErr(errorOut, q);
         return false;

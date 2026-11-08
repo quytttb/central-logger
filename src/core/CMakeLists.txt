@@ -32,6 +32,8 @@ qt_add_qml_module(central_logger_core
         sensors/SensorSnapshotCache.cpp
         sensors/SensorMonitoringTableModel.h
         sensors/SensorMonitoringTableModel.cpp
+        sensors/LoggerOverviewTableModel.h
+        sensors/LoggerOverviewTableModel.cpp
         events/RecentEventsModel.h
         events/RecentEventsModel.cpp
         DesktopService.h
@@ -46,6 +48,8 @@ qt_add_qml_module(central_logger_core
         history/HistoryTableModel.cpp
         history/HistoryViewModel.h
         history/HistoryViewModel.cpp
+        history/AverageExportService.h
+        history/AverageExportService.cpp
 )
 
 target_include_directories(central_logger_core

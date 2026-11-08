@@ -105,6 +105,7 @@ erDiagram
         string system_timezone "default Asia/Ho_Chi_Minh"
         int data_retention_days "default 30"
         int history_flush_interval_s "default 5"
+        int primary_logger_id "default 0 = unset"
     }
 ```
 
@@ -235,6 +236,7 @@ Cấu hình toàn cục — luôn một dòng `id = 1`.
 | `system_timezone` | `Asia/Ho_Chi_Minh` |
 | `data_retention_days` | `30` |
 | `history_flush_interval_s` | `5` |
+| `primary_logger_id` | `0` (chưa chọn — Dashboard summary fallback logger online đầu tiên) |
 
 ---
 
@@ -292,6 +294,12 @@ Merge `logger_sensor` (DB catalog) + snapshot Modbus hiện tại (RAM): FC03 an
 | `alarm_type` | Ngưỡng / bit alarm | `min`, `max`, `min+max` — badge phụ ▼/▲ |
 | `catalogError` | REST lỗi catalog | Cảnh báo trên header bảng |
 | `timestamp` | Modbus | HH:MM:SS |
+
+### 3.4 Dashboard summary + export CSV trung bình
+
+- **Primary logger** (`app_settings.primary_logger_id`, `0` = chưa chọn → fallback logger online đầu tiên): chart realtime lấy từ ring buffer `PollHistoryStore` (RAM, chỉ analog), không query DB.
+- **Other loggers** (`LoggerOverviewTableModel`): một hàng / logger phụ, cột sensor analog động (union `edge_sensor_id` từ `SensorSnapshotCache`), giá trị live mới nhất; primary logger không nằm trong bảng.
+- **History export** (`AverageExportService`): CSV theo giờ + dòng trung bình 24h, hoặc theo ca 8h (giờ bắt đầu ca chỉnh trên HistoryView). Chỉ đọc `sensor_reading` có `valid = 1 AND stale = 0`; chạy nền bằng connection SQLite riêng.
 
 ---
 

@@ -16,6 +16,12 @@ inline constexpr char kDateDdMmYyyy[]       = "dd/MM/yyyy";
 inline constexpr char kDateYyyyMmDdHms[]    = "yyyy-MM-dd HH:mm:ss";
 inline constexpr char kTimeHhMmSs[]         = "HH:mm:ss";
 inline constexpr char kTimeHhMm[]           = "HH:mm";
+inline constexpr char kTimeHhMmDdMmYyyy[]   = "HH:mm dd/MM/yyyy";
+
+// --- Average export CSV headers / labels -------------------------------------
+inline constexpr char kAverageHeaderTime[]        = "Thời gian";
+inline constexpr char kAverageLabel24h[]          = "Giá trị trung bình 24h";
+inline constexpr char kAverageLabelShift[]        = "Giá trị trung bình ca";
 
 // --- User-facing error message templates -------------------------------------
 // All `REST service not available` / token / token-empty / device-port error

@@ -26,6 +26,7 @@
 #include <QFuture>
 #include <QFutureWatcher>
 #include <QJSEngine>
+#include <QMap>
 #include <QQmlEngine>
 #include <QSqlDatabase>
 #include <QSqlError>
@@ -199,6 +200,9 @@ void DashboardController::setSettingsController(SettingsController *settings) {
     // Purge when settings are saved (retention days may have changed).
     connect(m_settings, &SettingsController::saved, this,
             &DashboardController::purgeOldData);
+    // Summary view follows the configured primary logger immediately.
+    connect(m_settings, &SettingsController::primaryLoggerIdChanged, this,
+            &DashboardController::refreshSummary);
   }
 }
 
@@ -239,6 +243,135 @@ void DashboardController::reloadLoggers() {
   if (m_appState) {
     m_appState->refreshFromDatabase();
   }
+  refreshSummary();
+}
+
+qint64 DashboardController::resolvePrimaryLoggerId() const {
+  const qint64 configured = m_settings ? m_settings->primaryLoggerId()
+                                       : Defaults::kNoPrimaryLoggerId;
+  const int n = m_loggers.rowCount();
+  qint64 firstId = Defaults::kNoPrimaryLoggerId;
+  qint64 firstOnlineId = Defaults::kNoPrimaryLoggerId;
+
+  for (int i = 0; i < n; ++i) {
+    const QModelIndex idx = m_loggers.index(i, 0);
+    const qint64 id = m_loggers.data(idx, LoggerListModel::IdRole).toLongLong();
+    if (id <= 0) continue;
+    if (firstId == Defaults::kNoPrimaryLoggerId) firstId = id;
+    const bool online = m_loggers.data(idx, LoggerListModel::OnlineRole).toBool();
+    if (online && firstOnlineId == Defaults::kNoPrimaryLoggerId) {
+      firstOnlineId = id;
+    }
+    if (configured > 0 && id == configured) {
+      return configured;
+    }
+  }
+  // Configured logger missing (deleted) or unset → deterministic fallback.
+  return firstOnlineId != Defaults::kNoPrimaryLoggerId ? firstOnlineId : firstId;
+}
+
+void DashboardController::refreshSummary() {
+  const qint64 previousId = m_primaryLoggerId;
+  const QString previousName = m_primaryLoggerName;
+
+  m_primaryLoggerId = resolvePrimaryLoggerId();
+
+  QString name;
+  if (m_primaryLoggerId > 0) {
+    const int row = m_loggers.indexOfLogger(m_primaryLoggerId);
+    if (row >= 0) {
+      name = m_loggers.data(m_loggers.index(row, 0),
+                            LoggerListModel::NameRole).toString();
+    }
+  }
+  m_primaryLoggerName = name;
+  if (previousId != m_primaryLoggerId || previousName != m_primaryLoggerName) {
+    emit primaryLoggerChanged();
+  }
+
+  refreshPrimaryChart();
+  refreshOverviewTable();
+}
+
+void DashboardController::refreshPrimaryChart() {
+  QVariantList series;
+  if (m_primaryLoggerId > 0) {
+    series = m_pollHistory.seriesForLogger(m_primaryLoggerId);
+  }
+  const bool hasData = !series.isEmpty();
+  const QVariantMap axis = Core::computeTrendingAxisRange(series);
+
+  if (series == m_primaryChartSeries && axis == m_primaryChartAxis &&
+      hasData == m_primaryChartHasData) {
+    return;
+  }
+  m_primaryChartSeries  = std::move(series);
+  m_primaryChartAxis    = axis;
+  m_primaryChartHasData = hasData;
+  emit primaryChartChanged();
+}
+
+void DashboardController::refreshOverviewTable() {
+  QVector<OverviewRow> rows;
+  QMap<int, QString> namesByEdge;
+  QMap<int, QString> unitsByEdge;
+
+  const int n = m_loggers.rowCount();
+  rows.reserve(n);
+
+  for (int i = 0; i < n; ++i) {
+    const QModelIndex idx = m_loggers.index(i, 0);
+    const qint64 id = m_loggers.data(idx, LoggerListModel::IdRole).toLongLong();
+    if (id <= 0 || id == m_primaryLoggerId) {
+      continue;
+    }
+
+    OverviewRow row;
+    row.loggerId   = id;
+    row.loggerName = m_loggers.data(idx, LoggerListModel::NameRole).toString();
+    row.status     = m_loggers.data(idx, LoggerListModel::StatusRole).toString();
+    row.online     = m_loggers.data(idx, LoggerListModel::OnlineRole).toBool();
+
+    for (const auto &sensor : m_sensorCache.rowsFor(id)) {
+      if (sensor.sensorType != QLatin1String(CentralLogger::Sensor::kTypeAnalog)) {
+        continue;
+      }
+      row.values.insert(sensor.edgeSensorId, sensor.value);
+      if (namesByEdge.value(sensor.edgeSensorId).isEmpty() && !sensor.name.isEmpty()) {
+        namesByEdge.insert(sensor.edgeSensorId, sensor.name);
+      }
+      if (unitsByEdge.value(sensor.edgeSensorId).isEmpty() && !sensor.unit.isEmpty()) {
+        unitsByEdge.insert(sensor.edgeSensorId, sensor.unit);
+      }
+    }
+    rows.append(row);
+  }
+
+  QVector<OverviewColumn> columns;
+  columns.reserve(namesByEdge.size());
+  for (auto it = namesByEdge.constBegin(); it != namesByEdge.constEnd(); ++it) {
+    OverviewColumn col;
+    col.edgeSensorId = it.key();
+    const QString unit = unitsByEdge.value(it.key());
+    col.header = unit.isEmpty()
+                     ? it.value()
+                     : QStringLiteral("%1 (%2)").arg(it.value(), unit);
+    columns.append(col);
+  }
+
+  m_overviewTable.setData(rows, columns);
+}
+
+QVariantMap DashboardController::snapPrimaryChart(double mouseX,
+                                                 double mouseY,
+                                                 double plotX,
+                                                 double plotY,
+                                                 double plotW,
+                                                 double plotH) const {
+  const double xMin = m_primaryChartAxis.value(CentralLogger::Ui::kChartXMin).toDouble();
+  const double xMax = m_primaryChartAxis.value(CentralLogger::Ui::kChartXMax).toDouble();
+  return Core::snapTrendingChart(m_primaryChartSeries, xMin, xMax, plotX, plotY,
+                                 plotW, plotH, mouseX, mouseY);
 }
 
 void DashboardController::reloadRecentEvents() { m_recentEvents.reload(); }
@@ -490,6 +623,17 @@ void DashboardController::onSnapshotApplied(
   // Task 14: accumulate analog trending data for LoggerDetailView chart.
   m_pollHistory.append(snapshot);
 
+  // Dashboard summary: refresh the primary chart only for the primary logger;
+  // the secondary-logger table follows every snapshot (and status changes).
+  if (m_primaryLoggerId <= 0) {
+    refreshSummary();
+  } else {
+    if (loggerId == m_primaryLoggerId) {
+      refreshPrimaryChart();
+    }
+    refreshOverviewTable();
+  }
+
   emit loggerSnapshotUpdated(loggerId, snapshot.success, snapshot.errorMessage);
 
   if (m_appState) {
@@ -566,6 +710,7 @@ void DashboardController::cleanupRemovedLogger(qint64 id) {
   if (m_sensorTable.loggerId() == id) {
     m_sensorTable.setLoggerId(-1);
   }
+  refreshSummary();
 }
 
 void DashboardController::logEvent(qint64 loggerId, const QString &eventType,
@@ -598,6 +743,7 @@ void DashboardController::afterMutation() {
   if (m_appState) {
     m_appState->refreshFromDatabase();
   }
+  refreshSummary();
 }
 
 QVariantMap DashboardController::snapReadingsChart(double mouseX, double mouseY,

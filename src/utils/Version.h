@@ -16,7 +16,7 @@
 
 namespace CentralLogger::Version {
 
-inline constexpr int kSchemaVersion    = 6;
+inline constexpr int kSchemaVersion    = 7;
 inline constexpr int kApiVersion       = 1;
 inline constexpr int kModbusMapVersion = 1;
 

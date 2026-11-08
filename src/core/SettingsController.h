@@ -4,6 +4,7 @@
 
 #include <QObject>
 #include <QString>
+#include <QVariantList>
 #include <QtQmlIntegration/qqmlintegration.h>
 
 class QJSEngine;
@@ -31,6 +32,8 @@ class SettingsController : public QObject
     Q_PROPERTY(QString systemTimezone     READ systemTimezone     WRITE setSystemTimezone     NOTIFY systemTimezoneChanged)
     Q_PROPERTY(int     dataRetentionDays      READ dataRetentionDays      WRITE setDataRetentionDays      NOTIFY dataRetentionDaysChanged)
     Q_PROPERTY(int     historyFlushIntervalS  READ historyFlushIntervalS  WRITE setHistoryFlushIntervalS  NOTIFY historyFlushIntervalSChanged)
+    Q_PROPERTY(qint64  primaryLoggerId        READ primaryLoggerId        WRITE setPrimaryLoggerId        NOTIFY primaryLoggerIdChanged)
+    Q_PROPERTY(QVariantList loggerChoices     READ loggerChoices                                          NOTIFY loggerChoicesChanged)
     Q_PROPERTY(QString lastError          READ lastError                                       NOTIFY lastErrorChanged)
     Q_PROPERTY(QString logFilePath        READ logFilePath        CONSTANT)
 
@@ -43,6 +46,8 @@ public:
     QString systemTimezone()    const { return m_settings.systemTimezone; }
     int     dataRetentionDays()     const { return m_settings.dataRetentionDays; }
     int     historyFlushIntervalS() const { return m_settings.historyFlushIntervalS; }
+    qint64  primaryLoggerId()       const { return m_settings.primaryLoggerId; }
+    QVariantList loggerChoices()    const { return m_loggerChoices; }
     QString lastError()         const { return m_lastError; }
     QString logFilePath()       const { return m_logFilePath; }
     void setLogFilePath(const QString &path) { m_logFilePath = path; }
@@ -51,6 +56,7 @@ public:
     void setSystemTimezone(const QString &value);
     void setDataRetentionDays(int value);
     void setHistoryFlushIntervalS(int value);
+    void setPrimaryLoggerId(qint64 value);
 
     /// QML singleton accessor + factory — see AppState.
     static SettingsController *instance();
@@ -63,6 +69,11 @@ public:
     /// Falls back to local time when the timezone name is invalid.
     /// Callable from QML: SettingsController.formatTimestamp(model.createdAt)
     Q_INVOKABLE QString formatTimestamp(const QDateTime &dt) const;
+
+    /// Re-reads the logger list for the primary-logger picker. Called by
+    /// SettingsView on open so newly added loggers appear without an app
+    /// restart (load() only runs at startup).
+    Q_INVOKABLE void reloadLoggerChoices();
 
 public slots:
     /// Reads `app_settings` row 1 from the database; emits per-property
@@ -81,6 +92,8 @@ signals:
     void systemTimezoneChanged();
     void dataRetentionDaysChanged();
     void historyFlushIntervalSChanged();
+    void primaryLoggerIdChanged();
+    void loggerChoicesChanged();
     void lastErrorChanged();
     void saved();
     void error(const QString &message);
@@ -90,6 +103,7 @@ private:
 
     Data::Database  *m_db = nullptr;
     Data::AppSettings m_settings;
+    QVariantList     m_loggerChoices;
     QString          m_lastError;
     QString          m_logFilePath;
 };

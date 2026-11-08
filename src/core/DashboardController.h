@@ -2,9 +2,11 @@
 
 #include "LoggerListModel.h"
 #include "core/events/RecentEventsModel.h"
+#include "core/sensors/LoggerOverviewTableModel.h"
 #include "core/sensors/SensorMonitoringTableModel.h"
 #include "core/charts/PollHistoryStore.h"
 #include "core/sensors/SensorSnapshotCache.h"
+#include "utils/AppConstants.h"
 
 #include <QFuture>
 #include <QHash>
@@ -51,8 +53,18 @@ class DashboardController : public QObject
     Q_PROPERTY(CentralLogger::Core::LoggerListModel *loggers READ loggers CONSTANT)
     Q_PROPERTY(CentralLogger::Core::SensorMonitoringTableModel *sensorTable
                    READ sensorTable CONSTANT)
+    Q_PROPERTY(CentralLogger::Core::LoggerOverviewTableModel *overviewTable
+                   READ overviewTable CONSTANT)
     Q_PROPERTY(CentralLogger::Core::RecentEventsModel *recentEvents
                    READ recentEvents CONSTANT)
+    Q_PROPERTY(qint64 primaryLoggerId READ primaryLoggerId NOTIFY primaryLoggerChanged)
+    Q_PROPERTY(QString primaryLoggerName READ primaryLoggerName NOTIFY primaryLoggerChanged)
+    Q_PROPERTY(QVariantList primaryChartSeries READ primaryChartSeries
+                   NOTIFY primaryChartChanged)
+    Q_PROPERTY(QVariantMap primaryChartAxis READ primaryChartAxis
+                   NOTIFY primaryChartChanged)
+    Q_PROPERTY(bool primaryChartHasData READ primaryChartHasData
+                   NOTIFY primaryChartChanged)
     Q_PROPERTY(QVariantList readingsChartPlotPoints READ readingsChartPlotPoints
                    NOTIFY readingsChartChanged)
     Q_PROPERTY(QVariantMap readingsChartAxis READ readingsChartAxis
@@ -68,9 +80,15 @@ public:
 
     LoggerListModel *loggers() { return &m_loggers; }
     SensorMonitoringTableModel *sensorTable() { return &m_sensorTable; }
+    LoggerOverviewTableModel   *overviewTable() { return &m_overviewTable; }
     SensorSnapshotCache       *sensorCache() { return &m_sensorCache; }
     PollHistoryStore          *pollHistory() { return &m_pollHistory; }
     RecentEventsModel         *recentEvents() { return &m_recentEvents; }
+    qint64        primaryLoggerId() const { return m_primaryLoggerId; }
+    QString       primaryLoggerName() const { return m_primaryLoggerName; }
+    QVariantList  primaryChartSeries() const { return m_primaryChartSeries; }
+    QVariantMap   primaryChartAxis() const { return m_primaryChartAxis; }
+    bool          primaryChartHasData() const { return m_primaryChartHasData; }
     QVariantList readingsChartPlotPoints() const { return m_readingsChartPlotPoints; }
     QVariantMap  readingsChartAxis() const { return m_readingsChartAxis; }
     bool         readingsChartHasData() const { return m_readingsChartHasData; }
@@ -100,6 +118,19 @@ public slots:
     void reloadLoggers();
     void refreshReadingsChart();
     void reloadRecentEvents();
+
+    /// Resolve the configured primary logger (fallback: first online logger),
+    /// rebuild its real-time chart and the secondary-logger overview table.
+    /// Called by DashboardView when switching to the summary mode.
+    void refreshSummary();
+
+    /// Tooltip snap for the primary-logger summary chart. Empty map = miss.
+    Q_INVOKABLE QVariantMap snapPrimaryChart(double mouseX,
+                                             double mouseY,
+                                             double plotX,
+                                             double plotY,
+                                             double plotW,
+                                             double plotH) const;
 
     /// Purge sensor_reading rows older than `data_retention_days`.
     /// Emits retentionPurgeCompleted(deleted) and refreshes the
@@ -134,6 +165,8 @@ public slots:
 
 signals:
     void readingsChartChanged();
+    void primaryChartChanged();
+    void primaryLoggerChanged();
     void retentionPurgeCompleted(int deletedCount);
     /// Emitted on the main thread after the snapshot cache has been
     /// updated for @p loggerId. Task 8 wires this to LoggerDetailViewModel.
@@ -153,6 +186,12 @@ private:
                                   const QString &prevStatus,
                                   const QString &newStatus);
 
+    /// Configured primary logger if it still exists; otherwise the first
+    /// online logger (or first logger when none is online); 0 when empty.
+    qint64 resolvePrimaryLoggerId() const;
+    void   refreshPrimaryChart();
+    void   refreshOverviewTable();
+
     Data::Database        *m_db       = nullptr;
     AppState              *m_appState = nullptr;
     SettingsController    *m_settings = nullptr;
@@ -160,10 +199,16 @@ private:
     Network::ModbusService *m_modbus  = nullptr;
     LoggerListModel        m_loggers;
     SensorMonitoringTableModel m_sensorTable;
+    LoggerOverviewTableModel   m_overviewTable;
     SensorSnapshotCache    m_sensorCache;
     PollHistoryStore       m_pollHistory;
     RecentEventsModel      m_recentEvents;
     QHash<qint64, QString> m_lastStatus;
+    qint64                 m_primaryLoggerId = Defaults::kNoPrimaryLoggerId;
+    QString                m_primaryLoggerName;
+    QVariantList           m_primaryChartSeries;
+    QVariantMap            m_primaryChartAxis;
+    bool                   m_primaryChartHasData = false;
     QVariantList           m_readingsChartPlotPoints;
     QVariantMap            m_readingsChartAxis;
     bool                   m_readingsChartHasData = false;

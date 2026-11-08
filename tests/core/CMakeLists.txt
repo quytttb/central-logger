@@ -47,6 +47,18 @@ add_central_logger_test(
 )
 
 add_central_logger_test(
+    NAME    test_logger_overview_table_model
+    SOURCES test_logger_overview_table_model.cpp
+    LIBS    central_logger_core data network
+)
+
+add_central_logger_test(
+    NAME    test_average_export_service
+    SOURCES test_average_export_service.cpp
+    LIBS    central_logger_core data
+)
+
+add_central_logger_test(
     NAME    test_chart_presentation
     SOURCES test_chart_presentation.cpp
     LIBS    central_logger_core

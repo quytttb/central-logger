@@ -13,6 +13,8 @@ struct AppSettings
     QString systemTimezone = Ui::kDefaultTimezone;
     int     dataRetentionDays = Defaults::kDefaultRetentionDays;
     int     historyFlushIntervalS = Defaults::kHistoryFlushIntervalS;
+    /// Dashboard summary chart logger; 0 = not configured.
+    qint64  primaryLoggerId = Defaults::kNoPrimaryLoggerId;
 };
 
 } // namespace CentralLogger::Data

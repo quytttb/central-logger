@@ -49,6 +49,7 @@ inline constexpr char kRoleAttachDiCodes[]     = "attachDiTypeCodes";
 inline constexpr char kRoleAttachDiLabels[]    = "attachDiTypeLabels";
 inline constexpr char kRoleAlarmType[]         = "alarmType";
 inline constexpr char kRoleTimestamp[]         = "timestamp";
+inline constexpr char kRoleIsLoggerColumn[]    = "isLoggerColumn";
 
 // --- Chart payload keys (QVariantMap keys consumed by QML/ChartGraphsView) -
 inline constexpr char kChartLabel[]            = "label";

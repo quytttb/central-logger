@@ -29,18 +29,22 @@ Item {
     property string draftTimezone: SettingsController.systemTimezone
     property int    draftRetention: SettingsController.dataRetentionDays
     property int    draftHistoryFlush: SettingsController.historyFlushIntervalS
+    property var    draftPrimaryLoggerId: SettingsController.primaryLoggerId
 
     readonly property bool dirty:
            draftTimezone !== SettingsController.systemTimezone
         || retentionSpin.value !== SettingsController.dataRetentionDays
         || historyFlushSpin.value !== SettingsController.historyFlushIntervalS
+        || Number(draftPrimaryLoggerId) !== SettingsController.primaryLoggerId
 
     function syncFromController() {
         draftTimezone    = SettingsController.systemTimezone;
         draftRetention   = SettingsController.dataRetentionDays;
         draftHistoryFlush = SettingsController.historyFlushIntervalS;
+        draftPrimaryLoggerId = SettingsController.primaryLoggerId;
         retentionSpin.value = draftRetention;
         historyFlushSpin.value = draftHistoryFlush;
+        primaryLoggerCombo.selectLoggerId(SettingsController.primaryLoggerId);
         const tzIdx = root.timezones.indexOf(draftTimezone);
         if (tzIdx >= 0)
             timezoneCombo.currentIndex = tzIdx;
@@ -48,10 +52,16 @@ Item {
             timezoneCombo.editText = draftTimezone;
     }
 
-    Component.onCompleted: syncFromController()
+    Component.onCompleted: {
+        SettingsController.reloadLoggerChoices()
+        syncFromController()
+    }
 
     Connections {
         target: SettingsController
+        function onLoggerChoicesChanged() {
+            primaryLoggerCombo.selectLoggerId(root.draftPrimaryLoggerId)
+        }
         function onSaved() {
             root.syncFromController()
             AppNotifier.show(qsTr("Settings saved successfully."), "success")
@@ -120,6 +130,50 @@ Item {
                         editable: true
                         live: true
                         onValueModified: root.draftRetention = value
+                    }
+
+                    ColumnLayout {
+                        Layout.fillWidth: true
+                        spacing: 4
+
+                        Label {
+                            text: qsTr("Primary logger")
+                            wrapMode: Text.WordWrap
+                            Layout.fillWidth: true
+                        }
+
+                        Label {
+                            Layout.fillWidth: true
+                            text: qsTr(
+                                "Logger shown as the large real-time chart on the Dashboard summary view; the other loggers appear as table rows.")
+                            color: AppColors.textMuted
+                            font: AppTypography.labelSmall
+                            wrapMode: Text.WordWrap
+                        }
+                    }
+                    ComboBox {
+                        id: primaryLoggerCombo
+                        Layout.fillWidth: true
+                        Layout.alignment: Qt.AlignTop
+                        Layout.topMargin: 2
+                        Material.containerStyle: Material.Outlined
+                        textRole: "name"
+                        valueRole: "id"
+                        model: [{ "id": 0, "name": qsTr("(None)") }].concat(SettingsController.loggerChoices)
+
+                        function selectLoggerId(loggerId) {
+                            const items = model
+                            const target = Number(loggerId)
+                            for (let i = 0; i < items.length; ++i) {
+                                if (Number(items[i].id) === target) {
+                                    currentIndex = i
+                                    return
+                                }
+                            }
+                            currentIndex = 0
+                        }
+
+                        onActivated: root.draftPrimaryLoggerId = Number(currentValue)
                     }
 
                     ColumnLayout {
@@ -243,6 +297,7 @@ Item {
                 SettingsController.systemTimezone        = root.draftTimezone;
                 SettingsController.dataRetentionDays     = retentionSpin.value;
                 SettingsController.historyFlushIntervalS = historyFlushSpin.value;
+                SettingsController.primaryLoggerId       = Number(root.draftPrimaryLoggerId);
                 if (!SettingsController.save()) {
                     SettingsController.load();
                     root.syncFromController();

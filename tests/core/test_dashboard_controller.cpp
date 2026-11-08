@@ -1,17 +1,22 @@
 #include "core/DashboardController.h"
 #include "core/LoggerFormController.h"
 #include "core/LoggerListModel.h"
+#include "core/SettingsController.h"
+#include "core/sensors/LoggerOverviewTableModel.h"
 #include "data/db/Database.h"
 #include "data/models/LoggerSensor.h"
 #include "data/repositories/EventRepository.h"
 #include "data/repositories/SensorCatalogRepository.h"
+#include "network/modbus/ModbusTypes.h"
 
+#include <QDateTime>
 #include <QString>
 #include <QTest>
 #include <QVariantMap>
 
 using namespace CentralLogger::Core;
 using namespace CentralLogger::Data;
+using namespace CentralLogger::Network;
 
 namespace {
 
@@ -62,6 +67,7 @@ private slots:
     void buildEditPatchDiffsCorrectly();
     void buildEditPatchOmitsUnchangedStationCode();
     void buildEditPatchNeverPostsStationCode();
+    void summaryResolvesPrimaryLoggerAndBuildsOverview();
 };
 
 void TestDashboardController::addLoggerInsertsAndUpdatesModel()
@@ -272,6 +278,89 @@ void TestDashboardController::buildEditPatchNeverPostsStationCode()
     const QVariantMap patch = LoggerFormController::buildEditPatch(original, edited);
     QVERIFY(!patch.contains(QStringLiteral("station_code")));
     QCOMPARE(patch.value(QStringLiteral("station_name")).toString(), QStringLiteral("Plant B"));
+}
+
+void TestDashboardController::summaryResolvesPrimaryLoggerAndBuildsOverview()
+{
+    Database db;
+    QVERIFY(db.open(uniqueConnectionName("summary"), QStringLiteral(":memory:")));
+
+    DashboardController dash{nullptr};
+    LoggerFormController form{nullptr};
+    SettingsController settings{nullptr};
+
+    dash.setDatabase(&db);
+    form.setDatabase(&db);
+    form.setDashboardController(&dash);
+    settings.setDatabase(&db);
+    settings.load();
+    dash.setSettingsController(&settings);
+
+    const qint64 firstId = form.addLogger(QStringLiteral("TRAM-S1"),
+                                          QStringLiteral("Alpha"),
+                                          QStringLiteral("192.168.1.10"),
+                                          5020, 8080, QString());
+    const qint64 secondId = form.addLogger(QStringLiteral("TRAM-S2"),
+                                           QStringLiteral("Beta"),
+                                           QStringLiteral("192.168.1.11"),
+                                           5020, 8080, QString());
+    QVERIFY2(firstId > 0, qPrintable(form.lastError()));
+    QVERIFY2(secondId > 0, qPrintable(form.lastError()));
+
+    SensorCatalogRepository catalog(db.connection());
+    auto addAnalog = [&catalog](qint64 loggerId) {
+        LoggerSensor s;
+        s.loggerId     = loggerId;
+        s.edgeSensorId = 1;
+        s.sensorType   = QStringLiteral("ANALOG");
+        s.name         = QStringLiteral("O2");
+        s.unit         = QStringLiteral("%V");
+        s.decimals     = 2;
+        QVERIFY(catalog.upsert(s));
+    };
+    addAnalog(firstId);
+    addAnalog(secondId);
+
+    // Configuring the primary logger re-resolves the summary immediately.
+    settings.setPrimaryLoggerId(secondId);
+    QCOMPARE(dash.primaryLoggerId(), secondId);
+    QCOMPARE(dash.primaryLoggerName(), QStringLiteral("Beta"));
+
+    auto *overview = dash.overviewTable();
+    QVERIFY(overview);
+    QCOMPARE(overview->rowCount(), 1); // primary logger is excluded
+    QCOMPARE(overview->data(overview->index(0, 0)).toString(),
+             QStringLiteral("Alpha"));
+
+    auto makeSnapshot = [](qint64 loggerId, float value) {
+        PollSnapshot snap;
+        snap.loggerId   = loggerId;
+        snap.success    = true;
+        snap.measuredAt = QDateTime::currentDateTimeUtc();
+        AnalogSample analog;
+        analog.edgeSensorId = 1;
+        analog.flags        = 0x01; // valid
+        analog.value        = value;
+        snap.analogs.append(analog);
+        return snap;
+    };
+
+    // Primary snapshot feeds the real-time chart, not the overview table.
+    dash.onSnapshotApplied(makeSnapshot(secondId, 12.5f), 1,
+                           catalog.listByLoggerId(secondId));
+    QVERIFY(dash.primaryChartHasData());
+    QCOMPARE(dash.primaryChartSeries().size(), 1);
+    QCOMPARE(overview->columnCount(), 1); // secondary logger has no snapshot yet
+
+    // Secondary snapshot fills the dynamic sensor column.
+    dash.onSnapshotApplied(makeSnapshot(firstId, 7.25f), 1,
+                           catalog.listByLoggerId(firstId));
+    QCOMPARE(overview->columnCount(), 2);
+    QCOMPARE(overview->headerData(1, Qt::Horizontal).toString(),
+             QStringLiteral("O2 (%V)"));
+    QCOMPARE(overview->data(overview->index(0, 1),
+                            LoggerOverviewTableModel::ValueRole).toString(),
+             QStringLiteral("7.25"));
 }
 
 QTEST_MAIN(TestDashboardController)

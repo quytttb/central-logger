@@ -1,14 +1,17 @@
 #include "SettingsController.h"
 
 #include "data/db/Database.h"
+#include "data/repositories/LoggerRepository.h"
 #include "data/repositories/SettingsRepository.h"
 #include "utils/AppConstants.h"
 #include "utils/FormatConstants.h"
+#include "utils/UiConstants.h"
 
 #include <QDateTime>
 #include <QJSEngine>
 #include <QQmlEngine>
 #include <QTimeZone>
+#include <QVariantMap>
 #include <QtGlobal>
 
 namespace CentralLogger::Core {
@@ -70,6 +73,30 @@ void SettingsController::setHistoryFlushIntervalS(int value)
     emit historyFlushIntervalSChanged();
 }
 
+void SettingsController::setPrimaryLoggerId(qint64 value)
+{
+    if (value < 0) value = Defaults::kNoPrimaryLoggerId;
+    if (m_settings.primaryLoggerId == value) return;
+    m_settings.primaryLoggerId = value;
+    emit primaryLoggerIdChanged();
+}
+
+void SettingsController::reloadLoggerChoices()
+{
+    m_loggerChoices.clear();
+
+    if (m_db && m_db->isOpen()) {
+        Data::LoggerRepository repo(m_db->connection());
+        for (const auto &lg : repo.findAll()) {
+            QVariantMap item;
+            item.insert(QLatin1String(CentralLogger::Ui::kRoleId), lg.id);
+            item.insert(QLatin1String(CentralLogger::Ui::kRoleName), lg.name);
+            m_loggerChoices.append(item);
+        }
+    }
+    emit loggerChoicesChanged();
+}
+
 void SettingsController::load()
 {
     // L-13: clear stale error from a previous load/save before retrying.
@@ -89,10 +116,12 @@ void SettingsController::load()
     const auto previous = m_settings;
     m_settings = loaded;
     setError(QString{});
+    reloadLoggerChoices();
     if (previous.theme              != loaded.theme)              emit themeChanged();
     if (previous.systemTimezone     != loaded.systemTimezone)     emit systemTimezoneChanged();
     if (previous.dataRetentionDays      != loaded.dataRetentionDays)      emit dataRetentionDaysChanged();
     if (previous.historyFlushIntervalS  != loaded.historyFlushIntervalS)  emit historyFlushIntervalSChanged();
+    if (previous.primaryLoggerId        != loaded.primaryLoggerId)        emit primaryLoggerIdChanged();
 }
 
 bool SettingsController::save()
