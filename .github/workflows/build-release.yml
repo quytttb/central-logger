@@ -150,7 +150,7 @@ jobs:
           echo "PATH=$($filtered -join ';')" >> $env:GITHUB_ENV
 
       - name: Setup CMake and Ninja
-        uses: lukka/get-cmake@d520f901a2ed42124ad7f4b06593b60dd648072e # v3.x
+        uses: lukka/get-cmake@30aea713799f46b5b60e60f5fa83f849abd52c22 # v3.x
         with:
           cmakeVersion: "~3.28.0"
           ninjaVersion: latest
