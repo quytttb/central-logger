@@ -6,6 +6,13 @@ on:
   pull_request:
     branches: [main]
 
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
   QT_VERSION: "6.11.2"
@@ -15,6 +22,7 @@ env:
 jobs:
   test:
     runs-on: ubuntu-24.04
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v7
         with:
@@ -39,7 +47,7 @@ jobs:
           target: desktop
           arch: linux_gcc_64
           modules: ${{ env.QT_MODULES }}
-          dir: ${{ runner.workspace }}
+          dir: ${{ runner.temp }}
           install-deps: false
           aqtsource: ${{ env.AQT_SOURCE }}
           cache: true
@@ -71,6 +79,7 @@ jobs:
     # and broken imports. Runs against the same Debug build the test job
     # produces so it sees the same QML module output directory.
     runs-on: ubuntu-24.04
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v7
         with:
@@ -97,7 +106,7 @@ jobs:
           target: desktop
           arch: linux_gcc_64
           modules: ${{ env.QT_MODULES }}
-          dir: ${{ runner.workspace }}
+          dir: ${{ runner.temp }}
           install-deps: false
           aqtsource: ${{ env.AQT_SOURCE }}
           cache: true
@@ -115,6 +124,7 @@ jobs:
             -DQt6_DIR="${PRE}/lib/cmake/Qt6"
 
       - name: qmllint
+        id: qmllint
         run: cmake --build build-qml --target qmllint
 
       # Surface qmllint warnings as a job summary so reviewers can spot them
@@ -134,6 +144,7 @@ jobs:
     # Only runs against the in-tree unit tests (no GUI app — QPA offscreen
     # is unnecessary because tests don't open windows).
     runs-on: ubuntu-24.04
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v7
         with:
@@ -159,7 +170,7 @@ jobs:
           target: desktop
           arch: linux_gcc_64
           modules: ${{ env.QT_MODULES }}
-          dir: ${{ runner.workspace }}
+          dir: ${{ runner.temp }}
           install-deps: false
           aqtsource: ${{ env.AQT_SOURCE }}
           cache: true
@@ -193,3 +204,57 @@ jobs:
           UBSAN_OPTIONS: print_stacktrace=1:halt_on_error=1
           ASAN_OPTIONS: detect_leaks=1:detect_stack_use_after_return=1
         run: ctest --test-dir build-asan --output-on-failure
+
+  windows:
+    name: Windows x64 — compile and test
+    runs-on: windows-2022
+    timeout-minutes: 75
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          submodules: recursive
+
+      - name: Exclude Windows Store Python stub from PATH
+        shell: pwsh
+        run: |
+          $filtered = ($env:PATH -split ';' | Where-Object { $_ -and $_ -notmatch 'WindowsApps' })
+          "PATH=$($filtered -join ';')" >> $env:GITHUB_ENV
+
+      - name: Setup CMake and Ninja
+        uses: lukka/get-cmake@d520f901a2ed42124ad7f4b06593b60dd648072e # v3.x
+        with:
+          cmakeVersion: "~3.28.0"
+          ninjaVersion: latest
+
+      - name: Install Qt MinGW
+        uses: jurplel/install-qt-action@v4.3.1
+        with:
+          version: ${{ env.QT_VERSION }}
+          host: windows
+          target: desktop
+          arch: win64_mingw
+          modules: ${{ env.QT_MODULES }}
+          tools: tools_mingw1310
+          dir: ${{ runner.temp }}
+          install-deps: false
+          add-tools-to-path: true
+          aqtsource: ${{ env.AQT_SOURCE }}
+          cache: true
+          cache-key-prefix: qt6112-win
+
+      - name: Configure Windows
+        shell: pwsh
+        run: |
+          cmake -S . -B build-windows-ci -G Ninja `
+            -DCMAKE_BUILD_TYPE=Debug `
+            -DCMAKE_PREFIX_PATH="$env:QT_ROOT_DIR"
+
+      - name: Build Windows
+        shell: pwsh
+        run: cmake --build build-windows-ci --parallel 4
+
+      - name: Test Windows
+        shell: pwsh
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: ctest --test-dir build-windows-ci --output-on-failure

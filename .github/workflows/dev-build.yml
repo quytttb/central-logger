@@ -7,7 +7,11 @@ on:
       - "**.cpp"
       - "**.h"
       - "**.qml"
-      - "CMakeLists.txt"
+      - "**/CMakeLists.txt"
+      - "CMakePresets.json"
+      - ".gitmodules"
+      - "shared/**"
+      - "tests/**"
       - "cmake/**"
       - "packaging/**"
       - "resources/**"
@@ -65,7 +69,7 @@ jobs:
           target: desktop
           arch: linux_gcc_64
           modules: ${{ env.QT_MODULES }}
-          dir: ${{ runner.workspace }}
+          dir: ${{ runner.temp }}
           install-deps: false
           aqtsource: ${{ env.AQT_SOURCE }}
           cache: true
@@ -75,6 +79,11 @@ jobs:
         run: |
           chmod +x packaging/linux/cpack_deb.sh
           packaging/linux/cpack_deb.sh
+
+      - name: Test Linux release package build
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: ctest --test-dir "$RUNNER_TEMP/central-logger-deb" --output-on-failure
 
       - name: Upload .deb artifact
         uses: actions/upload-artifact@v7
@@ -114,7 +123,7 @@ jobs:
           arch: win64_mingw
           modules: ${{ env.QT_MODULES }}
           tools: tools_mingw1310 tools_ifw
-          dir: ${{ runner.workspace }}
+          dir: ${{ runner.temp }}
           install-deps: false
           add-tools-to-path: true
           aqtsource: ${{ env.AQT_SOURCE }}
@@ -128,6 +137,12 @@ jobs:
             -DCMAKE_BUILD_TYPE=Release `
             -DCMAKE_PREFIX_PATH="$env:QT_ROOT_DIR"
           cmake --build build-dev-win -j
+
+      - name: Test Windows build
+        shell: pwsh
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: ctest --test-dir build-dev-win --output-on-failure
 
       - name: Build QTIFW installer
         shell: pwsh

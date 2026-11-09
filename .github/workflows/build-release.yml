@@ -3,7 +3,7 @@ name: Build Release
 on:
   push:
     tags:
-      - "v[0-9]+.[0-9]+.[0-9]+"
+      - "v*"
   workflow_dispatch:
     inputs:
       tag:
@@ -12,8 +12,8 @@ on:
         type: string
 
 concurrency:
-  group: build-release-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  group: build-release-${{ github.event.inputs.tag || github.ref_name }}
+  cancel-in-progress: false
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
@@ -27,16 +27,25 @@ permissions:
 jobs:
   prepare:
     runs-on: ubuntu-24.04
+    permissions:
+      contents: read
     outputs:
+      source_sha: ${{ steps.meta.outputs.source_sha }}
       tag: ${{ steps.meta.outputs.tag }}
       version: ${{ steps.meta.outputs.version }}
     steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
       - name: Resolve tag and version
         id: meta
+        env:
+          DISPATCH_TAG: ${{ inputs.tag }}
         run: |
           set -euo pipefail
-          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
-            TAG="${{ github.event.inputs.tag }}"
+          if [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" ]]; then
+            TAG="${DISPATCH_TAG}"
           else
             TAG="${GITHUB_REF_NAME}"
           fi
@@ -44,9 +53,18 @@ jobs:
             echo "::error::Invalid tag (need vMAJOR.MINOR.PATCH): ${TAG}" >&2
             exit 1
           fi
+          # Always resolve an existing tag, including manually dispatched releases.
+          if ! git show-ref --verify --quiet "refs/tags/${TAG}"; then
+            echo "::error::Release tag does not exist: ${TAG}" >&2
+            exit 1
+          fi
+          SOURCE_SHA="$(git rev-parse "refs/tags/${TAG}^{commit}")"
           VERSION="${TAG#v}"
-          echo "tag=${TAG}" >> "${GITHUB_OUTPUT}"
-          echo "version=${VERSION}" >> "${GITHUB_OUTPUT}"
+          {
+            echo "source_sha=${SOURCE_SHA}"
+            echo "tag=${TAG}"
+            echo "version=${VERSION}"
+          } >> "${GITHUB_OUTPUT}"
 
   build-deb:
     needs: prepare
@@ -56,6 +74,7 @@ jobs:
       - uses: actions/checkout@v7
         with:
           submodules: recursive
+          ref: ${{ needs.prepare.outputs.source_sha }}
 
       - name: Sync CMake project version
         env:
@@ -81,7 +100,7 @@ jobs:
           target: desktop
           arch: linux_gcc_64
           modules: ${{ env.QT_MODULES }}
-          dir: ${{ runner.workspace }}
+          dir: ${{ runner.temp }}
           install-deps: false
           aqtsource: ${{ env.AQT_SOURCE }}
           cache: true
@@ -92,11 +111,25 @@ jobs:
           chmod +x packaging/linux/cpack_deb.sh
           packaging/linux/cpack_deb.sh
 
+      - name: Test Linux release package build
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: ctest --test-dir "$RUNNER_TEMP/central-logger-deb" --output-on-failure
+
+      - name: Record DEB checksum
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd dist
+          sha256sum central-logger-app_*.deb > SHA256SUMS-deb.txt
+
       - name: Upload .deb artifact
         uses: actions/upload-artifact@v7
         with:
           name: deb-package
-          path: dist/central-logger-app_${{ needs.prepare.outputs.version }}_amd64.deb
+          path: |
+            dist/central-logger-app_${{ needs.prepare.outputs.version }}_amd64.deb
+            dist/SHA256SUMS-deb.txt
           if-no-files-found: error
           retention-days: 14
 
@@ -108,6 +141,7 @@ jobs:
       - uses: actions/checkout@v7
         with:
           submodules: recursive
+          ref: ${{ needs.prepare.outputs.source_sha }}
 
       - name: Exclude Windows Store Python stub from PATH
         shell: pwsh
@@ -139,7 +173,7 @@ jobs:
           arch: win64_mingw
           modules: ${{ env.QT_MODULES }}
           tools: tools_mingw1310 tools_ifw
-          dir: ${{ runner.workspace }}
+          dir: ${{ runner.temp }}
           install-deps: false
           add-tools-to-path: true
           aqtsource: ${{ env.AQT_SOURCE }}
@@ -170,11 +204,20 @@ jobs:
           CL_MINGW_DIR: ${{ env.IQTA_TOOLS }}/mingw1310_64
         run: ${{ github.workspace }}/packaging/windows/build_installer.ps1
 
+      - name: Record installer checksum
+        shell: pwsh
+        run: |
+          $file = "packaging/windows/installer_build/CentralLoggerSetup.exe"
+          $hash = (Get-FileHash $file -Algorithm SHA256).Hash.ToLowerInvariant()
+          "$hash  CentralLoggerSetup.exe" | Set-Content packaging/windows/installer_build/SHA256SUMS-exe.txt -Encoding ascii
+
       - name: Upload installer artifact
         uses: actions/upload-artifact@v7
         with:
           name: exe-package
-          path: packaging/windows/installer_build/CentralLoggerSetup.exe
+          path: |
+            packaging/windows/installer_build/CentralLoggerSetup.exe
+            packaging/windows/installer_build/SHA256SUMS-exe.txt
           if-no-files-found: error
           retention-days: 14
 
@@ -189,6 +232,37 @@ jobs:
         with:
           path: release-assets
           merge-multiple: true
+
+      - name: Verify package checksums and source tag
+        shell: bash
+        env:
+          EXPECTED_SHA: ${{ needs.prepare.outputs.source_sha }}
+          TAG: ${{ needs.prepare.outputs.tag }}
+        run: |
+          set -euo pipefail
+          cd release-assets
+          sha256sum --check --strict SHA256SUMS-deb.txt
+          sha256sum --check --strict SHA256SUMS-exe.txt
+          echo "Verified release source: ${TAG} -> ${EXPECTED_SHA}"
+
+      - name: Confirm release tag still resolves to tested commit
+        shell: bash
+        env:
+          TAG: ${{ needs.prepare.outputs.tag }}
+          EXPECTED_SHA: ${{ needs.prepare.outputs.source_sha }}
+        run: |
+          set -euo pipefail
+          refs=$(git ls-remote --tags "https://github.com/${GITHUB_REPOSITORY}.git" \
+            "refs/tags/${TAG}" "refs/tags/${TAG}^{}")
+          # Annotated tags have a peeled ^{} entry; lightweight tags do not.
+          actual=$(printf '%s\n' "$refs" | awk -F '\t' -v tag="refs/tags/${TAG}^{}" '$2 == tag { print $1 }')
+          if [[ -z "$actual" ]]; then
+            actual=$(printf '%s\n' "$refs" | awk -F '\t' -v tag="refs/tags/${TAG}" '$2 == tag { print $1 }')
+          fi
+          if [[ -z "$actual" || "$actual" != "$EXPECTED_SHA" ]]; then
+            echo "::error::Release tag ${TAG} changed or is missing (expected ${EXPECTED_SHA}, got ${actual:-none})" >&2
+            exit 1
+          fi
 
       - name: List release files
         run: find release-assets -type f -ls
@@ -213,3 +287,4 @@ jobs:
           files: |
             release-assets/**/*.deb
             release-assets/**/CentralLoggerSetup.exe
+            release-assets/**/SHA256SUMS-*.txt

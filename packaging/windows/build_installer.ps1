@@ -68,7 +68,15 @@ Write-Host " Copied central_logger.exe to the temp directory." -ForegroundColor 
 
 Write-Host "[4/6] Running windeployqt to collect DLL dependencies..." -ForegroundColor Yellow
 & "$QT_DIR\bin\windeployqt.exe" --qmldir "$PROJECT_ROOT\src" --compiler-runtime "$TEMP_DEPLOY_DIR\central_logger.exe"
-Write-Host " windeployqt finished successfully." -ForegroundColor Green
+if ($LASTEXITCODE -ne 0) {
+    throw "windeployqt failed (exit code $LASTEXITCODE); refusing to build an incomplete installer."
+}
+foreach ($required in @("Qt6Core.dll", "platforms\qwindows.dll")) {
+    if (-not (Test-Path (Join-Path $TEMP_DEPLOY_DIR $required))) {
+        throw "Incomplete Windows deployment: missing $required."
+    }
+}
+Write-Host " windeployqt completed and essential Qt runtime files are present." -ForegroundColor Green
 
 # ==================== MOVE COLLECTED DATA INTO THE PACKAGE ====================
 Write-Host "[5/6] Copying collected data into the QTIFW package directory..." -ForegroundColor Yellow
