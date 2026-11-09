@@ -33,4 +33,5 @@ jobs:
           tar -xzf "$archive" -C "$RUNNER_TEMP" actionlint
       - name: Validate all workflows
         shell: bash
-        run: "$RUNNER_TEMP/actionlint -color"
+        run: |
+          "$RUNNER_TEMP/actionlint" -color
