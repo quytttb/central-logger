@@ -7,7 +7,11 @@ on:
       - "**.cpp"
       - "**.h"
       - "**.qml"
-      - "CMakeLists.txt"
+      - "**/CMakeLists.txt"
+      - "CMakePresets.json"
+      - ".gitmodules"
+      - "shared/**"
+      - "tests/**"
       - "cmake/**"
       - "packaging/**"
       - "resources/**"
@@ -128,6 +132,12 @@ jobs:
             -DCMAKE_BUILD_TYPE=Release `
             -DCMAKE_PREFIX_PATH="$env:QT_ROOT_DIR"
           cmake --build build-dev-win -j
+
+      - name: Test Windows build
+        shell: pwsh
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: ctest --test-dir build-dev-win --output-on-failure
 
       - name: Build QTIFW installer
         shell: pwsh
