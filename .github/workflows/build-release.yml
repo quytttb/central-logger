@@ -245,6 +245,25 @@ jobs:
           sha256sum --check --strict SHA256SUMS-exe.txt
           echo "Verified release source: ${TAG} -> ${EXPECTED_SHA}"
 
+      - name: Confirm release tag still resolves to tested commit
+        shell: bash
+        env:
+          TAG: ${{ needs.prepare.outputs.tag }}
+          EXPECTED_SHA: ${{ needs.prepare.outputs.source_sha }}
+        run: |
+          set -euo pipefail
+          refs=$(git ls-remote --tags "https://github.com/${GITHUB_REPOSITORY}.git" \
+            "refs/tags/${TAG}" "refs/tags/${TAG}^{}")
+          # Annotated tags have a peeled ^{} entry; lightweight tags do not.
+          actual=$(printf '%s\n' "$refs" | awk -F '\t' -v tag="refs/tags/${TAG}^{}" '$2 == tag { print $1 }')
+          if [[ -z "$actual" ]]; then
+            actual=$(printf '%s\n' "$refs" | awk -F '\t' -v tag="refs/tags/${TAG}" '$2 == tag { print $1 }')
+          fi
+          if [[ -z "$actual" || "$actual" != "$EXPECTED_SHA" ]]; then
+            echo "::error::Release tag ${TAG} changed or is missing (expected ${EXPECTED_SHA}, got ${actual:-none})" >&2
+            exit 1
+          fi
+
       - name: List release files
         run: find release-assets -type f -ls
 
