@@ -69,7 +69,7 @@ jobs:
           target: desktop
           arch: linux_gcc_64
           modules: ${{ env.QT_MODULES }}
-          dir: ${{ runner.workspace }}
+          dir: ${{ runner.temp }}
           install-deps: false
           aqtsource: ${{ env.AQT_SOURCE }}
           cache: true
@@ -118,7 +118,7 @@ jobs:
           arch: win64_mingw
           modules: ${{ env.QT_MODULES }}
           tools: tools_mingw1310 tools_ifw
-          dir: ${{ runner.workspace }}
+          dir: ${{ runner.temp }}
           install-deps: false
           add-tools-to-path: true
           aqtsource: ${{ env.AQT_SOURCE }}
