@@ -80,6 +80,11 @@ jobs:
           chmod +x packaging/linux/cpack_deb.sh
           packaging/linux/cpack_deb.sh
 
+      - name: Test Linux release package build
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: ctest --test-dir "$RUNNER_TEMP/central-logger-deb" --output-on-failure
+
       - name: Upload .deb artifact
         uses: actions/upload-artifact@v7
         with:
