@@ -58,9 +58,11 @@ jobs:
           fi
           SOURCE_SHA="$(git rev-parse "refs/tags/${TAG}^{commit}")"
           VERSION="${TAG#v}"
-          echo "source_sha=${SOURCE_SHA}" >> "${GITHUB_OUTPUT}"
-          echo "tag=${TAG}" >> "${GITHUB_OUTPUT}"
-          echo "version=${VERSION}" >> "${GITHUB_OUTPUT}"
+          {
+            echo "source_sha=${SOURCE_SHA}"
+            echo "tag=${TAG}"
+            echo "version=${VERSION}"
+          } >> "${GITHUB_OUTPUT}"
 
   build-deb:
     needs: prepare
@@ -70,7 +72,6 @@ jobs:
       - uses: actions/checkout@v7
         with:
           submodules: recursive
-          ref: ${{ needs.prepare.outputs.source_sha }}
           ref: ${{ needs.prepare.outputs.source_sha }}
 
       - name: Sync CMake project version
@@ -97,7 +98,7 @@ jobs:
           target: desktop
           arch: linux_gcc_64
           modules: ${{ env.QT_MODULES }}
-          dir: ${{ runner.workspace }}
+          dir: ${{ runner.temp }}
           install-deps: false
           aqtsource: ${{ env.AQT_SOURCE }}
           cache: true
@@ -133,6 +134,7 @@ jobs:
       - uses: actions/checkout@v7
         with:
           submodules: recursive
+          ref: ${{ needs.prepare.outputs.source_sha }}
 
       - name: Exclude Windows Store Python stub from PATH
         shell: pwsh
@@ -164,7 +166,7 @@ jobs:
           arch: win64_mingw
           modules: ${{ env.QT_MODULES }}
           tools: tools_mingw1310 tools_ifw
-          dir: ${{ runner.workspace }}
+          dir: ${{ runner.temp }}
           install-deps: false
           add-tools-to-path: true
           aqtsource: ${{ env.AQT_SOURCE }}
