@@ -34,7 +34,7 @@ jobs:
       tag: ${{ steps.meta.outputs.tag }}
       version: ${{ steps.meta.outputs.version }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
         with:
           fetch-depth: 0
 
@@ -71,7 +71,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 120
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
         with:
           submodules: recursive
           ref: ${{ needs.prepare.outputs.source_sha }}
@@ -93,7 +93,7 @@ jobs:
             patchelf dpkg-dev
 
       - name: Install Qt
-        uses: jurplel/install-qt-action@v4.3.1
+        uses: jurplel/install-qt-action@v4.5.0
         with:
           version: ${{ env.QT_VERSION }}
           host: linux
@@ -138,7 +138,7 @@ jobs:
     runs-on: windows-latest
     timeout-minutes: 120
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
         with:
           submodules: recursive
           ref: ${{ needs.prepare.outputs.source_sha }}
@@ -165,7 +165,7 @@ jobs:
         run: python packaging/linux/sync_cmake_version.py
 
       - name: Install Qt
-        uses: jurplel/install-qt-action@v4.3.1
+        uses: jurplel/install-qt-action@v4.5.0
         with:
           version: ${{ env.QT_VERSION }}
           host: windows
