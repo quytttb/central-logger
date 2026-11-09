@@ -40,7 +40,7 @@ jobs:
             patchelf
 
       - name: Install Qt
-        uses: jurplel/install-qt-action@v4.3.1
+        uses: jurplel/install-qt-action@v4.5.0
         with:
           version: ${{ env.QT_VERSION }}
           host: linux
@@ -99,7 +99,7 @@ jobs:
             libxcb-xfixes0 libxcb-xkb1
 
       - name: Install Qt
-        uses: jurplel/install-qt-action@v4.3.1
+        uses: jurplel/install-qt-action@v4.5.0
         with:
           version: ${{ env.QT_VERSION }}
           host: linux
@@ -163,7 +163,7 @@ jobs:
             libxcb-xfixes0 libxcb-xkb1
 
       - name: Install Qt
-        uses: jurplel/install-qt-action@v4.3.1
+        uses: jurplel/install-qt-action@v4.5.0
         with:
           version: ${{ env.QT_VERSION }}
           host: linux
@@ -227,7 +227,7 @@ jobs:
           ninjaVersion: latest
 
       - name: Install Qt MinGW
-        uses: jurplel/install-qt-action@v4.3.1
+        uses: jurplel/install-qt-action@v4.5.0
         with:
           version: ${{ env.QT_VERSION }}
           host: windows
