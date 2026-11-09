@@ -124,6 +124,7 @@ jobs:
             -DQt6_DIR="${PRE}/lib/cmake/Qt6"
 
       - name: qmllint
+        id: qmllint
         run: cmake --build build-qml --target qmllint
 
       # Surface qmllint warnings as a job summary so reviewers can spot them
