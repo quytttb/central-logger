@@ -39,7 +39,12 @@ cmake --build "$BUILD" -j"$(nproc)"
 ( cd "$BUILD" && cpack -G DEB )
 
 shopt -s nullglob
-for deb in "$BUILD"/*.deb; do
-  cp -f "$deb" "$DIST/"
-  echo "Built $DIST/$(basename "$deb")"
-done
+debs=("$BUILD"/*.deb)
+if [[ ${#debs[@]} -ne 1 ]]; then
+  echo "Expected exactly one DEB from CPack, got ${#debs[@]}." >&2
+  exit 1
+fi
+deb="${debs[0]}"
+dpkg-deb --info "$deb" >/dev/null
+cp -f "$deb" "$DIST/"
+echo "Built $DIST/$(basename "$deb") ($(du -h "$deb" | cut -f1))"
