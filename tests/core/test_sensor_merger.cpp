@@ -1,4 +1,5 @@
 #include "core/sensors/SensorMerger.h"
+#include "core/history/HistoryTableModel.h"
 
 #include <QDateTime>
 #include <QTest>
@@ -110,7 +111,36 @@ private slots:
     void attachDiPriority02Over03();
     void attachDiCustomCode();
     void analogValueUsesPerSensorDecimals();
+    void invalidValueDoesNotAppearAsAReading();
+    void invalidHistoryValueIsNotDisplayed();
 };
+
+void TestSensorMerger::invalidHistoryValueIsNotDisplayed()
+{
+    CentralLogger::Data::HistoryRow reading;
+    reading.value = 0.0;
+    reading.valid = false;
+    QCOMPARE(CentralLogger::Core::HistoryTableModel::valueText(reading),
+             QStringLiteral("—"));
+    reading.valid = true;
+    reading.decimals = 2;
+    QCOMPARE(CentralLogger::Core::HistoryTableModel::valueText(reading),
+             QStringLiteral("0.00"));
+}
+
+void TestSensorMerger::invalidValueDoesNotAppearAsAReading()
+{
+    constexpr qint64 loggerId = 3;
+    auto snap = makeSnapshot(loggerId);
+    snap.analogs = {makeAnalog(1, 0.0f, 0), makeAnalog(2, 0.0f, kFlagValid)};
+
+    const auto rows = SensorMerger::buildRows(loggerId, snap, {});
+    QCOMPARE(rows.size(), 2);
+    QCOMPARE(findRow(rows, 1)->value, QStringLiteral("—"));
+    QCOMPARE(findRow(rows, 1)->displayStatus, QStringLiteral("ERR"));
+    QCOMPARE(findRow(rows, 2)->value, QStringLiteral("0.0000"));
+    QVERIFY(findRow(rows, 2)->valid);
+}
 
 void TestSensorMerger::analogValueUsesPerSensorDecimals()
 {
@@ -233,6 +263,7 @@ void TestSensorMerger::displayStatusStaleAndThreshold()
     QCOMPARE(rows.size(), 4);
 
     QCOMPARE(findRow(rows, 1)->displayStatus, QStringLiteral("STALE"));
+    QCOMPARE(findRow(rows, 1)->value, QStringLiteral("—"));
     QCOMPARE(findRow(rows, 2)->displayStatus, QStringLiteral("ALARM"));
     QCOMPARE(findRow(rows, 2)->alarmType, QStringLiteral("min"));
     QCOMPARE(findRow(rows, 3)->displayStatus, QStringLiteral("ALARM"));

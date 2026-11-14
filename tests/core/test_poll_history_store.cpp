@@ -145,6 +145,15 @@ private slots:
         QCOMPARE(store.pointCount(10, 1), 0);
     }
 
+    void staleSampleSkipped()
+    {
+        PollHistoryStore store;
+        auto snap = makeSnapshot(10, {{1, 42.0f}});
+        snap.analogs[0].flags = 0x05; // valid, but stale
+        store.append(snap);
+        QCOMPARE(store.pointCount(10, 1), 0);
+    }
+
     void multipleLoggers()
     {
         PollHistoryStore store;

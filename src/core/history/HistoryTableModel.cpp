@@ -47,10 +47,7 @@ QVariant HistoryTableModel::data(const QModelIndex &index, int role) const
     case LoggerRole:    return r.loggerName;
     case SensorRole:    return r.sensorName;
     case UnitRole:      return r.unit;
-    case ValueRole:     return QString::number(r.value, 'f',
-                            qBound(CentralLogger::Defaults::kDecimalsMin,
-                                   r.decimals,
-                                   CentralLogger::Defaults::kDecimalsMax));
+    case ValueRole:     return valueText(r);
     case StatusRole:    return statusText(r);
     case ValidRole:     return r.valid;
     case AlarmRole:     return r.alarm;
@@ -102,6 +99,16 @@ void HistoryTableModel::clear()
     m_rows.clear();
     endResetModel();
     emit rowsSizeChanged();
+}
+
+QString HistoryTableModel::valueText(const Data::HistoryRow &r)
+{
+    if (!r.valid)
+        return QString::fromUtf8(CentralLogger::Sensor::kValuePlaceholder);
+    return QString::number(r.value, 'f',
+                           qBound(CentralLogger::Defaults::kDecimalsMin,
+                                  r.decimals,
+                                  CentralLogger::Defaults::kDecimalsMax));
 }
 
 QString HistoryTableModel::statusText(const Data::HistoryRow &r)

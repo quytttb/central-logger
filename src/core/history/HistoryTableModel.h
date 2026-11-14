@@ -62,6 +62,7 @@ public:
 
     const QVector<Data::HistoryRow> &rows() const { return m_rows; }
 
+    static QString valueText(const Data::HistoryRow &r);
     static QString statusText(const Data::HistoryRow &r);
 
 signals:

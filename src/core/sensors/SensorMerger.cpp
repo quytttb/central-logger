@@ -249,8 +249,15 @@ SensorMerger::buildRows(qint64 loggerId, const Network::PollSnapshot &snapshot,
     row.valid = sample.isValid();
     row.alarm = sample.isAlarm();
     row.stale = sample.isStale();
-    row.value = formatAnalog(sample.value, cat ? cat->decimals
-                                              : CentralLogger::Defaults::kDecimalsDefault);
+    // A Modbus analog block always contains a float, even when the valid bit
+    // is clear. That float may just be a transport placeholder, not a reading.
+    // This also protects the summary table, which displays row.value directly.
+    // The summary table has no per-cell status, so stale values must not
+    // appear there as current measurements either.
+    row.value = row.valid && !row.stale
+                    ? formatAnalog(sample.value, cat ? cat->decimals
+                                                     : CentralLogger::Defaults::kDecimalsDefault)
+                    : QString::fromUtf8(CentralLogger::Sensor::kValuePlaceholder);
     row.timestamp = timestamp;
 
     const bool active = cat ? cat->active : true;

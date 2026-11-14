@@ -15,7 +15,7 @@ void PollHistoryStore::append(const Network::PollSnapshot &snapshot)
     auto &loggerStore = m_store[loggerId];
 
     for (const auto &analog : snapshot.analogs) {
-        if (!analog.isValid()) continue;
+        if (!analog.isValid() || analog.isStale()) continue;
 
         auto &deque = loggerStore[analog.edgeSensorId];
 

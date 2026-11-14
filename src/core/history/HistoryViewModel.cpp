@@ -416,9 +416,7 @@ void HistoryViewModel::exportCsv(const QUrl &fileUrl)
             << csvEscape(r.loggerName) << ','
             << csvEscape(r.sensorName) << ','
             << csvEscape(r.unit) << ','
-            << QString::number(r.value, 'f', qBound(CentralLogger::Defaults::kDecimalsMin,
-                                                   r.decimals,
-                                                   CentralLogger::Defaults::kDecimalsMax)) << ','
+            << (r.valid ? HistoryTableModel::valueText(r) : QString()) << ','
             << HistoryTableModel::statusText(r) << '\n';
     }
 
