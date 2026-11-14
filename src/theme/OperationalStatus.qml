@@ -6,6 +6,7 @@ import QtQuick
 import LoggerKit.Theme
 
 /// Operational sensor chip text, icons, and colors (TT10: 00/01/02/03).
+/// Each TT10 code maps to a display status text, not the raw code itself.
 QtObject {
     function statusIconName(alarmType) {
         const type = String(alarmType || "").toLowerCase()
@@ -18,57 +19,74 @@ QtObject {
         return ""
     }
 
+    // Map TT10 code → human-readable status text (shown on the chip)
     function statusText(displayStatus, alarmType) {
-        const status = String(displayStatus || "")
+        const code = String(displayStatus || "")
         const type = String(alarmType || "").toLowerCase()
-        if (status.length === 0) {
+        if (code.length === 0) {
             return "\u2014"
         }
-        // Hiển thị trực tiếp mã TT10: "00"/"01"/"02"/"03"
-        if (type === "min" || type === "max" || type === "min+max" || type === "device") {
-            return status
+        // Threshold breach labels take precedence when alarmType is set
+        if (type === "min") {
+            return qsTr("MIN")
         }
-        return status
+        if (type === "max") {
+            return qsTr("MAX")
+        }
+        if (type === "min+max") {
+            return qsTr("MIN+MAX")
+        }
+        if (type === "device") {
+            return qsTr("Báo lỗi")
+        }
+        // TT10 code → status text
+        switch (code) {
+        case "00": return qsTr("Đang đo")
+        case "01": return qsTr("Hiệu chuẩn")
+        case "02": return qsTr("Báo lỗi")
+        case "03": return qsTr("Bảo trì")
+        default:   return code || "\u2014"
+        }
     }
 
     function chipFill(displayStatus) {
-        const status = String(displayStatus || "")
-        if (status.length === 0) {
+        const code = String(displayStatus || "")
+        if (code.length === 0) {
             return AppColors.surfaceContainer
         }
         // TT10: 00=xanh lá (đang đo), 01/03=vàng (hiệu chuẩn/maintenance), 02=đỏ (lỗi)
-        if (status === "02") {
+        if (code === "02") {
             return AppColors.errorContainer
         }
-        if (status === "01" || status === "03") {
+        if (code === "01" || code === "03") {
             return AppColors.warningContainer
         }
         return AppColors.successContainer
     }
 
     function chipBorder(displayStatus) {
-        const status = String(displayStatus || "")
-        if (status.length === 0) {
+        const code = String(displayStatus || "")
+        if (code.length === 0) {
             return AppColors.outline
         }
-        if (status === "02") {
+        if (code === "02") {
             return AppColors.error
         }
-        if (status === "01" || status === "03") {
+        if (code === "01" || code === "03") {
             return AppColors.warning
         }
         return AppColors.success
     }
 
     function chipTextColor(displayStatus) {
-        const status = String(displayStatus || "")
-        if (status.length === 0) {
+        const code = String(displayStatus || "")
+        if (code.length === 0) {
             return AppColors.onSurfaceVariant
         }
-        if (status === "02") {
+        if (code === "02") {
             return AppColors.error
         }
-        if (status === "01" || status === "03") {
+        if (code === "01" || code === "03") {
             return AppColors.warning
         }
         return AppColors.success

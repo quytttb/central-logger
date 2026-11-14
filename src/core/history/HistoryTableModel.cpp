@@ -109,7 +109,7 @@ QString HistoryTableModel::valueText(const Data::HistoryRow &r)
 
 QString HistoryTableModel::statusText(const Data::HistoryRow &r)
 {
-    return r.statusCode;
+    return CentralLogger::Sensor::statusText(r.statusCode);
 }
 
 } // namespace CentralLogger::Core

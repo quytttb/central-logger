@@ -1,5 +1,7 @@
 #pragma once
 
+#include <QString>
+
 // Centralized sensor domain strings:
 // - sensor types (ANALOG / DI / DO / UNKNOWN)
 // - operational status values (OK / ALARM / WAIT / STALE / ERR / INVALID)
@@ -36,6 +38,16 @@ inline constexpr char kStatusMaint[]   = "03";   // maintenance nội bộ
 
 // Chuỗi rỗng ("") = không có dữ liệu / mất kết nối (không hiển thị chip).
 // Các hằng legacy OK/ALARM/STALE/ERR/WAIT đã bị xoá hoàn toàn.
+
+/// Map TT10 status code → human-readable status text (shown on chips).
+inline QString statusText(const QString &code)
+{
+    if (code == QLatin1String("00")) return QStringLiteral("Đang đo");
+    if (code == QLatin1String("01")) return QStringLiteral("Hiệu chuẩn");
+    if (code == QLatin1String("02")) return QStringLiteral("Báo lỗi");
+    if (code == QLatin1String("03")) return QStringLiteral("Bảo trì");
+    return QString();
+}
 
 // --- Alarm type (SensorLiveRow.alarmType) ----------------------------------
 inline constexpr char kAlarmMin[]    = "min";
