@@ -29,6 +29,10 @@ before completing the hardware checklist below.
   never forwards Central's configuration requests to OSG.
 - The adapter does **not** enable Modbus RTU or TCP on OSG. OSG's RTU output
   and its possible sensor-side RTU connection are different things.
+  RTU-output state on the logger is irrelevant to this adapter, which reads
+  only the HTTP API; observed 2026-11-14: RTU output disabled on both `.16`
+  and `.17`, TCP output enabled on both (port 502, Unit 1) without the
+  adapter using it.
 - Default listeners are `127.0.0.1:15020` (Modbus) and `127.0.0.1:18080`
   (REST). Modbus has no authentication. Non-loopback bind requires explicit
   `--allow-remote`; use only on an authorized, trusted LAN. Do not expose
