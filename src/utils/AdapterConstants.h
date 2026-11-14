@@ -24,8 +24,10 @@ inline constexpr int kMinTimeoutMs = 100;
 inline constexpr int kMaxTimeoutMs = 300'000;
 inline constexpr int kMinStaleMs = 1'000;
 inline constexpr int kMaxStaleMs = 86'400'000;
-// IDs of the six analog gas channels explicitly identified on the inspected
-// OSG device. Operators must verify any overrides for another installation.
+// Default IDs match the six analog gas channels observed on .17
+// (159,160,161,162,164,165). The .16 installation exposes a different set
+// (164-170 including mA with an empty unit) and must pass --analog-ids
+// explicitly after verifying each channel is analog.
 inline constexpr char kObservedOsgAnalogIds[] = "159,160,161,162,164,165";
 
 inline constexpr int kHeaderRegisters = 10;

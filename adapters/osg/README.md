@@ -182,7 +182,9 @@ differs. Keep per-device quality policies and units separate.
   }
   ```
 - Expired timestamps, source disconnects and timeouts set the stale bit;
-  unverified or empty data clear valid. Central's detail and summary values
+  unverified or empty data clear valid. The adapter treats future-dated
+  source timestamps beyond 30 s as stale (clock skew guard) and rejects
+  timestamps outside the range `(0, 10^15)` ms. Central's detail and summary values
   hide invalid/stale data. The RTU-connected flag remains false: successful
   HTTP does not prove physical RTU connectivity. Central currently marks
   sensors `ERR` while polling with RTU disconnected, even if other quality
