@@ -101,6 +101,40 @@ virtual config/catalog changes; reload the form before saving.
 `GET /api/v1/readings` is authenticated cached diagnostics only, and
 `GET /api/v1/reports/latest` returns 404.
 
+### Two OSG loggers on one Central computer
+
+Run one foreground adapter process per OSG device, in separate terminals, with
+different station codes, listener ports and independently generated REST
+tokens. The same protected OSG credential file can be used if both devices
+really share the account. For example, after independently verifying both
+addresses and preparing the two token files:
+
+```bash
+./build/adapters/osg/osg_adapter \
+  --osg-url http://192.168.1.17 \
+  --credentials-file /private/path/osg-credentials.json \
+  --adapter-token-file /private/path/osg-17-token \
+  --station-code OSG-17 --station-name 'OSG 17' \
+  --modbus-port 15020 --rest-port 18080
+```
+
+```bash
+./build/adapters/osg/osg_adapter \
+  --osg-url http://192.168.1.16 \
+  --credentials-file /private/path/osg-credentials.json \
+  --adapter-token-file /private/path/osg-16-token \
+  --station-code OSG-16 --station-name 'OSG 16' \
+  --modbus-port 15021 --rest-port 18081 \
+  --analog-ids 164,165,166,167,168,169,170
+```
+
+Add each in Central using host `127.0.0.1`, the respective Modbus and REST ports,
+and the respective token. ID `170` on `.16` has an empty unit in the observed
+API and remains invalid until its unit and quality are verified. These two
+loggers reuse IDs for different channels (for example, `164` is O2 on `.16`
+but NO2 on `.17`); Central's Summary separates columns when ID, name or unit
+differs. Keep per-device quality policies and units separate.
+
 ## Data quality and known limitations
 
 - Sensor IDs come from the OSG catalog, not from an assumed OSG Modbus map.
@@ -160,8 +194,10 @@ virtual config/catalog changes; reload the form before saving.
   for the following chunks; an incomplete read expires and must restart.
 - On upstream loss the adapter can still be reachable, so Central's logger
   **online** badge describes the adapter connection, not OSG health. Check
-  the cached debug endpoint and sensor quality. Old chart points can remain
-  visible and lines may bridge gaps; they are not new readings.
+  the cached debug endpoint and sensor quality. If Central loses the adapter,
+  cached table values are hidden and marked STALE; they return after a successful
+  poll. Old chart points can remain visible and lines may bridge gaps; they are
+  not new readings.
 
 ### History and averages
 

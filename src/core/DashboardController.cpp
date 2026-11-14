@@ -39,6 +39,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <tuple>
 
 namespace CentralLogger::Core {
 
@@ -515,8 +516,8 @@ void DashboardController::refreshLoggerCatalog(qint64 loggerId) {
 
 void DashboardController::refreshOverviewTable() {
   QVector<OverviewRow> rows;
-  QMap<int, QString> namesByEdge;
-  QMap<int, QString> unitsByEdge;
+  using OverviewKey = std::tuple<int, QString, QString>;
+  QMap<OverviewKey, bool> sensorKeys;
   const qint64 graphId = graphLoggerId();
 
   const int n = m_loggers.rowCount();
@@ -540,25 +541,32 @@ void DashboardController::refreshOverviewTable() {
         continue;
       }
       row.values.insert(sensor.edgeSensorId, sensor.value);
-      if (namesByEdge.value(sensor.edgeSensorId).isEmpty() && !sensor.name.isEmpty()) {
-        namesByEdge.insert(sensor.edgeSensorId, sensor.name);
-      }
-      if (unitsByEdge.value(sensor.edgeSensorId).isEmpty() && !sensor.unit.isEmpty()) {
-        unitsByEdge.insert(sensor.edgeSensorId, sensor.unit);
-      }
+      row.identities.insert(sensor.edgeSensorId, qMakePair(sensor.name, sensor.unit));
+      sensorKeys.insert(OverviewKey{sensor.edgeSensorId, sensor.name, sensor.unit}, true);
     }
     rows.append(row);
   }
 
   QVector<OverviewColumn> columns;
-  columns.reserve(namesByEdge.size());
-  for (auto it = namesByEdge.constBegin(); it != namesByEdge.constEnd(); ++it) {
+  columns.reserve(sensorKeys.size());
+  QHash<QString, int> headerCounts;
+  auto headerFor = [](const QString &name, const QString &unit) {
+    return unit.isEmpty() ? name : QStringLiteral("%1 (%2)").arg(name, unit);
+  };
+  for (auto it = sensorKeys.constBegin(); it != sensorKeys.constEnd(); ++it) {
+    const auto &key = it.key();
+    ++headerCounts[headerFor(std::get<1>(key), std::get<2>(key))];
+  }
+  for (auto it = sensorKeys.constBegin(); it != sensorKeys.constEnd(); ++it) {
+    const auto &key = it.key();
     OverviewColumn col;
-    col.edgeSensorId = it.key();
-    const QString unit = unitsByEdge.value(it.key());
-    col.header = unit.isEmpty()
-                     ? it.value()
-                     : QStringLiteral("%1 (%2)").arg(it.value(), unit);
+    col.edgeSensorId = std::get<0>(key);
+    col.sensorName = std::get<1>(key);
+    col.sensorUnit = std::get<2>(key);
+    col.matchMetadata = true;
+    col.header = headerFor(col.sensorName, col.sensorUnit);
+    if (headerCounts.value(col.header) > 1)
+      col.header += QStringLiteral(" [ID %1]").arg(col.edgeSensorId);
     columns.append(col);
   }
 
@@ -821,6 +829,11 @@ void DashboardController::onSnapshotApplied(
     }
     m_pollHistory.updateSensorNames(loggerId, nameMap);
     m_pollHistory.updateSensorDecimals(loggerId, decimalsMap);
+  } else {
+    m_sensorCache.markOffline(loggerId);
+    if (m_sensorTable.loggerId() == loggerId) {
+      m_sensorTable.setRows(m_sensorCache.rowsFor(loggerId));
+    }
   }
 
   maybeLogStatusTransition(loggerId, prevStatus, newStatus);

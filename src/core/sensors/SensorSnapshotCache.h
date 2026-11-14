@@ -13,10 +13,8 @@ namespace CentralLogger::Core {
 /// `DashboardController::onSnapshotApplied`; consumed by
 /// `SensorMonitoringTableModel`. No DB, no QObject.
 ///
-/// See docs/thiet_ke_db.md §3.3 (RAM merge) and Task 7 spec — only the
-/// most recent successful poll per logger is kept; failed snapshots leave
-/// the cached entry untouched (UI still shows last known values until the
-/// list model marks the logger offline).
+/// See docs/thiet_ke_db.md §3.3 (RAM merge). A failed snapshot does not
+/// replace the catalog; the controller explicitly marks cached values stale.
 class SensorSnapshotCache
 {
 public:
@@ -25,6 +23,10 @@ public:
     /// ignored — the previous rows for that logger remain.
     void apply(const Network::PollSnapshot &snapshot,
                const QVector<Data::LoggerSensor> &catalog);
+
+    /// Hide cached values and mark them stale when the Modbus connection fails.
+    /// The next successful apply replaces these rows with the new snapshot.
+    void markOffline(qint64 loggerId);
 
     /// Empty vector when there is no cached entry for @p loggerId.
     QVector<SensorLiveRow> rowsFor(qint64 loggerId) const;

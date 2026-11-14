@@ -285,6 +285,8 @@ Hợp đồng API: [`docs/contracts/rest-config-contract-v1.md`](docs/contracts/
 ### 3.3 Sensor realtime (merge)
 
 Merge `logger_sensor` (DB catalog) + snapshot Modbus hiện tại (RAM): FC03 analog + FC02 DI + FC01 DO — cùng nhịp poll.
+Nếu poll thất bại, Central giữ metadata nhưng ẩn giá trị cache và đánh dấu
+`STALE`; poll thành công tiếp theo cập nhật lại bảng.
 
 | Thuộc tính | Nguồn | UI |
 |------------|--------|-----|
@@ -298,7 +300,7 @@ Merge `logger_sensor` (DB catalog) + snapshot Modbus hiện tại (RAM): FC03 an
 ### 3.4 Dashboard summary + export CSV trung bình
 
 - **Primary logger** (`app_settings.primary_logger_id`, `0` = chưa chọn → fallback logger online đầu tiên): chart realtime lấy từ ring buffer `PollHistoryStore` (RAM, chỉ analog), không query DB.
-- **Other loggers** (`LoggerOverviewTableModel`): một hàng / logger phụ, cột sensor analog động (union `edge_sensor_id` từ `SensorSnapshotCache`), giá trị live mới nhất; primary logger không nằm trong bảng.
+- **Other loggers** (`LoggerOverviewTableModel`): một hàng / logger phụ, cột sensor analog động theo bộ `(edge_sensor_id, tên, đơn vị)` từ `SensorSnapshotCache`. ID giống nhau nhưng tên hoặc đơn vị khác được tách cột để tránh gán sai nhãn; primary logger không nằm trong bảng.
 - **History export** (`AverageExportService`): CSV theo giờ + dòng trung bình 24h, hoặc theo ca 8h (giờ bắt đầu ca chỉnh trên HistoryView). Chỉ đọc `sensor_reading` có `valid = 1 AND stale = 0`; chạy nền bằng connection SQLite riêng.
 
 ---
@@ -390,4 +392,3 @@ Lần chạy app đầu tiên (file DB chưa tồn tại):
 Cấu trúc mã đề xuất: `src/data/`, `src/core/`, `src/viewmodels/` (chi tiết khi scaffold CMake).
 
 ---
-

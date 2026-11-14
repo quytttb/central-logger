@@ -2,6 +2,7 @@
 
 #include <QAbstractTableModel>
 #include <QHash>
+#include <QPair>
 #include <QString>
 #include <QVector>
 #include <QtQmlIntegration/qqmlintegration.h>
@@ -13,6 +14,9 @@ struct OverviewColumn
 {
     int     edgeSensorId = 0;
     QString header;      // e.g. "O2 (%V)" — name + unit
+    QString sensorName;
+    QString sensorUnit;
+    bool matchMetadata = false;
 };
 
 /// One logger row: logger identity + formatted analog values keyed by
@@ -24,6 +28,7 @@ struct OverviewRow
     QString               status;     // "online" | "offline" | ...
     bool                  online = false;
     QHash<int, QString>   values;     // edge_sensor_id → formatted value
+    QHash<int, QPair<QString, QString>> identities; // edge ID → (name, unit)
 };
 
 /// Dashboard summary table: one row per secondary logger, one dynamic column

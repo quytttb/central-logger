@@ -97,6 +97,7 @@ private slots:
     void cacheStoresAndReturnsRows();
     void cacheIgnoresFailedSnapshot();
     void dashboardOnSnapshotAppliedRefreshesTable();
+    void dashboardOverviewSeparatesSameIdWithDifferentMetadata();
 };
 
 void TestSensorMonitoringTableModel::emptyByDefault()
@@ -282,11 +283,84 @@ void TestSensorMonitoringTableModel::dashboardOnSnapshotAppliedRefreshesTable()
                  .toString(),
              QStringLiteral("22.7500"));
 
+    auto failed = snap;
+    failed.success = false;
+    ctrl.onSnapshotApplied(failed, 1, {});
+    QCOMPARE(table->data(table->index(0, SensorMonitoringTableModel::ValueColumn))
+                 .toString(), QStringLiteral("—"));
+    QCOMPARE(table->data(table->index(0, SensorMonitoringTableModel::DisplayStatusColumn))
+                 .toString(), QStringLiteral("STALE"));
+    QVERIFY(!ctrl.sensorCache()->rowsFor(loggerId).first().valid);
+
+    ctrl.onSnapshotApplied(snap, 1, catalog.listByLoggerId(loggerId));
+    QCOMPARE(table->data(table->index(0, SensorMonitoringTableModel::ValueColumn))
+                 .toString(), QStringLiteral("22.7500"));
+
     // Switching to a different logger clears the rows even though the
     // cache still keeps the old logger's data.
     table->setLoggerId(loggerId + 999);
     QCOMPARE(table->rowCount(), 0);
     QCOMPARE(ctrl.sensorCache()->rowsFor(loggerId).size(), 1);
+}
+
+void TestSensorMonitoringTableModel::dashboardOverviewSeparatesSameIdWithDifferentMetadata()
+{
+    Database db;
+    QVERIFY(db.open(uniqueConnectionName("overview_identity"), QStringLiteral(":memory:")));
+    DashboardController ctrl(nullptr);
+    ctrl.setDatabase(&db);
+    const auto anchor = addSeedLogger(ctrl, db, QStringLiteral("ANCHOR"),
+                                      QStringLiteral("Anchor"), QStringLiteral("h"), 5020, 8080, {});
+    const auto first = addSeedLogger(ctrl, db, QStringLiteral("OSG-A"),
+                                     QStringLiteral("OSG A"), QStringLiteral("h"), 5020, 8080, {});
+    const auto second = addSeedLogger(ctrl, db, QStringLiteral("OSG-B"),
+                                      QStringLiteral("OSG B"), QStringLiteral("h"), 5020, 8080, {});
+    QVERIFY(anchor > 0 && first > 0 && second > 0);
+    ctrl.setGraphLoggerId(anchor);
+
+    LoggerSensor oxygen;
+    oxygen.loggerId = first;
+    oxygen.edgeSensorId = 164;
+    oxygen.sensorType = QStringLiteral("ANALOG");
+    oxygen.name = QStringLiteral("O2");
+    oxygen.unit = QStringLiteral("%V");
+    auto firstSnap = makeSnapshot(first);
+    firstSnap.analogs = {makeAnalog(164, 11.42f)};
+    ctrl.onSnapshotApplied(firstSnap, 1, {oxygen});
+
+    LoggerSensor nitrogen;
+    nitrogen.loggerId = second;
+    nitrogen.edgeSensorId = 164;
+    nitrogen.sensorType = QStringLiteral("ANALOG");
+    nitrogen.name = QStringLiteral("NO2");
+    nitrogen.unit = QStringLiteral("mg/Nm³");
+    auto secondSnap = makeSnapshot(second);
+    secondSnap.analogs = {makeAnalog(164, 2.0f)};
+    ctrl.onSnapshotApplied(secondSnap, 1, {nitrogen});
+
+    auto *overview = ctrl.overviewTable();
+    QCOMPARE(overview->rowCount(), 2);
+    QCOMPARE(overview->columnCount(), 3);
+    int oxygenColumn = -1;
+    int nitrogenColumn = -1;
+    for (int col = 1; col < overview->columnCount(); ++col) {
+        const auto header = overview->headerData(col, Qt::Horizontal).toString();
+        if (header == QStringLiteral("O2 (%V)")) oxygenColumn = col;
+        if (header == QStringLiteral("NO2 (mg/Nm³)")) nitrogenColumn = col;
+    }
+    QVERIFY(oxygenColumn > 0 && nitrogenColumn > 0);
+    for (int row = 0; row < overview->rowCount(); ++row) {
+        const auto id = overview->data(overview->index(row, 0),
+                                       CentralLogger::Core::LoggerOverviewTableModel::LoggerIdRole).toLongLong();
+        if (id == first) {
+            QCOMPARE(overview->data(overview->index(row, oxygenColumn)).toString(), QStringLiteral("11.4200"));
+            QVERIFY(overview->data(overview->index(row, nitrogenColumn)).toString().isEmpty());
+        } else {
+            QCOMPARE(id, second);
+            QCOMPARE(overview->data(overview->index(row, nitrogenColumn)).toString(), QStringLiteral("2.0000"));
+            QVERIFY(overview->data(overview->index(row, oxygenColumn)).toString().isEmpty());
+        }
+    }
 }
 
 QTEST_MAIN(TestSensorMonitoringTableModel)

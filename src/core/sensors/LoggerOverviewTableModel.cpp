@@ -13,7 +13,10 @@ bool sameColumns(const QVector<OverviewColumn> &a, const QVector<OverviewColumn>
     }
     for (int i = 0; i < a.size(); ++i) {
         if (a.at(i).edgeSensorId != b.at(i).edgeSensorId ||
-            a.at(i).header != b.at(i).header) {
+            a.at(i).header != b.at(i).header ||
+            a.at(i).sensorName != b.at(i).sensorName ||
+            a.at(i).sensorUnit != b.at(i).sensorUnit ||
+            a.at(i).matchMetadata != b.at(i).matchMetadata) {
             return false;
         }
     }
@@ -62,7 +65,17 @@ QVariant LoggerOverviewTableModel::data(const QModelIndex &index, int role) cons
         if (index.column() - 1 >= m_columns.size()) {
             return {};
         }
-        return row.values.value(m_columns.at(index.column() - 1).edgeSensorId);
+        {
+            const auto &column = m_columns.at(index.column() - 1);
+            if (column.matchMetadata) {
+                const auto identity = row.identities.constFind(column.edgeSensorId);
+                if (identity == row.identities.constEnd()
+                    || identity->first != column.sensorName
+                    || identity->second != column.sensorUnit)
+                    return {};
+            }
+            return row.values.value(column.edgeSensorId);
+        }
     case LoggerIdRole:
         return row.loggerId;
     case LoggerNameRole:
