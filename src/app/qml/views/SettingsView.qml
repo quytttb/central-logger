@@ -145,7 +145,7 @@ Item {
                         Label {
                             Layout.fillWidth: true
                             text: qsTr(
-                                "Logger shown as the large real-time chart on the Dashboard summary view; the other loggers appear as table rows.")
+                                "Logger shown by default on the Dashboard summary graph; use the Show graph dropdown to pick another one. The other loggers appear as table rows.")
                             color: AppColors.textMuted
                             font: AppTypography.labelSmall
                             wrapMode: Text.WordWrap

@@ -16,10 +16,41 @@ Item {
     property Component topBarToolbar: DashboardTopBar {}
 
     // 0 = detailed dashboard (traffic chart + events), 1 = summary dashboard
-    // (primary logger real-time chart + secondary loggers table).
+    // (selected logger real-time charts + secondary loggers table).
     property int viewMode: 0
 
     readonly property bool summaryMode: viewMode === 1
+    readonly property int overviewRows: DashboardController.overviewTable.rowsSize
+    /// Compact "Other loggers" pane: header + table header + one row per
+    /// logger, capped so a long list scrolls inside the table instead of
+    /// squeezing the chart grid.
+    readonly property int overviewPaneHeight: Math.max(180,
+        Math.min(360, AppTheme.cardPadding * 2 + 56
+                      + AppTheme.tableHeaderHeight + overviewRows * 40))
+
+    function summaryChartCount() {
+        return DashboardController.graphSensorCharts.length
+    }
+
+    // Real loggers expose up to 8 ANALOG sensors: prefer a compact 4-column
+    // grid (2 rows) instead of filling every available column, which would
+    // leave an unbalanced last row.
+    function summaryGridColumns() {
+        const count = Math.max(1, summaryChartCount())
+        const fit = Math.max(1, Math.floor(sensorChartGrid.width / 260))
+        if (count <= 4)
+            return Math.min(count, fit)
+        if (count <= 6)
+            return Math.min(3, fit)
+        return Math.min(4, fit)
+    }
+
+    function summaryGridRows() {
+        const count = summaryChartCount()
+        if (count <= 0)
+            return 1
+        return Math.ceil(count / summaryGridColumns())
+    }
 
     function setViewMode(mode) {
         if (viewMode === mode)
@@ -27,6 +58,22 @@ Item {
         viewMode = mode
         if (mode === 1)
             DashboardController.refreshSummary()
+    }
+
+    function selectGraphLogger(loggerId) {
+        const items = graphLoggerCombo.model
+        const target = Number(loggerId)
+        for (let i = 0; i < items.length; ++i) {
+            if (Number(items[i].id) === target) {
+                graphLoggerCombo.currentIndex = i
+                return
+            }
+        }
+        graphLoggerCombo.currentIndex = -1
+    }
+
+    function syncGraphLogger() {
+        selectGraphLogger(DashboardController.graphLoggerId)
     }
 
     function summaryColWeights() {
@@ -70,8 +117,11 @@ Item {
         function onReadingsChartChanged() {
             readingsChart.rebuild()
         }
-        function onPrimaryChartChanged() {
-            primaryChart.rebuild()
+        function onGraphLoggerChanged() {
+            Qt.callLater(root.syncGraphLogger)
+        }
+        function onGraphLoggerOptionsChanged() {
+            Qt.callLater(root.syncGraphLogger)
         }
     }
 
@@ -85,6 +135,7 @@ Item {
             Layout.rightMargin: AppTheme.pagePadding
             Layout.topMargin: AppTheme.pageTopSpacing
             spacing: AppTheme.sectionSpacing
+            visible: !root.summaryMode
 
             StatCard {
                 Layout.fillWidth: true
@@ -256,7 +307,9 @@ Item {
             Item {
                 Layout.fillWidth: true
                 Layout.fillHeight: true
-                Layout.preferredHeight: 3
+                // Multi-row grids (8-sensor loggers) need the chart pane to
+                // win vertical space; single-row grids keep the 3:2 split.
+                Layout.preferredHeight: root.summaryGridRows() > 1 ? 2 : 3
                 Layout.minimumHeight: 220
 
                 ElevatedPane {
@@ -265,9 +318,26 @@ Item {
 
                     SectionHeader {
                         Layout.fillWidth: true
-                        title: DashboardController.primaryLoggerName.length > 0
-                               ? qsTr("Primary logger · %1").arg(DashboardController.primaryLoggerName)
-                               : qsTr("Primary logger")
+                        title: qsTr("Show graph")
+
+                        ComboBox {
+                            id: graphLoggerCombo
+                            Layout.preferredWidth: 240
+                            Layout.maximumWidth: 320
+                            Layout.preferredHeight: 40
+                            Material.containerStyle: Material.Outlined
+                            model: DashboardController.graphLoggerOptions
+                            textRole: "name"
+                            valueRole: "id"
+                            font: AppTypography.bodyMedium
+                            displayText: count > 0
+                                         ? currentText
+                                         : qsTr("(No loggers)")
+                            onActivated: DashboardController.graphLoggerId =
+                                             Number(currentValue)
+                            Component.onCompleted: root.syncGraphLogger()
+                            onModelChanged: root.syncGraphLogger()
+                        }
 
                         AppButton {
                             kind: AppButton.Neutral
@@ -284,35 +354,71 @@ Item {
                     TableContentStack {
                         Layout.fillWidth: true
                         Layout.fillHeight: true
-                        hasData: DashboardController.primaryChartHasData
+                        hasData: root.summaryChartCount() > 0
                         emptyIconName: "showChart"
-                        emptyMessage: DashboardController.primaryLoggerId > 0
-                                      ? qsTr("Waiting for live data from the primary logger…")
+                        emptyMessage: DashboardController.graphLoggerId > 0
+                                      ? qsTr("Waiting for live data from the selected logger…")
                                       : qsTr("No logger selected. Add a logger, then pick the primary logger in Settings.")
 
-                        ChartTimeSeriesPanel {
-                            id: primaryChart
+                        Item {
                             anchors.fill: parent
-                            multiSeries: true
-                            series: DashboardController.primaryChartSeries
-                            axis: DashboardController.primaryChartAxis
-                            xLabelFormat: "HH:mm:ss"
-                            yLabelFormat: "%.1f"
-                            snapAt: function (mouseX, mouseY) {
-                                const pa = primaryChart.chart.plotArea
-                                if (!pa || pa.width <= 0 || pa.height <= 0)
-                                    return null
-                                const hit = DashboardController.snapPrimaryChart(
-                                    mouseX, mouseY, pa.x, pa.y, pa.width, pa.height)
-                                if (!hit || !hit.position)
-                                    return null
-                                const colors = AppColors.graphSeriesColors
-                                for (let i = 0; i < hit.valueRows.length; ++i) {
-                                    const si = hit.valueRows[i].seriesIndex
-                                    if (si !== undefined)
-                                        hit.valueRows[i].color = colors[si % colors.length]
+
+                            GridView {
+                                id: sensorChartGrid
+                                anchors.fill: parent
+                                anchors.rightMargin: sensorChartScroll.gutter
+                                clip: true
+                                boundsBehavior: Flickable.StopAtBounds
+                                // Compact multi-row tiles (real loggers have 8
+                                // ANALOG sensors); single-row grids can breathe.
+                                cellHeight: {
+                                    const rows = root.summaryGridRows()
+                                    const maxCell = rows > 1 ? 240 : 300
+                                    return Math.round(Math.max(112,
+                                        Math.min(maxCell, height / rows)))
                                 }
-                                return hit
+                                cellWidth: {
+                                    const cols = root.summaryGridColumns()
+                                    // Prefer filling the row when there are fewer
+                                    // sensors than fit, but keep very wide tiles
+                                    // from stretching a one- or two-sensor grid.
+                                    return Math.min(680, Math.max(1, Math.floor(width / cols)))
+                                }
+                                model: DashboardController.graphSensorCharts
+
+                                delegate: Item {
+                                    id: sensorChartCell
+                                    required property var modelData
+
+                                    width: sensorChartGrid.cellWidth
+                                    height: sensorChartGrid.cellHeight
+
+                                    SensorMiniChart {
+                                        anchors.fill: parent
+                                        anchors.margins: 3
+                                        label: sensorChartCell.modelData.label ?? ""
+                                        unit: sensorChartCell.modelData.unit ?? ""
+                                        latestText: sensorChartCell.modelData.latestText ?? ""
+                                        decimals: sensorChartCell.modelData.decimals ?? 2
+                                        points: sensorChartCell.modelData.points ?? []
+                                        hasThresholds: sensorChartCell.modelData.hasThresholds ?? false
+                                        hasMaxThreshold: sensorChartCell.modelData.hasMaxThreshold ?? false
+                                        thresholdMax: sensorChartCell.modelData.thresholdMax ?? 0
+                                        outOfRange: sensorChartCell.modelData.outOfRange ?? false
+                                        axisYMin: sensorChartCell.modelData.axisYMin ?? 0
+                                        axisYMax: sensorChartCell.modelData.axisYMax ?? 1
+                                        xMinMs: DashboardController.graphChartAxis.xMin ?? 0
+                                        xMaxMs: DashboardController.graphChartAxis.xMax ?? 0
+                                    }
+                                }
+                            }
+
+                            AppScrollBar {
+                                id: sensorChartScroll
+                                flickable: sensorChartGrid
+                                anchors.top: parent.top
+                                anchors.bottom: parent.bottom
+                                anchors.right: parent.right
                             }
                         }
                     }
@@ -321,8 +427,13 @@ Item {
 
             Item {
                 Layout.fillWidth: true
-                Layout.fillHeight: true
-                Layout.preferredHeight: 2
+                // Multi-row grids get the compact table pane and hand the
+                // remaining height to the chart tiles; a single row keeps
+                // the original 3:2 split so the page doesn't look empty.
+                Layout.fillHeight: root.summaryGridRows() <= 1
+                Layout.preferredHeight: root.summaryGridRows() > 1
+                                        ? root.overviewPaneHeight
+                                        : 2
                 Layout.minimumHeight: 160
 
                 ElevatedPane {
@@ -347,7 +458,7 @@ Item {
                         colMinimums: root.summaryColMinimums()
                         headerAlignRight: function(col) { return col > 0 }
                         emptyIconName: "server"
-                        emptyMessage: DashboardController.primaryLoggerId > 0
+                        emptyMessage: DashboardController.graphLoggerId > 0
                                       ? qsTr("No other loggers configured.")
                                       : qsTr("Add more loggers to see their live values here.")
 

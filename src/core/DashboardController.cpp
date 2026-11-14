@@ -37,6 +37,9 @@
 #include <QtConcurrent>
 #include <QSqlQuery>
 
+#include <algorithm>
+#include <cmath>
+
 namespace CentralLogger::Core {
 
 using CentralLogger::Utils::displayLevelForEvent;
@@ -270,9 +273,59 @@ qint64 DashboardController::resolvePrimaryLoggerId() const {
   return firstOnlineId != Defaults::kNoPrimaryLoggerId ? firstOnlineId : firstId;
 }
 
+qint64 DashboardController::graphLoggerId() const {
+  // An explicit dropdown choice wins while that logger still exists;
+  // otherwise the graph follows the configured primary logger.
+  if (m_graphLoggerId > 0 && m_loggers.indexOfLogger(m_graphLoggerId) >= 0) {
+    return m_graphLoggerId;
+  }
+  return m_primaryLoggerId;
+}
+
+void DashboardController::setGraphLoggerId(qint64 id) {
+  if (id > 0 && m_loggers.indexOfLogger(id) < 0) {
+    return;
+  }
+  const qint64 explicitId = id > 0 ? id : Defaults::kNoPrimaryLoggerId;
+  if (m_graphLoggerId == explicitId) {
+    return;
+  }
+  m_graphLoggerId = explicitId;
+  refreshSummary();
+}
+
+void DashboardController::refreshGraphLoggerOptions() {
+  QVariantList options;
+  const int n = m_loggers.rowCount();
+  options.reserve(n);
+  for (int i = 0; i < n; ++i) {
+    const QModelIndex idx = m_loggers.index(i, 0);
+    const qint64 id = m_loggers.data(idx, LoggerListModel::IdRole).toLongLong();
+    if (id <= 0) {
+      continue;
+    }
+    QVariantMap option;
+    option.insert(QStringLiteral("id"), id);
+    option.insert(QStringLiteral("name"),
+                  m_loggers.data(idx, LoggerListModel::NameRole).toString());
+    option.insert(QStringLiteral("online"),
+                  m_loggers.data(idx, LoggerListModel::OnlineRole).toBool());
+    option.insert(QStringLiteral("status"),
+                  m_loggers.data(idx, LoggerListModel::StatusRole).toString());
+    options.append(option);
+  }
+  if (options == m_graphLoggerOptions) {
+    return;
+  }
+  m_graphLoggerOptions = std::move(options);
+  emit graphLoggerOptionsChanged();
+}
+
 void DashboardController::refreshSummary() {
   const qint64 previousId = m_primaryLoggerId;
   const QString previousName = m_primaryLoggerName;
+  const qint64 previousGraphId = graphLoggerId();
+  const QString previousGraphName = m_graphLoggerName;
 
   m_primaryLoggerId = resolvePrimaryLoggerId();
 
@@ -289,32 +342,182 @@ void DashboardController::refreshSummary() {
     emit primaryLoggerChanged();
   }
 
-  refreshPrimaryChart();
+  // Drop an explicit graph choice whose logger was removed so the graph
+  // falls back to the configured primary logger.
+  if (m_graphLoggerId > 0 && m_loggers.indexOfLogger(m_graphLoggerId) < 0) {
+    m_graphLoggerId = Defaults::kNoPrimaryLoggerId;
+  }
+  const qint64 graphId = graphLoggerId();
+  QString graphName;
+  if (graphId > 0) {
+    const int row = m_loggers.indexOfLogger(graphId);
+    if (row >= 0) {
+      graphName = m_loggers.data(m_loggers.index(row, 0),
+                                 LoggerListModel::NameRole).toString();
+    }
+  }
+  m_graphLoggerName = graphName;
+  if (previousGraphId != graphId || previousGraphName != m_graphLoggerName) {
+    emit graphLoggerChanged();
+  }
+
+  refreshGraphLoggerOptions();
+  refreshGraphChart();
   refreshOverviewTable();
 }
 
-void DashboardController::refreshPrimaryChart() {
+void DashboardController::refreshGraphChart() {
+  const qint64 graphId = graphLoggerId();
   QVariantList series;
-  if (m_primaryLoggerId > 0) {
-    series = m_pollHistory.seriesForLogger(m_primaryLoggerId);
+  if (graphId > 0) {
+    series = m_pollHistory.seriesForLogger(graphId);
   }
+
+  // Stable grid order: by edge_sensor_id rather than QHash iteration order.
+  std::sort(series.begin(), series.end(),
+            [](const QVariant &a, const QVariant &b) {
+              return a.toMap()
+                         .value(QLatin1String(CentralLogger::Ui::kChartEdgeSensorId))
+                         .toInt()
+                   < b.toMap()
+                         .value(QLatin1String(CentralLogger::Ui::kChartEdgeSensorId))
+                         .toInt();
+            });
+
   const bool hasData = !series.isEmpty();
   const QVariantMap axis = Core::computeTrendingAxisRange(series);
 
-  if (series == m_primaryChartSeries && axis == m_primaryChartAxis &&
-      hasData == m_primaryChartHasData) {
+  // Catalog for the graph logger — thresholds + active flag + unit.
+  QHash<int, const Data::LoggerSensor *> catalogByEdge;
+  const QVector<Data::LoggerSensor> catalog = m_catalogCache.value(graphId);
+  for (const auto &sensor : catalog) {
+    if (sensor.sensorType
+        == QLatin1String(CentralLogger::Sensor::kTypeAnalog)) {
+      catalogByEdge.insert(sensor.edgeSensorId, &sensor);
+    }
+  }
+
+  QVariantList sensorCharts;
+  sensorCharts.reserve(series.size());
+  for (const auto &entry : series) {
+    const QVariantMap s = entry.toMap();
+    const int edgeSensorId =
+        s.value(QLatin1String(CentralLogger::Ui::kChartEdgeSensorId)).toInt();
+    const Data::LoggerSensor *cat = catalogByEdge.value(edgeSensorId, nullptr);
+    if (cat && !cat->active) {
+      continue;
+    }
+    const QVariantList points =
+        s.value(QLatin1String(CentralLogger::Ui::kChartPoints)).toList();
+    if (points.isEmpty()) {
+      continue;
+    }
+
+    const int decimals = std::clamp(
+        s.value(QLatin1String(CentralLogger::Ui::kChartDecimals)).toInt(),
+        CentralLogger::Defaults::kDecimalsMin,
+        CentralLogger::Defaults::kDecimalsMax);
+    const double latest =
+        points.constLast().toMap()
+            .value(QLatin1String(CentralLogger::Ui::kChartY)).toDouble();
+
+    const bool hasMin = cat && cat->minThreshold.has_value();
+    const bool hasMax = cat && cat->maxThreshold.has_value();
+    const double minThreshold = hasMin ? *cat->minThreshold : 0.0;
+    const double maxThreshold = hasMax ? *cat->maxThreshold : 0.0;
+    // Same boundary rule as SensorMerger::checkThresholdBreach.
+    const bool outOfRange = (hasMin && latest <= minThreshold)
+                            || (hasMax && latest >= maxThreshold);
+
+    double lo = latest;
+    double hi = latest;
+    for (const auto &pv : points) {
+      const double v =
+          pv.toMap().value(QLatin1String(CentralLogger::Ui::kChartY)).toDouble();
+      lo = std::min(lo, v);
+      hi = std::max(hi, v);
+    }
+    // Data-driven window: the mini chart must use the full tile height for
+    // the trend. A limit far away from the current readings would flatten
+    // the line, so the axis only expands to include the max threshold when
+    // it sits close to the data; otherwise SensorMiniChart draws an
+    // off-scale marker. The min threshold is not drawn on the tile.
+    double span = hi - lo;
+    if (span <= 0.0) {
+      const double resolution = std::pow(10.0, -decimals);
+      span = std::max(std::abs(hi) * 0.02, resolution * 10.0);
+    }
+    const double pad = span * 0.15;
+    double axisYMin = lo - pad;
+    double axisYMax = hi + pad;
+    if (hasMax && maxThreshold >= axisYMin
+        && maxThreshold <= axisYMax + span * 2.0) {
+      axisYMax = std::max(axisYMax, maxThreshold + pad);
+    }
+
+    QVariantMap chart;
+    chart.insert(QLatin1String(CentralLogger::Ui::kChartEdgeSensorId),
+                 edgeSensorId);
+    chart.insert(QLatin1String(CentralLogger::Ui::kChartLabel),
+                 s.value(QLatin1String(CentralLogger::Ui::kChartLabel)));
+    chart.insert(QLatin1String(CentralLogger::Ui::kChartUnit),
+                 cat ? cat->unit : QString{});
+    chart.insert(QLatin1String(CentralLogger::Ui::kChartDecimals), decimals);
+    chart.insert(QLatin1String(CentralLogger::Ui::kChartPoints), points);
+    chart.insert(QLatin1String(CentralLogger::Ui::kChartLatest), latest);
+    chart.insert(QLatin1String(CentralLogger::Ui::kChartLatestText),
+                 QString::number(latest, 'f', decimals));
+    chart.insert(QLatin1String(CentralLogger::Ui::kChartHasThresholds),
+                 hasMin || hasMax);
+    chart.insert(QLatin1String(CentralLogger::Ui::kChartHasMinThreshold), hasMin);
+    chart.insert(QLatin1String(CentralLogger::Ui::kChartHasMaxThreshold), hasMax);
+    chart.insert(QLatin1String(CentralLogger::Ui::kChartThresholdMin),
+                 minThreshold);
+    chart.insert(QLatin1String(CentralLogger::Ui::kChartThresholdMax),
+                 maxThreshold);
+    chart.insert(QLatin1String(CentralLogger::Ui::kChartOutOfRange), outOfRange);
+    chart.insert(QLatin1String(CentralLogger::Ui::kChartAxisYMin), axisYMin);
+    chart.insert(QLatin1String(CentralLogger::Ui::kChartAxisYMax), axisYMax);
+    sensorCharts.append(chart);
+  }
+
+  if (series == m_graphChartSeries && axis == m_graphChartAxis &&
+      hasData == m_graphChartHasData &&
+      sensorCharts == m_graphSensorCharts) {
     return;
   }
-  m_primaryChartSeries  = std::move(series);
-  m_primaryChartAxis    = axis;
-  m_primaryChartHasData = hasData;
-  emit primaryChartChanged();
+  m_graphChartSeries  = std::move(series);
+  m_graphChartAxis    = axis;
+  m_graphChartHasData = hasData;
+  m_graphSensorCharts = std::move(sensorCharts);
+  emit graphChartChanged();
+}
+
+void DashboardController::refreshLoggerCatalog(qint64 loggerId) {
+  if (!m_db || !m_db->isOpen() || loggerId <= 0) {
+    return;
+  }
+  Data::SensorCatalogRepository repo(m_db->connection());
+  QString error;
+  const auto rows = repo.listByLoggerId(loggerId, &error);
+  if (!error.isEmpty()) {
+    qWarning() << "DashboardController::refreshLoggerCatalog:" << error;
+    return;
+  }
+  m_catalogCache.insert(loggerId, rows);
+  // The bridge caches the catalog per logger; drop it so the next poll
+  // recomputes ALARM with the new thresholds.
+  invalidateBridgeCatalogCache(loggerId);
+  if (loggerId == graphLoggerId()) {
+    refreshGraphChart();
+  }
 }
 
 void DashboardController::refreshOverviewTable() {
   QVector<OverviewRow> rows;
   QMap<int, QString> namesByEdge;
   QMap<int, QString> unitsByEdge;
+  const qint64 graphId = graphLoggerId();
 
   const int n = m_loggers.rowCount();
   rows.reserve(n);
@@ -322,7 +525,7 @@ void DashboardController::refreshOverviewTable() {
   for (int i = 0; i < n; ++i) {
     const QModelIndex idx = m_loggers.index(i, 0);
     const qint64 id = m_loggers.data(idx, LoggerListModel::IdRole).toLongLong();
-    if (id <= 0 || id == m_primaryLoggerId) {
+    if (id <= 0 || id == graphId) {
       continue;
     }
 
@@ -362,15 +565,15 @@ void DashboardController::refreshOverviewTable() {
   m_overviewTable.setData(rows, columns);
 }
 
-QVariantMap DashboardController::snapPrimaryChart(double mouseX,
-                                                 double mouseY,
-                                                 double plotX,
-                                                 double plotY,
-                                                 double plotW,
-                                                 double plotH) const {
-  const double xMin = m_primaryChartAxis.value(CentralLogger::Ui::kChartXMin).toDouble();
-  const double xMax = m_primaryChartAxis.value(CentralLogger::Ui::kChartXMax).toDouble();
-  return Core::snapTrendingChart(m_primaryChartSeries, xMin, xMax, plotX, plotY,
+QVariantMap DashboardController::snapGraphChart(double mouseX,
+                                                double mouseY,
+                                                double plotX,
+                                                double plotY,
+                                                double plotW,
+                                                double plotH) const {
+  const double xMin = m_graphChartAxis.value(CentralLogger::Ui::kChartXMin).toDouble();
+  const double xMax = m_graphChartAxis.value(CentralLogger::Ui::kChartXMax).toDouble();
+  return Core::snapTrendingChart(m_graphChartSeries, xMin, xMax, plotX, plotY,
                                  plotW, plotH, mouseX, mouseY);
 }
 
@@ -596,6 +799,9 @@ void DashboardController::onSnapshotApplied(
     // Audit H-A: catalog rows arrive pre-fetched from the bridge thread;
     // the UI thread no longer touches the DB on this path.
     m_sensorCache.apply(snapshot, catalogRows);
+    if (!catalogRows.isEmpty()) {
+      m_catalogCache.insert(loggerId, catalogRows);
+    }
     if (m_sensorTable.loggerId() == loggerId) {
       m_sensorTable.setRows(m_sensorCache.rowsFor(loggerId));
     }
@@ -623,14 +829,16 @@ void DashboardController::onSnapshotApplied(
   // Task 14: accumulate analog trending data for LoggerDetailView chart.
   m_pollHistory.append(snapshot);
 
-  // Dashboard summary: refresh the primary chart only for the primary logger;
+  // Dashboard summary: refresh the graph only for the selected logger;
   // the secondary-logger table follows every snapshot (and status changes).
-  if (m_primaryLoggerId <= 0) {
+  const qint64 graphId = graphLoggerId();
+  if (graphId <= 0) {
     refreshSummary();
   } else {
-    if (loggerId == m_primaryLoggerId) {
-      refreshPrimaryChart();
+    if (loggerId == graphId) {
+      refreshGraphChart();
     }
+    refreshGraphLoggerOptions();
     refreshOverviewTable();
   }
 
@@ -703,12 +911,16 @@ void DashboardController::cleanupRemovedLogger(qint64 id) {
   m_sensorCache.remove(id);
   m_pollHistory.remove(id);
   m_lastStatus.remove(id);
+  m_catalogCache.remove(id);
   invalidateBridgeCatalogCache(id);
   if (m_appState) {
     m_appState->removeLogger(id);
   }
   if (m_sensorTable.loggerId() == id) {
     m_sensorTable.setLoggerId(-1);
+  }
+  if (m_graphLoggerId == id) {
+    m_graphLoggerId = Defaults::kNoPrimaryLoggerId;
   }
   refreshSummary();
 }

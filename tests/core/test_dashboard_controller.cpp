@@ -8,6 +8,7 @@
 #include "data/repositories/EventRepository.h"
 #include "data/repositories/SensorCatalogRepository.h"
 #include "network/modbus/ModbusTypes.h"
+#include "utils/UiConstants.h"
 
 #include <QDateTime>
 #include <QString>
@@ -68,6 +69,8 @@ private slots:
     void buildEditPatchOmitsUnchangedStationCode();
     void buildEditPatchNeverPostsStationCode();
     void summaryResolvesPrimaryLoggerAndBuildsOverview();
+    void summaryBuildsPerSensorMiniCharts();
+    void summaryGraphLoggerDropdownSwitchesChartAndOverview();
 };
 
 void TestDashboardController::addLoggerInsertsAndUpdatesModel()
@@ -348,8 +351,8 @@ void TestDashboardController::summaryResolvesPrimaryLoggerAndBuildsOverview()
     // Primary snapshot feeds the real-time chart, not the overview table.
     dash.onSnapshotApplied(makeSnapshot(secondId, 12.5f), 1,
                            catalog.listByLoggerId(secondId));
-    QVERIFY(dash.primaryChartHasData());
-    QCOMPARE(dash.primaryChartSeries().size(), 1);
+    QVERIFY(dash.graphChartHasData());
+    QCOMPARE(dash.graphChartSeries().size(), 1);
     QCOMPARE(overview->columnCount(), 1); // secondary logger has no snapshot yet
 
     // Secondary snapshot fills the dynamic sensor column.
@@ -361,6 +364,246 @@ void TestDashboardController::summaryResolvesPrimaryLoggerAndBuildsOverview()
     QCOMPARE(overview->data(overview->index(0, 1),
                             LoggerOverviewTableModel::ValueRole).toString(),
              QStringLiteral("7.25"));
+}
+
+// Dashboard summary mode draws one mini chart per ANALOG sensor. This covers
+// the C++ side: which sensors get a tile, the threshold flags used to tint it,
+// and the data-driven axis window that keeps the trend filling the tile.
+void TestDashboardController::summaryBuildsPerSensorMiniCharts()
+{
+    Database db;
+    QVERIFY(db.open(uniqueConnectionName("mini"), QStringLiteral(":memory:")));
+
+    DashboardController dash{nullptr};
+    LoggerFormController form{nullptr};
+    SettingsController settings{nullptr};
+
+    dash.setDatabase(&db);
+    form.setDatabase(&db);
+    form.setDashboardController(&dash);
+    settings.setDatabase(&db);
+    settings.load();
+    dash.setSettingsController(&settings);
+
+    const qint64 loggerId = form.addLogger(QStringLiteral("TRAM-M1"),
+                                           QStringLiteral("Mini"),
+                                           QStringLiteral("192.168.1.12"),
+                                           5020, 8080, QString());
+    QVERIFY2(loggerId > 0, qPrintable(form.lastError()));
+
+    SensorCatalogRepository catalog(db.connection());
+    auto addSensor = [&catalog, loggerId](int edgeId, const char *type,
+                                          const QString &name, const QString &unit,
+                                          std::optional<double> min,
+                                          std::optional<double> max,
+                                          bool active) {
+        LoggerSensor s;
+        s.loggerId     = loggerId;
+        s.edgeSensorId = edgeId;
+        s.sensorType   = QString::fromLatin1(type);
+        s.name         = name;
+        s.unit         = unit;
+        s.minThreshold = min;
+        s.maxThreshold = max;
+        s.decimals     = 2;
+        s.active       = active;
+        QVERIFY(catalog.upsert(s));
+    };
+    addSensor(1, "ANALOG", QStringLiteral("pH"), QStringLiteral("pH"),
+              6.0, 9.0, true);
+    addSensor(2, "ANALOG", QStringLiteral("TSS"), QStringLiteral("mg/L"),
+              0.0, 100.0, false); // inactive → no tile
+    addSensor(3, "ANALOG", QStringLiteral("COD"), QStringLiteral("mg/L"),
+              std::nullopt, std::nullopt, true); // no thresholds → neutral tile
+    addSensor(4, "ANALOG", QStringLiteral("Độ đục"), QStringLiteral("NTU"),
+              std::nullopt, 100.0, true); // distant max → off-scale marker
+    addSensor(0, "DI", QStringLiteral("Bơm"), QStringLiteral(""),
+              std::nullopt, std::nullopt, true); // digital → no tile
+
+    settings.setPrimaryLoggerId(loggerId);
+    QCOMPARE(dash.primaryLoggerId(), loggerId);
+
+    PollSnapshot snap;
+    snap.loggerId   = loggerId;
+    snap.success    = true;
+    snap.measuredAt = QDateTime::currentDateTimeUtc();
+    AnalogSample outOfRange;
+    outOfRange.edgeSensorId = 1;
+    outOfRange.flags        = 0x01; // valid
+    outOfRange.value        = 9.5f; // >= max (9.0)
+    snap.analogs.append(outOfRange);
+    AnalogSample noThresholds;
+    noThresholds.edgeSensorId = 3;
+    noThresholds.flags        = 0x01;
+    noThresholds.value        = 42.0f;
+    snap.analogs.append(noThresholds);
+    AnalogSample distantLimit;
+    distantLimit.edgeSensorId = 4;
+    distantLimit.flags        = 0x01;
+    distantLimit.value        = 28.0f; // max 100 is far above the data
+    snap.analogs.append(distantLimit);
+
+    dash.onSnapshotApplied(snap, 1, catalog.listByLoggerId(loggerId));
+
+    // One tile per active ANALOG sensor, ordered by edge_sensor_id.
+    const QVariantList charts = dash.graphSensorCharts();
+    QCOMPARE(charts.size(), 3);
+
+    const QVariantMap chart = charts.at(0).toMap();
+    QCOMPARE(chart.value(QLatin1String(CentralLogger::Ui::kChartEdgeSensorId)).toInt(), 1);
+    QCOMPARE(chart.value(QLatin1String(CentralLogger::Ui::kChartLabel)).toString(),
+             QStringLiteral("pH"));
+    QCOMPARE(chart.value(QLatin1String(CentralLogger::Ui::kChartUnit)).toString(),
+             QStringLiteral("pH"));
+    QCOMPARE(chart.value(QLatin1String(CentralLogger::Ui::kChartLatestText)).toString(),
+             QStringLiteral("9.50"));
+    QCOMPARE(chart.value(QLatin1String(CentralLogger::Ui::kChartHasThresholds)).toBool(),
+             true);
+    QCOMPARE(chart.value(QLatin1String(CentralLogger::Ui::kChartHasMaxThreshold)).toBool(),
+             true);
+    QCOMPARE(chart.value(QLatin1String(CentralLogger::Ui::kChartThresholdMax)).toDouble(),
+             9.0);
+    QCOMPARE(chart.value(QLatin1String(CentralLogger::Ui::kChartOutOfRange)).toBool(),
+             true);
+    // The window is data-driven so the trend fills the tile. The only sample
+    // is 9.5, far above the 9.0 limit, so the limit is off-scale (the tile
+    // shows a marker) instead of stretching the axis down to it.
+    QVERIFY(chart.value(QLatin1String(CentralLogger::Ui::kChartAxisYMax)).toDouble() > 9.5);
+    QVERIFY(chart.value(QLatin1String(CentralLogger::Ui::kChartAxisYMin)).toDouble() < 9.5);
+    QVERIFY(chart.value(QLatin1String(CentralLogger::Ui::kChartAxisYMin)).toDouble() > 9.0);
+    QVERIFY(!chart.value(QLatin1String(CentralLogger::Ui::kChartPoints))
+                 .toList()
+                 .isEmpty());
+
+    // A sensor without thresholds stays neutral (no tint, no yellow line).
+    const QVariantMap neutral = charts.at(1).toMap();
+    QCOMPARE(neutral.value(QLatin1String(CentralLogger::Ui::kChartEdgeSensorId)).toInt(), 3);
+    QCOMPARE(neutral.value(QLatin1String(CentralLogger::Ui::kChartHasThresholds)).toBool(),
+             false);
+    QCOMPARE(neutral.value(QLatin1String(CentralLogger::Ui::kChartHasMaxThreshold)).toBool(),
+             false);
+    QCOMPARE(neutral.value(QLatin1String(CentralLogger::Ui::kChartOutOfRange)).toBool(),
+             false);
+
+    // A max limit far above the readings must not stretch the axis: the
+    // trend keeps the full tile height and the limit becomes a marker.
+    const QVariantMap distant = charts.at(2).toMap();
+    QCOMPARE(distant.value(QLatin1String(CentralLogger::Ui::kChartEdgeSensorId)).toInt(), 4);
+    QCOMPARE(distant.value(QLatin1String(CentralLogger::Ui::kChartHasMaxThreshold)).toBool(),
+             true);
+    const double distantAxisMax =
+        distant.value(QLatin1String(CentralLogger::Ui::kChartAxisYMax)).toDouble();
+    QVERIFY(distantAxisMax > 28.0);
+    QVERIFY(distantAxisMax < 40.0); // not stretched up to the 100 limit
+}
+
+// The summary "Show graph" dropdown must switch both the mini-chart tiles and
+// the "Other loggers" table (the selected logger is excluded from the table).
+void TestDashboardController::summaryGraphLoggerDropdownSwitchesChartAndOverview()
+{
+    Database db;
+    QVERIFY(db.open(uniqueConnectionName("graphpick"), QStringLiteral(":memory:")));
+
+    DashboardController dash{nullptr};
+    LoggerFormController form{nullptr};
+    SettingsController settings{nullptr};
+
+    dash.setDatabase(&db);
+    form.setDatabase(&db);
+    form.setDashboardController(&dash);
+    settings.setDatabase(&db);
+    settings.load();
+    dash.setSettingsController(&settings);
+
+    const qint64 firstId = form.addLogger(QStringLiteral("TRAM-G1"),
+                                          QStringLiteral("Alpha"),
+                                          QStringLiteral("192.168.1.20"),
+                                          5020, 8080, QString());
+    const qint64 secondId = form.addLogger(QStringLiteral("TRAM-G2"),
+                                           QStringLiteral("Beta"),
+                                           QStringLiteral("192.168.1.21"),
+                                           5020, 8080, QString());
+    QVERIFY2(firstId > 0, qPrintable(form.lastError()));
+    QVERIFY2(secondId > 0, qPrintable(form.lastError()));
+
+    SensorCatalogRepository catalog(db.connection());
+    auto addAnalog = [&catalog](qint64 loggerId, const QString &name) {
+        LoggerSensor s;
+        s.loggerId     = loggerId;
+        s.edgeSensorId = 1;
+        s.sensorType   = QStringLiteral("ANALOG");
+        s.name         = name;
+        s.unit         = QStringLiteral("mg/L");
+        s.decimals     = 2;
+        QVERIFY(catalog.upsert(s));
+    };
+    addAnalog(firstId, QStringLiteral("COD"));
+    addAnalog(secondId, QStringLiteral("TSS"));
+
+    settings.setPrimaryLoggerId(firstId);
+    QCOMPARE(dash.primaryLoggerId(), firstId);
+    QCOMPARE(dash.graphLoggerId(), firstId); // defaults to primary
+    QCOMPARE(dash.graphLoggerName(), QStringLiteral("Alpha"));
+
+    // Dropdown lists every configured logger, not just the secondary ones.
+    const QVariantList options = dash.graphLoggerOptions();
+    QCOMPARE(options.size(), 2);
+    QCOMPARE(options.at(0).toMap().value(QStringLiteral("id")).toLongLong(), firstId);
+    QCOMPARE(options.at(0).toMap().value(QStringLiteral("name")).toString(),
+             QStringLiteral("Alpha"));
+    QCOMPARE(options.at(1).toMap().value(QStringLiteral("id")).toLongLong(), secondId);
+
+    auto makeSnapshot = [](qint64 loggerId, float value) {
+        PollSnapshot snap;
+        snap.loggerId   = loggerId;
+        snap.success    = true;
+        snap.measuredAt = QDateTime::currentDateTimeUtc();
+        AnalogSample analog;
+        analog.edgeSensorId = 1;
+        analog.flags        = 0x01; // valid
+        analog.value        = value;
+        snap.analogs.append(analog);
+        return snap;
+    };
+    dash.onSnapshotApplied(makeSnapshot(firstId, 11.0f), 1,
+                           catalog.listByLoggerId(firstId));
+    dash.onSnapshotApplied(makeSnapshot(secondId, 22.0f), 1,
+                           catalog.listByLoggerId(secondId));
+
+    // Default: Alpha is graphed, Beta is the only overview row.
+    auto *overview = dash.overviewTable();
+    QCOMPARE(overview->rowCount(), 1);
+    QCOMPARE(overview->data(overview->index(0, 0)).toString(),
+             QStringLiteral("Beta"));
+    QCOMPARE(dash.graphSensorCharts().size(), 1);
+    QCOMPARE(dash.graphSensorCharts().at(0).toMap()
+                 .value(QLatin1String(CentralLogger::Ui::kChartLabel)).toString(),
+             QStringLiteral("COD"));
+
+    // Picking Beta moves the graph to Beta and swaps the overview to Alpha.
+    dash.setGraphLoggerId(secondId);
+    QCOMPARE(dash.primaryLoggerId(), firstId); // primary setting unchanged
+    QCOMPARE(dash.graphLoggerId(), secondId);
+    QCOMPARE(dash.graphLoggerName(), QStringLiteral("Beta"));
+    QCOMPARE(dash.graphSensorCharts().size(), 1);
+    QCOMPARE(dash.graphSensorCharts().at(0).toMap()
+                 .value(QLatin1String(CentralLogger::Ui::kChartLabel)).toString(),
+             QStringLiteral("TSS"));
+    QCOMPARE(overview->rowCount(), 1);
+    QCOMPARE(overview->data(overview->index(0, 0)).toString(),
+             QStringLiteral("Alpha"));
+
+    // An explicit pick survives a primary-logger setting change.
+    settings.setPrimaryLoggerId(secondId);
+    QCOMPARE(dash.primaryLoggerId(), secondId);
+    QCOMPARE(dash.graphLoggerId(), secondId);
+
+    // Removing the selected logger falls back to the configured primary
+    // logger and clears the explicit selection.
+    QVERIFY(form.removeLogger(secondId));
+    QCOMPARE(dash.graphLoggerId(), firstId);
+    QCOMPARE(dash.graphLoggerName(), QStringLiteral("Alpha"));
+    QCOMPARE(dash.graphLoggerOptions().size(), 1);
 }
 
 QTEST_MAIN(TestDashboardController)

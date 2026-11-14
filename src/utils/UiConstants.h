@@ -70,6 +70,18 @@ inline constexpr char kChartCaptionText[]      = "captionText";
 inline constexpr char kChartValueRows[]        = "valueRows";
 inline constexpr char kChartText[]             = "text";
 inline constexpr char kChartSeriesIndex[]      = "seriesIndex";
+// Summary per-sensor mini charts (DashboardController.graphSensorCharts).
+inline constexpr char kChartUnit[]             = "unit";
+inline constexpr char kChartLatest[]           = "latest";
+inline constexpr char kChartLatestText[]       = "latestText";
+inline constexpr char kChartHasThresholds[]    = "hasThresholds";
+inline constexpr char kChartThresholdMin[]     = "thresholdMin";
+inline constexpr char kChartThresholdMax[]     = "thresholdMax";
+inline constexpr char kChartHasMinThreshold[]  = "hasMinThreshold";
+inline constexpr char kChartHasMaxThreshold[]  = "hasMaxThreshold";
+inline constexpr char kChartOutOfRange[]       = "outOfRange";
+inline constexpr char kChartAxisYMin[]         = "axisYMin";
+inline constexpr char kChartAxisYMax[]         = "axisYMax";
 
 // --- Form / settings QML keys (QVariantMap from LoggerFormController) -------
 inline constexpr char kFormKeyCentralPollIntervalS[] = "centralPollIntervalS";

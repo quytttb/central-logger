@@ -33,6 +33,7 @@ qt_add_qml_module(central_logger_components
         # chart
         chart/ChartTimeSeriesPanel.qml
         chart/ChartHoverTooltip.qml
+        chart/SensorMiniChart.qml
         # logger
         logger/LoggerFormDialog.qml
         logger/RecentEventListItem.qml

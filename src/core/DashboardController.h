@@ -59,12 +59,29 @@ class DashboardController : public QObject
                    READ recentEvents CONSTANT)
     Q_PROPERTY(qint64 primaryLoggerId READ primaryLoggerId NOTIFY primaryLoggerChanged)
     Q_PROPERTY(QString primaryLoggerName READ primaryLoggerName NOTIFY primaryLoggerChanged)
-    Q_PROPERTY(QVariantList primaryChartSeries READ primaryChartSeries
-                   NOTIFY primaryChartChanged)
-    Q_PROPERTY(QVariantMap primaryChartAxis READ primaryChartAxis
-                   NOTIFY primaryChartChanged)
-    Q_PROPERTY(bool primaryChartHasData READ primaryChartHasData
-                   NOTIFY primaryChartChanged)
+    /// Logger currently plotted on the summary view. Defaults to the
+    /// configured primary logger until the user picks another one in the
+    /// "Show graph" dropdown (explicit choice wins until that logger is
+    /// removed).
+    Q_PROPERTY(qint64 graphLoggerId READ graphLoggerId WRITE setGraphLoggerId
+                   NOTIFY graphLoggerChanged)
+    Q_PROPERTY(QString graphLoggerName READ graphLoggerName
+                   NOTIFY graphLoggerChanged)
+    /// Dropdown model: [{ id, name, online, status }] for every configured
+    /// logger. Rebuilt whenever the logger catalog changes.
+    Q_PROPERTY(QVariantList graphLoggerOptions READ graphLoggerOptions
+                   NOTIFY graphLoggerOptionsChanged)
+    Q_PROPERTY(QVariantList graphChartSeries READ graphChartSeries
+                   NOTIFY graphChartChanged)
+    Q_PROPERTY(QVariantMap graphChartAxis READ graphChartAxis
+                   NOTIFY graphChartChanged)
+    Q_PROPERTY(bool graphChartHasData READ graphChartHasData
+                   NOTIFY graphChartChanged)
+    /// Summary mode: one entry per ANALOG sensor of the graph logger.
+    /// Each map carries label/unit/points/latest + threshold state used by
+    /// the per-sensor mini charts (see SensorMiniChart.qml).
+    Q_PROPERTY(QVariantList graphSensorCharts READ graphSensorCharts
+                   NOTIFY graphChartChanged)
     Q_PROPERTY(QVariantList readingsChartPlotPoints READ readingsChartPlotPoints
                    NOTIFY readingsChartChanged)
     Q_PROPERTY(QVariantMap readingsChartAxis READ readingsChartAxis
@@ -86,9 +103,14 @@ public:
     RecentEventsModel         *recentEvents() { return &m_recentEvents; }
     qint64        primaryLoggerId() const { return m_primaryLoggerId; }
     QString       primaryLoggerName() const { return m_primaryLoggerName; }
-    QVariantList  primaryChartSeries() const { return m_primaryChartSeries; }
-    QVariantMap   primaryChartAxis() const { return m_primaryChartAxis; }
-    bool          primaryChartHasData() const { return m_primaryChartHasData; }
+    qint64        graphLoggerId() const;
+    QString       graphLoggerName() const { return m_graphLoggerName; }
+    QVariantList  graphLoggerOptions() const { return m_graphLoggerOptions; }
+    void          setGraphLoggerId(qint64 id);
+    QVariantList  graphChartSeries() const { return m_graphChartSeries; }
+    QVariantMap   graphChartAxis() const { return m_graphChartAxis; }
+    bool          graphChartHasData() const { return m_graphChartHasData; }
+    QVariantList  graphSensorCharts() const { return m_graphSensorCharts; }
     QVariantList readingsChartPlotPoints() const { return m_readingsChartPlotPoints; }
     QVariantMap  readingsChartAxis() const { return m_readingsChartAxis; }
     bool         readingsChartHasData() const { return m_readingsChartHasData; }
@@ -124,13 +146,18 @@ public slots:
     /// Called by DashboardView when switching to the summary mode.
     void refreshSummary();
 
-    /// Tooltip snap for the primary-logger summary chart. Empty map = miss.
-    Q_INVOKABLE QVariantMap snapPrimaryChart(double mouseX,
-                                             double mouseY,
-                                             double plotX,
-                                             double plotY,
-                                             double plotW,
-                                             double plotH) const;
+    /// Re-read the sensor catalog for @p loggerId into the summary cache and
+    /// drop the bridge's cached catalog so the next poll re-evaluates ALARM
+    /// with the new thresholds. Called by ThresholdController after Save.
+    void refreshLoggerCatalog(qint64 loggerId);
+
+    /// Tooltip snap for the summary graph. Empty map = miss.
+    Q_INVOKABLE QVariantMap snapGraphChart(double mouseX,
+                                           double mouseY,
+                                           double plotX,
+                                           double plotY,
+                                           double plotW,
+                                           double plotH) const;
 
     /// Purge sensor_reading rows older than `data_retention_days`.
     /// Emits retentionPurgeCompleted(deleted) and refreshes the
@@ -165,8 +192,10 @@ public slots:
 
 signals:
     void readingsChartChanged();
-    void primaryChartChanged();
+    void graphChartChanged();
     void primaryLoggerChanged();
+    void graphLoggerChanged();
+    void graphLoggerOptionsChanged();
     void retentionPurgeCompleted(int deletedCount);
     /// Emitted on the main thread after the snapshot cache has been
     /// updated for @p loggerId. Task 8 wires this to LoggerDetailViewModel.
@@ -189,7 +218,9 @@ private:
     /// Configured primary logger if it still exists; otherwise the first
     /// online logger (or first logger when none is online); 0 when empty.
     qint64 resolvePrimaryLoggerId() const;
-    void   refreshPrimaryChart();
+    /// Rebuild the logger dropdown from the current logger list.
+    void   refreshGraphLoggerOptions();
+    void   refreshGraphChart();
     void   refreshOverviewTable();
 
     Data::Database        *m_db       = nullptr;
@@ -206,9 +237,17 @@ private:
     QHash<qint64, QString> m_lastStatus;
     qint64                 m_primaryLoggerId = Defaults::kNoPrimaryLoggerId;
     QString                m_primaryLoggerName;
-    QVariantList           m_primaryChartSeries;
-    QVariantMap            m_primaryChartAxis;
-    bool                   m_primaryChartHasData = false;
+    /// 0 = follow the configured primary logger; >0 = explicit dropdown pick.
+    qint64                 m_graphLoggerId = Defaults::kNoPrimaryLoggerId;
+    QString                m_graphLoggerName;
+    QVariantList           m_graphLoggerOptions;
+    QVariantList           m_graphChartSeries;
+    QVariantMap            m_graphChartAxis;
+    bool                   m_graphChartHasData = false;
+    QVariantList           m_graphSensorCharts;
+    /// Latest catalog rows per logger (from the bridge snapshot or a manual
+    /// threshold refresh). Used by the summary mini charts for thresholds.
+    QHash<qint64, QVector<Data::LoggerSensor>> m_catalogCache;
     QVariantList           m_readingsChartPlotPoints;
     QVariantMap            m_readingsChartAxis;
     bool                   m_readingsChartHasData = false;
