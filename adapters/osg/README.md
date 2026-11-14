@@ -7,13 +7,18 @@ logger. Vendor-independent v1 servers and `EdgeSource` live in
 `adapters/common/`; an adapter for a different vendor can implement that
 interface without changing OSG-specific code.
 
-**Verification status:** a permitted, time-limited test against the actual
-OSG device confirmed that `/api/sensors` and `/api/data/realtime` return
-arrays under `data`, with six IDs: 159, 160, 161, 162, 164 and 165. The adapter
-served those IDs to a local Modbus client and returned them in REST config.
-The meanings of `status`, `syncing`, `alert`, `enabled` and `time` still need
-manufacturer confirmation; `status` in catalog and realtime was not always
-the same. The parser deliberately rejects unrecognized response envelopes,
+**Verification status:** permitted, time-limited tests against the actual
+OSG devices confirmed `/api/sensors` and `/api/data/realtime` return arrays
+under `data`. `.17` exposes six IDs — 159 O2 (`%v`), 160 CO, 161 NO,
+162 SO2, 164 NO2, 165 NOx (all `mg/Nm³` except O2) — and `.16` exposes seven
+IDs — 164 O2 (`%V`), 165 CO, 166 NO, 167 `NO2 CONVERTER`, 168 SO2, 169 H2O
+(`%`), 170 `mA` (empty unit). The adapter served those IDs to a local Modbus
+client and returned them in REST config. Catalog `status` and realtime
+`status` disagree on both devices (e.g. `.17` ID 164 catalog 3 vs realtime 2;
+`.16` catalog all 3 vs realtime all 0), and `.17` uses lowercase `%v` while
+`.16` uses uppercase `%V`, so per-device quality policies and expected units
+must stay separate. The meanings of `status`, `syncing`, `alert`, `enabled`
+and `time` still need manufacturer confirmation. The parser deliberately rejects unrecognized response envelopes,
 invalid IDs and duplicate IDs. Do not treat this adapter as production-ready
 before completing the hardware checklist below.
 
