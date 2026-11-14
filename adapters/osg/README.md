@@ -58,11 +58,15 @@ only `username` and `password`. Separately generate an adapter token:
 
 ```bash
 umask 077
-openssl rand -hex 32 > /tmp/opencode/osg-adapter-token
+TOKEN_FILE=$(mktemp /tmp/opencode/osg-adapter-token.XXXXXX)
+openssl rand -hex 32 > "$TOKEN_FILE"
+printf 'Adapter token file: %s\n' "$TOKEN_FILE"
 ```
 
 Restrict both files to mode `0600`. `/tmp` contents may be removed at reboot;
-use an appropriately protected persistent location when appropriate.
+use an appropriately protected persistent location when appropriate. Create
+the adapter token once and reuse it in Central; generating a different token
+requires updating Central's saved API token.
 
 Example, substituting paths and a verified host:
 
