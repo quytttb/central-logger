@@ -175,29 +175,26 @@ QString applyAnalogStatus(SensorLiveRow &row, bool active, bool rtuConnected,
   row.attachDiTypeLabels = attachDiLabels;
   row.alarmType.clear();
 
+  // Không có dữ liệu từ thiết bị → không hiển thị chip (chuỗi rỗng)
   if (!active) {
-    row.displayStatus = QLatin1String(CentralLogger::Sensor::kStatusWait);
+    row.displayStatus = QString();
     return row.displayStatus;
   }
-  // Mất kết nối adapter/Central → ERR (không phải mã TT10, không có OSG status)
+  // Mất kết nối adapter/Central → không hiển thị chip
   if (!rtuConnected && pollingActive) {
-    row.displayStatus = QLatin1String("ERR");
+    row.displayStatus = QString();
     return row.displayStatus;
   }
-  // Không có dữ liệu từ thiết bị → ERR (STALE là mã TT10 từ thiết bị, không phải ""
+  // Không có mã TT10 từ thiết bị → không hiển thị chip
   if (statusCode.isEmpty()) {
-    row.displayStatus = QLatin1String("ERR");
+    row.displayStatus = QString();
     return row.displayStatus;
   }
-  // Dữ liệu cũ từ thiết bị → STALE (mã TT10)
-  if (statusCode == QLatin1String(CentralLogger::Sensor::kStatusStale)) {
-    row.displayStatus = QLatin1String(CentralLogger::Sensor::kStatusStale);
-    return row.displayStatus;
-  }
-  // Mã TT10 02 = báo lỗi thiết bị → ALARM, vẫn kiểm tra ngưỡng để xác định loại
+
+  // Mã TT10 02 = báo lỗi thiết bị → hiển thị "02", vẫn kiểm tra ngưỡng để xác định loại
   const bool deviceError = (statusCode == QLatin1String(CentralLogger::Sensor::kStatusErr));
   if (deviceError) {
-    row.displayStatus = QLatin1String(CentralLogger::Sensor::kStatusAlarm);
+    row.alarmType = QLatin1String(CentralLogger::Sensor::kAlarmDevice);
   }
   // 01 = hiệu chuẩn, 03 = maintenance nội bộ → hiển thị mã, không coi là alarm
   if (statusCode == QLatin1String(CentralLogger::Sensor::kStatusCalib) ||
@@ -205,15 +202,12 @@ QString applyAnalogStatus(SensorLiveRow &row, bool active, bool rtuConnected,
     row.displayStatus = statusCode;
     return row.displayStatus;
   }
-  if (!deviceError) {
-    // 00 = đang đo → OK (bỏ qua khi là lỗi thiết bị)
-    row.displayStatus = QLatin1String(CentralLogger::Sensor::kStatusOkLegacy);
-  }
+  // 00 = đang đo → hiển thị "00"
+  row.displayStatus = statusCode;
 
-  // Kiểm tra ngưỡng cảnh báo — ghi đè hiển thị thành ALARM khi vi phạm ngưỡng
+  // Kiểm tra ngưỡng cảnh báo — alarmType ghi nhận loại vi phạm, displayStatus giữ mã TT10
   const ThresholdBreach breach = checkThresholdBreach(value, minThreshold, maxThreshold);
   if (breach.any()) {
-    row.displayStatus = QLatin1String(CentralLogger::Sensor::kStatusAlarm);
     if (breach.min && breach.max) {
       row.alarmType = QLatin1String(CentralLogger::Sensor::kAlarmMinMax);
     } else if (breach.min) {
@@ -221,9 +215,6 @@ QString applyAnalogStatus(SensorLiveRow &row, bool active, bool rtuConnected,
     } else {
       row.alarmType = QLatin1String(CentralLogger::Sensor::kAlarmMax);
     }
-  } else if (deviceError) {
-    // Lỗi thiết bị nhưng không vi phạm ngưỡng → generic device alarm
-    row.alarmType = QLatin1String(CentralLogger::Sensor::kAlarmDevice);
   }
 
   return row.displayStatus;
@@ -317,7 +308,7 @@ SensorMerger::buildRows(qint64 loggerId, const Network::PollSnapshot &snapshot,
                    ? fallbackName(sensor.sensorType, sensor.edgeSensorId)
                    : sensor.name;
     row.value = QString::fromUtf8(CentralLogger::Sensor::kValuePlaceholder);
-    row.displayStatus = QLatin1String(CentralLogger::Sensor::kStatusWait);
+    row.displayStatus = QString();
     row.timestamp = QString();
     row.statusCode = QString();
     rows.append(row);
@@ -342,11 +333,11 @@ SensorMerger::buildRows(qint64 loggerId, const Network::PollSnapshot &snapshot,
                    : QLatin1String(CentralLogger::Sensor::kBitOff);
     row.timestamp = timestamp;
     if (!cat.active) {
-      row.displayStatus = QLatin1String(CentralLogger::Sensor::kStatusWait);
+      row.displayStatus = QString();
     } else if (!rtuConnected && pollingActive) {
-      row.displayStatus = QLatin1String(CentralLogger::Sensor::kStatusErr);
+      row.displayStatus = QString();
     } else {
-      row.displayStatus = QLatin1String(CentralLogger::Sensor::kStatusOkLegacy);
+      row.displayStatus = QLatin1String(CentralLogger::Sensor::kStatusOk);
     }
     rows.append(row);
   };
@@ -431,7 +422,7 @@ QVector<SensorLiveRow> SensorMerger::buildCatalogPlaceholders(
                    ? fallbackName(cat.sensorType, cat.edgeSensorId)
                    : cat.name;
     row.value = QString::fromUtf8(CentralLogger::Sensor::kValuePlaceholder);
-    row.displayStatus = QLatin1String(CentralLogger::Sensor::kStatusWait);
+    row.displayStatus = QString();
     row.timestamp = QString();
     row.statusCode = QString();
     rows.append(row);

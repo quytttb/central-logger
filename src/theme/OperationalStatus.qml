@@ -5,7 +5,7 @@ import QtQuick
 
 import LoggerKit.Theme
 
-/// Operational sensor chip text, icons, and colors (OK / ALARM / MIN / MAX / …).
+/// Operational sensor chip text, icons, and colors (TT10: 00/01/02/03).
 QtObject {
     function statusIconName(alarmType) {
         const type = String(alarmType || "").toLowerCase()
@@ -19,88 +19,58 @@ QtObject {
     }
 
     function statusText(displayStatus, alarmType) {
-        const status = String(displayStatus || "").toUpperCase()
+        const status = String(displayStatus || "")
         const type = String(alarmType || "").toLowerCase()
-        if (status === "ALARM") {
-            if (type === "min") {
-                return "MIN"
-            }
-            if (type === "max") {
-                return "MAX"
-            }
-            if (type === "min+max") {
-                return "MIN+MAX"
-            }
-            if (type === "device") {
-                return "Alarm"
-            }
-            return "Alarm"
+        if (status.length === 0) {
+            return "\u2014"
         }
-        switch (status) {
-        case "ERR":
-            return "Error"
-        case "WAIT":
-            return "Wait"
-        case "STALE":
-            return "Stale"
-        case "OK":
-            return "OK"
-        default:
-            return status || "\u2014"
+        // Hiển thị trực tiếp mã TT10: "00"/"01"/"02"/"03"
+        if (type === "min" || type === "max" || type === "min+max" || type === "device") {
+            return status
         }
+        return status
     }
 
     function chipFill(displayStatus) {
-        const status = String(displayStatus || "").toUpperCase()
-        switch (status) {
-        case "OK":
-        case "Monitoring":
-            return AppColors.successContainer
-        case "WAIT":
-            return AppColors.surfaceContainer
-        case "STALE":
-            return AppColors.warningContainer
-        case "ALARM":
-        case "ERR":
-            return AppColors.errorContainer
-        default:
+        const status = String(displayStatus || "")
+        if (status.length === 0) {
             return AppColors.surfaceContainer
         }
+        // TT10: 00=xanh lá (đang đo), 01/03=vàng (hiệu chuẩn/maintenance), 02=đỏ (lỗi)
+        if (status === "02") {
+            return AppColors.errorContainer
+        }
+        if (status === "01" || status === "03") {
+            return AppColors.warningContainer
+        }
+        return AppColors.successContainer
     }
 
     function chipBorder(displayStatus) {
-        const status = String(displayStatus || "").toUpperCase()
-        switch (status) {
-        case "OK":
-        case "Monitoring":
-            return AppColors.success
-        case "WAIT":
-            return AppColors.outline
-        case "STALE":
-            return AppColors.warning
-        case "ALARM":
-        case "ERR":
-            return AppColors.error
-        default:
+        const status = String(displayStatus || "")
+        if (status.length === 0) {
             return AppColors.outline
         }
+        if (status === "02") {
+            return AppColors.error
+        }
+        if (status === "01" || status === "03") {
+            return AppColors.warning
+        }
+        return AppColors.success
     }
 
     function chipTextColor(displayStatus) {
-        const status = String(displayStatus || "").toUpperCase()
-        switch (status) {
-        case "OK":
-        case "Monitoring":
-            return AppColors.success
-        case "WAIT":
-            return AppColors.onSurfaceVariant
-        case "STALE":
-            return AppColors.warning
-        case "ALARM":
-        case "ERR":
-            return AppColors.error
-        default:
+        const status = String(displayStatus || "")
+        if (status.length === 0) {
             return AppColors.onSurfaceVariant
         }
+        if (status === "02") {
+            return AppColors.error
+        }
+        if (status === "01" || status === "03") {
+            return AppColors.warning
+        }
+        return AppColors.success
     }
 }

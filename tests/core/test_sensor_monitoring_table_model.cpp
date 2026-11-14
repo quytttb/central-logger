@@ -285,7 +285,7 @@ void TestSensorMonitoringTableModel::dashboardOnSnapshotAppliedRefreshesTable()
     QCOMPARE(table->data(table->index(0, SensorMonitoringTableModel::ValueColumn))
                  .toString(), QStringLiteral("—"));
     QCOMPARE(table->data(table->index(0, SensorMonitoringTableModel::DisplayStatusColumn))
-                 .toString(), QStringLiteral("STALE"));
+                 .toString(), QStringLiteral(""));
     QVERIFY(ctrl.sensorCache()->rowsFor(loggerId).first().statusCode.isEmpty());
 
     ctrl.onSnapshotApplied(snap, 1, catalog.listByLoggerId(loggerId));

@@ -99,7 +99,7 @@ void HistoryTableModel::clear()
 
 QString HistoryTableModel::valueText(const Data::HistoryRow &r)
 {
-    if (r.statusCode.isEmpty() || r.statusCode == QLatin1String("STALE"))
+    if (r.statusCode.isEmpty())
         return QString::fromUtf8(CentralLogger::Sensor::kValuePlaceholder);
     return QString::number(r.value, 'f',
                            qBound(CentralLogger::Defaults::kDecimalsMin,
@@ -109,7 +109,6 @@ QString HistoryTableModel::valueText(const Data::HistoryRow &r)
 
 QString HistoryTableModel::statusText(const Data::HistoryRow &r)
 {
-    if (r.statusCode.isEmpty())  return QLatin1String(CentralLogger::Sensor::kStatusStale);
     return r.statusCode;
 }
 
