@@ -4,6 +4,7 @@
 #include "core/LoggerDetailViewModel.h"
 #include "core/SettingsController.h"
 #include "core/history/HistoryViewModel.h"
+#include "core/threshold/ThresholdController.h"
 #include "data/db/Database.h"
 #include "network/modbus/ModbusBridge.h"
 #include "network/modbus/ModbusDataDispatcher.h"
@@ -35,6 +36,7 @@ using CentralLogger::Core::DashboardController;
 using CentralLogger::Core::LoggerFormController;
 using CentralLogger::Core::LoggerDetailViewModel;
 using CentralLogger::Core::SettingsController;
+using CentralLogger::Core::ThresholdController;
 using CentralLogger::Data::Database;
 using CentralLogger::Network::LoggerRuntimeConfig;
 using CentralLogger::Network::HistoryWriterWorker;
@@ -293,6 +295,12 @@ int main(int argc, char *argv[])
     loggerForm.setRestConfigService(&restConfig);
     loggerForm.setDashboardController(&dashboard);
     LoggerFormController::setInstance(&loggerForm);
+
+    // Thresholds screen (Set Threshold on the Loggers page).
+    ThresholdController thresholdController(nullptr);
+    thresholdController.setDatabase(&database);
+    thresholdController.setDashboardController(&dashboard);
+    ThresholdController::setInstance(&thresholdController);
 
     LoggerDetailViewModel::registerServices(&database, &restConfig, &appState, &dashboard);
     CentralLogger::Core::HistoryViewModel::registerDatabase(&database);

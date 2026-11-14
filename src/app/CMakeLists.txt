@@ -15,6 +15,7 @@ qt_add_qml_module(app
         qml/views/DashboardView.qml
         qml/views/LoggersView.qml
         qml/views/LoggerDetailView.qml
+        qml/views/ThresholdsView.qml
         qml/views/HistoryView.qml
         qml/views/SettingsView.qml
     DEPENDENCIES

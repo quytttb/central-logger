@@ -71,6 +71,7 @@ Item {
                 iconName: "server"
                 active: rail.currentView === "loggers"
                      || rail.currentView === "logger-detail"
+                     || rail.currentView === "thresholds"
                 onNavigate: view => rail.navigate(view)
             }
             NavItem {

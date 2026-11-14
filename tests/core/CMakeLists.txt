@@ -70,3 +70,10 @@ add_central_logger_test(
     SOURCES test_logger_form_save.cpp
     LIBS    central_logger_core data network
 )
+
+# Thresholds screen backend (ThresholdTableModel + ThresholdController).
+add_central_logger_test(
+    NAME    test_threshold_controller
+    SOURCES test_threshold_controller.cpp
+    LIBS    central_logger_core data
+)

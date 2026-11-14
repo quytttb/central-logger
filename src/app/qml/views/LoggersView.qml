@@ -21,6 +21,7 @@ Item {
     property string searchFilterText: ""
 
     signal selectLogger(int loggerId)
+    signal openThresholds()
 
     // Show a dismissible toast when form Save POST /config fails.
     Connections {
@@ -255,6 +256,15 @@ Item {
             color: AppColors.textMuted
             font: AppTypography.bodyMedium
             Layout.alignment: Qt.AlignVCenter
+        }
+
+        AppButton {
+            kind: AppButton.Tonal
+            text: qsTr("Set Threshold")
+            iconName: "sensors"
+            visible: loggerTable.rows > 0
+            Layout.alignment: Qt.AlignVCenter
+            onClicked: root.openThresholds()
         }
 
         AppButton {

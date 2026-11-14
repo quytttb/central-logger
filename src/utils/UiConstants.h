@@ -50,6 +50,11 @@ inline constexpr char kRoleAttachDiLabels[]    = "attachDiTypeLabels";
 inline constexpr char kRoleAlarmType[]         = "alarmType";
 inline constexpr char kRoleTimestamp[]         = "timestamp";
 inline constexpr char kRoleIsLoggerColumn[]    = "isLoggerColumn";
+// Threshold table (ThresholdTableModel).
+inline constexpr char kRoleMinText[]           = "minText";
+inline constexpr char kRoleMaxText[]           = "maxText";
+inline constexpr char kRoleIsNameColumn[]      = "isNameColumn";
+inline constexpr char kRoleRowDirty[]          = "rowDirty";
 
 // --- Chart payload keys (QVariantMap keys consumed by QML/ChartGraphsView) -
 inline constexpr char kChartLabel[]            = "label";

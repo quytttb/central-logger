@@ -194,6 +194,7 @@ ApplicationWindow {
                         case "dashboard":     return dashboardComp
                         case "loggers":       return loggersComp
                         case "logger-detail": return loggerDetailComp
+                        case "thresholds":    return thresholdsComp
                         case "history":       return historyComp
                         case "settings":      return settingsComp
                         default:              return dashboardComp
@@ -216,6 +217,16 @@ ApplicationWindow {
                         anchors.fill: parent
                         Component.onCompleted: root.activeTopBarToolbar = topBarToolbar
                         onSelectLogger: loggerId => root.selectLogger(loggerId)
+                        onOpenThresholds: root.navigate("thresholds")
+                    }
+                }
+
+                Component {
+                    id: thresholdsComp
+                    ThresholdsView {
+                        anchors.fill: parent
+                        Component.onCompleted: root.activeTopBarToolbar = topBarToolbar
+                        onGoBack: root.navigate("loggers")
                     }
                 }
 

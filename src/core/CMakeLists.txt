@@ -50,12 +50,17 @@ qt_add_qml_module(central_logger_core
         history/HistoryViewModel.cpp
         history/AverageExportService.h
         history/AverageExportService.cpp
+        threshold/ThresholdTableModel.h
+        threshold/ThresholdTableModel.cpp
+        threshold/ThresholdController.h
+        threshold/ThresholdController.cpp
 )
 
 target_include_directories(central_logger_core
     PUBLIC
         ${CMAKE_CURRENT_SOURCE_DIR}/..
         ${CMAKE_CURRENT_SOURCE_DIR}/history
+        ${CMAKE_CURRENT_SOURCE_DIR}/threshold
 )
 
 target_link_libraries(central_logger_core
