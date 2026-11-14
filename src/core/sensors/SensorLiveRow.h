@@ -23,9 +23,7 @@ struct SensorLiveRow
     /// min|max|min+max|device when alarm; empty otherwise.
     QString alarmType;
     QString timestamp;    // HH:mm:ss UTC from snapshot.measuredAt
-    bool    valid = true;
-    bool    alarm = false;
-    bool    stale = false;
+    QString statusCode;   // TT10: "00"|"01"|"02"|"03", empty = no data/stale
 };
 
 } // namespace CentralLogger::Core

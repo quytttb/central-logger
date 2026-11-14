@@ -27,7 +27,7 @@ private:
         for (const auto &[id, val] : analogs) {
             AnalogSample s;
             s.edgeSensorId = id;
-            s.flags        = 0x01; // valid
+            s.statusCode   = QLatin1String("00");
             s.value        = val;
             snap.analogs.append(s);
         }
@@ -116,8 +116,8 @@ private slots:
         snap.success  = false; // failed poll
         AnalogSample s;
         s.edgeSensorId = 1;
-        s.flags = 0x01;
-        s.value = 99.0f;
+        s.statusCode   = QLatin1String("00");
+        s.value        = 99.0f;
         snap.analogs.append(s);
 
         store.append(snap);
@@ -137,8 +137,8 @@ private slots:
 
         AnalogSample s;
         s.edgeSensorId = 1;
-        s.flags = 0x00; // invalid flag
-        s.value = 42.0f;
+        s.statusCode   = QString(); // empty = invalid/stale
+        s.value        = 42.0f;
         snap.analogs.append(s);
 
         store.append(snap);
@@ -149,7 +149,7 @@ private slots:
     {
         PollHistoryStore store;
         auto snap = makeSnapshot(10, {{1, 42.0f}});
-        snap.analogs[0].flags = 0x05; // valid, but stale
+        snap.analogs[0].statusCode = QString(); // empty = stale
         store.append(snap);
         QCOMPARE(store.pointCount(10, 1), 0);
     }

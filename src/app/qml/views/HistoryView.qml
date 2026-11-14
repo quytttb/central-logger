@@ -135,9 +135,7 @@ Item {
                         required property string unit
                         required property string value
                         required property string status
-                        required property bool   alarm
-                        required property bool   stale
-                        required property bool   valid
+                        required property string statusCode
 
                         implicitHeight: 40
                         padding: 0
@@ -192,9 +190,10 @@ Item {
                                 height: 22
                                 radius: AppTheme.chipRadius
                                 color: {
-                                    if (!histCell.valid) return AppColors.withAlpha(AppColors.error, 0.18)
-                                    if (histCell.stale)  return AppColors.withAlpha(AppColors.warning, 0.18)
-                                    if (histCell.alarm)  return AppColors.withAlpha(AppColors.error, 0.18)
+                                    const code = histCell.statusCode
+                                    if (!code || code === "STALE") return AppColors.withAlpha(AppColors.error, 0.18)
+                                    if (code === "02")             return AppColors.withAlpha(AppColors.error, 0.18)
+                                    if (code === "01" || code === "03") return AppColors.withAlpha(AppColors.warning, 0.18)
                                     return AppColors.withAlpha(AppColors.success, 0.18)
                                 }
 
@@ -204,9 +203,10 @@ Item {
                                     text: histCell.status
                                     font: AppTypography.labelSmall
                                     color: {
-                                        if (!histCell.valid) return AppColors.error
-                                        if (histCell.stale)  return AppColors.warning
-                                        if (histCell.alarm)  return AppColors.error
+                                        const code = histCell.statusCode
+                                        if (!code || code === "STALE") return AppColors.error
+                                        if (code === "02")             return AppColors.error
+                                        if (code === "01" || code === "03") return AppColors.warning
                                         return AppColors.success
                                     }
                                 }

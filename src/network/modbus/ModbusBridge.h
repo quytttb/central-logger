@@ -100,7 +100,7 @@ private:
     // sensor id. Lives on the dedicated history-writer thread only, so no
     // locking is needed. See docs/adr/0002-store-on-change.md.
     QHash<qint64, double> m_lastValue;
-    QHash<qint64, int>    m_lastFlags;   // valid|alarm|stale bitmask
+    QHash<qint64, QString> m_lastStatusCode; // TT10 status code
     QHash<qint64, qint64> m_lastWrittenMs;
     static constexpr qint64 kHeartbeatMs = Defaults::kModbusHeartbeatMs;
 };

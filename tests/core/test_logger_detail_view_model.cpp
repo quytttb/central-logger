@@ -64,7 +64,7 @@ AnalogSample makeAnalog(int id, float value)
 {
     AnalogSample s;
     s.edgeSensorId = static_cast<quint16>(id);
-    s.flags        = 0x01; // valid
+    s.statusCode   = QLatin1String("00");
     s.value        = value;
     return s;
 }

@@ -224,41 +224,38 @@ QVector<Data::SensorReading> ModbusBridge::buildReadings(const PollSnapshot &sna
                    + snapshot.doBits.size());
 
     // H-C (store-on-change): write a reading only when the value or the
-    // valid/alarm/stale flags changed, or once every kHeartbeatMs even when
+    // TT10 status code changed, or once every kHeartbeatMs even when
     // unchanged (charts keep showing continuity). Cuts write volume by 1–2
     // orders of magnitude at steady state — see docs/adr/0002-store-on-change.md.
     auto appendIfChanged = [&](qint64 sensorId, double value,
-                               bool valid, bool alarm, bool stale)
+                               const QString &statusCode)
     {
-        const int flags = (valid ? 1 : 0) | (alarm ? 2 : 0) | (stale ? 4 : 0);
-
         const auto valIt = m_lastValue.constFind(sensorId);
         const bool firstSeen = valIt == m_lastValue.constEnd();
         const bool valueChanged = firstSeen || (*valIt != value);
 
-        const auto flgIt = m_lastFlags.constFind(sensorId);
-        const bool flagsChanged = flgIt == m_lastFlags.constEnd() || *flgIt != flags;
+        const auto flgIt = m_lastStatusCode.constFind(sensorId);
+        const bool statusChanged = flgIt == m_lastStatusCode.constEnd()
+                                   || *flgIt != statusCode;
 
         const auto tsIt = m_lastWrittenMs.constFind(sensorId);
         const bool heartbeatDue = tsIt == m_lastWrittenMs.constEnd()
                                   || nowMs - *tsIt >= kHeartbeatMs;
 
-        if (!valueChanged && !flagsChanged && !heartbeatDue) {
+        if (!valueChanged && !statusChanged && !heartbeatDue) {
             return;
         }
 
         Data::SensorReading r;
         r.sensorId        = sensorId;
         r.value           = value;
-        r.valid           = valid;
-        r.alarm           = alarm;
-        r.stale           = stale;
+        r.statusCode      = statusCode;
         r.loggerTimestamp = snapshot.header.unixTimestamp;
         r.recordedAt      = now;
         batch.append(r);
 
         m_lastValue.insert(sensorId, value);
-        m_lastFlags.insert(sensorId, flags);
+        m_lastStatusCode.insert(sensorId, statusCode);
         m_lastWrittenMs.insert(sensorId, nowMs);
     };
 
@@ -282,7 +279,7 @@ QVector<Data::SensorReading> ModbusBridge::buildReadings(const PollSnapshot &sna
             continue;
         }
         appendIfChanged(sensorId, static_cast<double>(sample.value),
-                        sample.isValid(), sample.isAlarm(), sample.isStale());
+                        sample.statusCode);
     }
 
     // The catalog list is used only for DI/DO bit mapping; cache it too so
@@ -298,14 +295,14 @@ QVector<Data::SensorReading> ModbusBridge::buildReadings(const PollSnapshot &sna
                 continue;
             }
             appendIfChanged(sensor.id, snapshot.diBits.at(bit) ? 1.0 : 0.0,
-                            true, false, false);
+                            QLatin1String("00"));
         } else if (sensor.sensorType == CentralLogger::Sensor::kTypeDo) {
             const int bit = sensor.edgeSensorId;
             if (bit < 0 || bit >= snapshot.doBits.size()) {
                 continue;
             }
             appendIfChanged(sensor.id, snapshot.doBits.at(bit) ? 1.0 : 0.0,
-                            true, false, false);
+                            QLatin1String("00"));
         }
     }
 

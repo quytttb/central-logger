@@ -78,6 +78,7 @@ inline constexpr char kBindValue[]              = ":value";
 inline constexpr char kBindValid[]              = ":valid";
 inline constexpr char kBindAlarm[]              = ":alarm";
 inline constexpr char kBindStale[]              = ":stale";
+inline constexpr char kBindStatusCode[]         = ":status_code";
 inline constexpr char kBindLoggerTimestamp[]    = ":logger_timestamp";
 inline constexpr char kBindRecordedAt[]         = ":recorded_at";
 

@@ -35,10 +35,8 @@ public:
         SensorRole,
         UnitRole,
         ValueRole,
-        StatusRole,     ///< "OK" | "ALARM" | "STALE" | "INVALID"
-        ValidRole,
-        AlarmRole,
-        StaleRole,
+        StatusRole,     ///< TT10 status: "00"|"01"|"02"|"03" or "STALE"
+        StatusCodeRole,
         SensorIdRole,
     };
     Q_ENUM(Role)

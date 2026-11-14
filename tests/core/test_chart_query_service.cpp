@@ -35,8 +35,8 @@ private:
     {
         QSqlQuery q(m_db.connection());
         q.prepare(QStringLiteral(
-            "INSERT INTO sensor_reading (sensor_id, value, valid, alarm, stale, logger_timestamp, recorded_at) "
-            "VALUES (:sid, :val, 1, 0, 0, 0, :ts)"));
+            "INSERT INTO sensor_reading (sensor_id, value, status_code, logger_timestamp, recorded_at) "
+            "VALUES (:sid, :val, '00', 0, :ts)"));
         q.bindValue(QStringLiteral(":sid"), sensorId);
         q.bindValue(QStringLiteral(":val"), value);
         q.bindValue(QStringLiteral(":ts"),  recordedAtUtc);

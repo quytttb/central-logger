@@ -29,12 +29,13 @@ struct ModbusHeader
 struct AnalogSample
 {
     quint16 edgeSensorId = 0;
-    quint16 flags        = 0; // bit0=valid, bit1=alarm, bit2=stale
+    QString statusCode; // TT10 (Thông tư 10/2021 Bảng 35): "00"|"01"|"02"|"03",
+                        // empty = no data / stale / unknown
     float   value        = 0.0f;
 
-    bool isValid() const { return (flags & 0x01) != 0; }
-    bool isAlarm() const { return (flags & 0x02) != 0; }
-    bool isStale() const { return (flags & 0x04) != 0; }
+    bool isValid() const { return !statusCode.isEmpty() && statusCode != QLatin1String("STALE"); }
+    bool isAlarm() const { return statusCode == QLatin1String("02"); }
+    bool isStale() const { return statusCode.isEmpty() || statusCode == QLatin1String("STALE"); }
 };
 
 /// Result of one full poll cycle for one logger. Emitted by ModbusService

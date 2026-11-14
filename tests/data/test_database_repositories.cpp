@@ -168,6 +168,7 @@ void TestDatabaseRepositories::sensorAutoCreateAndReadingFk()
     SensorReading r;
     r.sensorId        = sensorId;
     r.value           = 25.5;
+    r.statusCode      = QLatin1String("00");
     r.loggerTimestamp = 1716220800;
     r.recordedAt      = QDateTime::currentDateTimeUtc();
     QVERIFY(readings.insertBatch({r}));
@@ -198,6 +199,7 @@ void TestDatabaseRepositories::insertBatchJoinsOuterTransaction()
 
     SensorReading r;
     r.sensorId   = sensorId;
+    r.statusCode = QLatin1String("00");
     r.value      = 12.0;
     r.recordedAt = QDateTime::currentDateTimeUtc();
 
@@ -288,6 +290,7 @@ void TestDatabaseRepositories::purgeRetention()
     for (int daysAgo : {40, 35, 5, 1, 0}) {
         SensorReading r;
         r.sensorId   = sensorId;
+        r.statusCode = QLatin1String("00");
         r.value      = daysAgo;
         r.recordedAt = now.addDays(-daysAgo);
         batch.append(r);
@@ -318,6 +321,7 @@ void TestDatabaseRepositories::cascadeDeleteLogger()
 
     SensorReading r;
     r.sensorId   = sensorId;
+    r.statusCode = QLatin1String("00");
     r.value      = 1.0;
     r.recordedAt = QDateTime::currentDateTimeUtc();
     QVERIFY(readings.insertBatch({r}));
@@ -400,6 +404,7 @@ void TestDatabaseRepositories::pruneOrphanSensorsDeactivatesNotDeletes()
     for (qint64 sid : sensorIds) {
         SensorReading r;
         r.sensorId   = sid;
+        r.statusCode = QLatin1String("00");
         r.value      = 1.0;
         r.recordedAt = QDateTime::currentDateTimeUtc();
         batch.append(r);
@@ -475,6 +480,7 @@ void TestDatabaseRepositories::sensorPruneAndRecover()
     // Readings can be linked to the recovered sensor without FK issues.
     SensorReading r;
     r.sensorId   = recoveredId;
+    r.statusCode = QLatin1String("00");
     r.value      = 42.0;
     r.recordedAt = QDateTime::currentDateTimeUtc();
     QVERIFY(readings.insertBatch({r}));
@@ -503,10 +509,12 @@ void TestDatabaseRepositories::searchHistoryAllAndPerLogger()
     const QDateTime now = QDateTime::currentDateTimeUtc();
     SensorReading rA;
     rA.sensorId   = sensorA;
+    rA.statusCode = QLatin1String("00");
     rA.value      = 10.0;
     rA.recordedAt = now;
     SensorReading rB;
     rB.sensorId   = sensorB;
+    rB.statusCode = QLatin1String("00");
     rB.value      = 20.0;
     rB.recordedAt = now;
     QVERIFY(readings.insertBatch({rA, rB}));

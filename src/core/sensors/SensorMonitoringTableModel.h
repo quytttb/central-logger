@@ -40,9 +40,7 @@ public:
         AttachDiTypeLabelsRole,
         AlarmTypeRole,
         SensorTypeRole,
-        ValidRole,
-        AlarmRole,
-        StaleRole,
+        StatusCodeRole,
         TimestampRole,
     };
     Q_ENUM(Role)

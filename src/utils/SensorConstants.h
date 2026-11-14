@@ -25,12 +25,20 @@ inline constexpr char kTypeDo[]      = "DO";
 inline constexpr char kTypeUnknown[] = "UNKNOWN";
 
 // --- Operational status (chips in SensorMonitoringTable) -------------------
-inline constexpr char kStatusOk[]      = "OK";
-inline constexpr char kStatusAlarm[]   = "ALARM";
-inline constexpr char kStatusWait[]    = "WAIT";
-inline constexpr char kStatusErr[]     = "ERR";
-inline constexpr char kStatusStale[]   = "STALE";
+// After Thông tư 10/2021 (Bảng 35): 00=đang đo, 01=hiệu chuẩn, 02=báo lỗi.
+// 03 = maintenance nội bộ (không có trong Bảng 35, dùng trong data-logger).
+// Client chỉ hiển thị mã TT10; không còn dùng cờ valid/stale/alarm riêng.
+inline constexpr char kStatusOk[]      = "00";   // đang đo
+inline constexpr char kStatusCalib[]   = "01";   // hiệu chuẩn
+inline constexpr char kStatusErr[]     = "02";   // báo lỗi thiết bị
+inline constexpr char kStatusMaint[]   = "03";   // maintenance nội bộ
+inline constexpr char kStatusStale[]   = "STALE";// mất kết nối adapter (không có trong TT10)
 inline constexpr char kStatusInvalid[] = "INVALID";
+inline constexpr char kStatusWait[]    = "WAIT"; // chờ đọc lần đầu
+
+// Legacy kept for DB/column names only — do not display these anymore.
+inline constexpr char kStatusAlarm[]   = "ALARM";// deprecated, keep for column names
+inline constexpr char kStatusOkLegacy[]= "OK";   // deprecated
 
 // --- Alarm type (SensorLiveRow.alarmType) ----------------------------------
 inline constexpr char kAlarmMin[]    = "min";

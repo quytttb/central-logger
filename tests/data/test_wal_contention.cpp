@@ -114,7 +114,7 @@ private slots:
             SensorReading r;
             r.sensorId   = 1;
             r.value      = 20.0 + i * 0.1;
-            r.valid      = true;
+            r.statusCode  = QLatin1String("00");
             r.recordedAt = now;
             rows.append(r);
         }
@@ -143,7 +143,7 @@ private slots:
         SensorReading r;
         r.sensorId   = 1;
         r.value      = 42.0;
-        r.valid      = true;
+        r.statusCode  = QLatin1String("00");
         r.recordedAt = QDateTime::currentDateTimeUtc();
         QVERIFY2(repo.insertBatch({ r }, &err, /*manageTransaction=*/true),
                  qPrintable(err));

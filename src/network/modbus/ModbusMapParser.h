@@ -31,7 +31,20 @@ inline ModbusHeader parseHeader(const QVector<quint16> &regs)
 }
 
 /// Decode one 8-register analog block (HR10 + i*8). Contract §2:
-///   +0 sensor_id, +1 flags, +2..+3 float32 ABCD (big-endian IEEE754).
+///   +0 sensor_id, +1 flags (legacy bit0=valid, bit1=alarm, bit2=stale),
+///   +2..+3 float32 ABCD (big-endian IEEE754).
+/// Legacy flags are translated to TT10 status codes.
+inline QString statusCodeFromFlags(quint16 flags)
+{
+    const bool valid  = (flags & 0x01) != 0;
+    const bool alarm  = (flags & 0x02) != 0;
+    const bool stale  = (flags & 0x04) != 0;
+    if (!valid) return QString();
+    if (stale)  return QLatin1String("STALE");
+    if (alarm)  return QLatin1String("02"); // báo lỗi thiết bị
+    return QLatin1String("00");             // đang đo
+}
+
 inline AnalogSample parseAnalogBlock(const quint16 *regs, int size)
 {
     AnalogSample a;
@@ -39,7 +52,7 @@ inline AnalogSample parseAnalogBlock(const quint16 *regs, int size)
         return a;
     }
     a.edgeSensorId = regs[0];
-    a.flags        = regs[1];
+    a.statusCode   = statusCodeFromFlags(regs[1]);
 
     // ABCD: register +2 holds the high word (AB), +3 the low word (CD).
     // Float bytes [A, B, C, D] → uint32 big-endian → bit_cast to float.

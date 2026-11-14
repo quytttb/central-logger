@@ -48,7 +48,7 @@ void TestModbusBridgeBatch::applyBatch_insertsMultipleSnapshotsInOneTransaction(
     AnalogSample a1;
     a1.edgeSensorId = 1;
     a1.value        = 12.5f;
-    a1.flags        = 0x01;
+    a1.statusCode   = QLatin1String("00");
     snap1.analogs.append(a1);
 
     PollSnapshot snap2 = snap1;

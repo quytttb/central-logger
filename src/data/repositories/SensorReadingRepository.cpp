@@ -44,18 +44,16 @@ bool SensorReadingRepository::insertBatch(const QVector<SensorReading> &readings
     QSqlQuery q(m_db);
     q.prepare(QStringLiteral(
         "INSERT INTO %1 ("
-        "  sensor_id, value, valid, alarm, stale, logger_timestamp, recorded_at"
+        "  sensor_id, value, status_code, logger_timestamp, recorded_at"
         ") VALUES ("
-        "  :sensor_id, :value, :valid, :alarm, :stale, :logger_timestamp, :recorded_at"
+        "  :sensor_id, :value, :status_code, :logger_timestamp, :recorded_at"
         ")").arg(QString::fromLatin1(CentralLogger::Data::Db::kTableSensorReading)));
 
     for (const SensorReading &r : readings) {
         const QDateTime when = r.recordedAt.isValid() ? r.recordedAt : QDateTime::currentDateTimeUtc();
         q.bindValue(QLatin1String(CentralLogger::Data::Db::kBindSensorId),        r.sensorId);
         q.bindValue(QLatin1String(CentralLogger::Data::Db::kBindValue),            r.value);
-        q.bindValue(QLatin1String(CentralLogger::Data::Db::kBindValid),            r.valid ? 1 : 0);
-        q.bindValue(QLatin1String(CentralLogger::Data::Db::kBindAlarm),            r.alarm ? 1 : 0);
-        q.bindValue(QLatin1String(CentralLogger::Data::Db::kBindStale),            r.stale ? 1 : 0);
+        q.bindValue(QLatin1String(CentralLogger::Data::Db::kBindStatusCode),       r.statusCode);
         q.bindValue(QLatin1String(CentralLogger::Data::Db::kBindLoggerTimestamp), r.loggerTimestamp);
         q.bindValue(QLatin1String(CentralLogger::Data::Db::kBindRecordedAt),      isoUtc(when));
         if (!q.exec()) {
@@ -147,7 +145,7 @@ QVector<HistoryRow> SensorReadingRepository::searchHistory(
 
     QString sql =
         QStringLiteral(
-            "SELECT r.id, r.recorded_at, li.name, s.name, s.unit, r.value, r.valid, r.alarm, r.stale, r.sensor_id, s.decimals "
+            "SELECT r.id, r.recorded_at, li.name, s.name, s.unit, r.value, r.status_code, r.sensor_id, s.decimals "
             "FROM %1 r "
             "JOIN %2 s ON r.sensor_id = s.id "
             "JOIN %3 li ON s.logger_id = li.id "
@@ -189,11 +187,9 @@ QVector<HistoryRow> SensorReadingRepository::searchHistory(
         row.sensorName  = q.value(3).toString();
         row.unit        = q.value(4).toString();
         row.value       = q.value(5).toDouble();
-        row.valid       = q.value(6).toInt() != 0;
-        row.alarm       = q.value(7).toInt() != 0;
-        row.stale       = q.value(8).toInt() != 0;
-        row.sensorId    = q.value(9).toLongLong();
-        row.decimals    = q.value(10).toInt();
+        row.statusCode  = q.value(6).toString();
+        row.sensorId    = q.value(7).toLongLong();
+        row.decimals    = q.value(8).toInt();
         result.append(row);
     }
     return result;

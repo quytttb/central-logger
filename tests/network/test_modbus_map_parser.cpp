@@ -82,7 +82,7 @@ void TestModbusMapParser::parseAnalogAbcdDecode()
 
     const QVector<quint16> block{
         /*sensor*/ 7,
-        /*flags */ 0x05, // valid + stale
+        /*flags */ 0x01, // valid → statusCode "00"
         high, low,
         0, 0, 0, 0,
     };
@@ -91,7 +91,7 @@ void TestModbusMapParser::parseAnalogAbcdDecode()
     QCOMPARE(sample.edgeSensorId, quint16(7));
     QVERIFY(sample.isValid());
     QVERIFY(!sample.isAlarm());
-    QVERIFY(sample.isStale());
+    QVERIFY(!sample.isStale());
     QCOMPARE(sample.value, 25.5f);
 }
 

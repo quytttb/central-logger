@@ -61,9 +61,7 @@ QVariant SensorMonitoringTableModel::data(const QModelIndex &index, int role) co
     case AttachDiTypeLabelsRole: return toVariantList(row.attachDiTypeLabels);
     case AlarmTypeRole:          return row.alarmType;
     case SensorTypeRole:         return row.sensorType;
-    case ValidRole:              return row.valid;
-    case AlarmRole:              return row.alarm;
-    case StaleRole:              return row.stale;
+    case StatusCodeRole:         return row.statusCode;
     case TimestampRole:          return row.timestamp;
     default:                     return {};
     }
@@ -99,9 +97,7 @@ QHash<int, QByteArray> SensorMonitoringTableModel::roleNames() const
         { AttachDiTypeLabelsRole,   CentralLogger::Ui::kRoleAttachDiLabels },
         { AlarmTypeRole,            CentralLogger::Ui::kRoleAlarmType },
         { SensorTypeRole,           CentralLogger::Ui::kRoleSensorType },
-        { ValidRole,                CentralLogger::Ui::kRoleValid },
-        { AlarmRole,                CentralLogger::Ui::kRoleAlarm },
-        { StaleRole,                CentralLogger::Ui::kRoleStale },
+        { StatusCodeRole,           CentralLogger::Ui::kRoleStatusCode },
         { TimestampRole,            CentralLogger::Ui::kRoleTimestamp },
     };
 }
@@ -137,9 +133,7 @@ void SensorMonitoringTableModel::setRows(const QVector<SensorLiveRow> &rows)
             AttachDiTypeLabelsRole,
             AlarmTypeRole,
             SensorTypeRole,
-            ValidRole,
-            AlarmRole,
-            StaleRole,
+            StatusCodeRole,
             TimestampRole,
         };
         emit dataChanged(index(0, 0),

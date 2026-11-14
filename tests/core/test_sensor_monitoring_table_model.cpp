@@ -77,7 +77,7 @@ AnalogSample makeAnalog(int id, float value)
 {
     AnalogSample s;
     s.edgeSensorId = static_cast<quint16>(id);
-    s.flags        = 0x01; // valid
+    s.statusCode   = QLatin1String("00"); // valid
     s.value        = value;
     return s;
 }
@@ -154,9 +154,7 @@ void TestSensorMonitoringTableModel::namedRolesExposeFullRow()
                                 QStringLiteral("ON"), QString(),
                                 QStringLiteral("OK"));
     row.sensorType = QStringLiteral("DI");
-    row.valid = true;
-    row.alarm = false;
-    row.stale = false;
+    row.statusCode = QLatin1String("00");
     model.setRows({ row });
 
     using M = SensorMonitoringTableModel;
@@ -167,9 +165,7 @@ void TestSensorMonitoringTableModel::namedRolesExposeFullRow()
     QCOMPARE(model.data(idx, M::UnitRole).toString(), QString());
     QCOMPARE(model.data(idx, M::DisplayStatusRole).toString(), QStringLiteral("OK"));
     QCOMPARE(model.data(idx, M::SensorTypeRole).toString(), QStringLiteral("DI"));
-    QCOMPARE(model.data(idx, M::ValidRole).toBool(), true);
-    QCOMPARE(model.data(idx, M::AlarmRole).toBool(), false);
-    QCOMPARE(model.data(idx, M::StaleRole).toBool(), false);
+    QCOMPARE(model.data(idx, M::StatusCodeRole).toString(), QStringLiteral("00"));
     QCOMPARE(model.data(idx, M::TimestampRole).toString(),
              QStringLiteral("12:00:00"));
 
@@ -290,7 +286,7 @@ void TestSensorMonitoringTableModel::dashboardOnSnapshotAppliedRefreshesTable()
                  .toString(), QStringLiteral("—"));
     QCOMPARE(table->data(table->index(0, SensorMonitoringTableModel::DisplayStatusColumn))
                  .toString(), QStringLiteral("STALE"));
-    QVERIFY(!ctrl.sensorCache()->rowsFor(loggerId).first().valid);
+    QVERIFY(ctrl.sensorCache()->rowsFor(loggerId).first().statusCode.isEmpty());
 
     ctrl.onSnapshotApplied(snap, 1, catalog.listByLoggerId(loggerId));
     QCOMPARE(table->data(table->index(0, SensorMonitoringTableModel::ValueColumn))

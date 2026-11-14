@@ -164,41 +164,69 @@ QStringList resolveAttachDiCodes(const QVector<Data::LoggerSensor> &catalog,
   return codes;
 }
 
-void applyAnalogStatus(SensorLiveRow &row, bool active, bool rtuConnected,
-                       bool pollingActive, bool valid, bool stale,
-                       bool alarmBit, double value,
-                       const std::optional<double> &minThreshold,
-                       const std::optional<double> &maxThreshold,
-                       const QStringList &attachDiCodes,
-                       const QStringList &attachDiLabels) {
+QString applyAnalogStatus(SensorLiveRow &row, bool active, bool rtuConnected,
+                          bool pollingActive, const QString &statusCode,
+                          double value,
+                          const std::optional<double> &minThreshold,
+                          const std::optional<double> &maxThreshold,
+                          const QStringList &attachDiCodes,
+                          const QStringList &attachDiLabels) {
   row.attachDiTypeCodes = attachDiCodes;
   row.attachDiTypeLabels = attachDiLabels;
   row.alarmType.clear();
 
   if (!active) {
     row.displayStatus = QLatin1String(CentralLogger::Sensor::kStatusWait);
-    return;
+    return row.displayStatus;
   }
-  // Edge sets sensor ERR on connection_lost while polling; HR1=0 during TCP
-  // warm-up is not the same as RTU disconnected.
-  if (!valid || (!rtuConnected && pollingActive)) {
-    row.displayStatus = QLatin1String(CentralLogger::Sensor::kStatusErr);
-    return;
+  // Mất kết nối adapter/Central → ERR (không phải mã TT10, không có OSG status)
+  if (!rtuConnected && pollingActive) {
+    row.displayStatus = QLatin1String("ERR");
+    return row.displayStatus;
   }
-  if (stale) {
+  // Không có dữ liệu từ thiết bị → ERR (STALE là mã TT10 từ thiết bị, không phải ""
+  if (statusCode.isEmpty()) {
+    row.displayStatus = QLatin1String("ERR");
+    return row.displayStatus;
+  }
+  // Dữ liệu cũ từ thiết bị → STALE (mã TT10)
+  if (statusCode == QLatin1String(CentralLogger::Sensor::kStatusStale)) {
     row.displayStatus = QLatin1String(CentralLogger::Sensor::kStatusStale);
-    return;
+    return row.displayStatus;
+  }
+  // Mã TT10 02 = báo lỗi thiết bị → ALARM, vẫn kiểm tra ngưỡng để xác định loại
+  const bool deviceError = (statusCode == QLatin1String(CentralLogger::Sensor::kStatusErr));
+  if (deviceError) {
+    row.displayStatus = QLatin1String(CentralLogger::Sensor::kStatusAlarm);
+  }
+  // 01 = hiệu chuẩn, 03 = maintenance nội bộ → hiển thị mã, không coi là alarm
+  if (statusCode == QLatin1String(CentralLogger::Sensor::kStatusCalib) ||
+      statusCode == QLatin1String(CentralLogger::Sensor::kStatusMaint)) {
+    row.displayStatus = statusCode;
+    return row.displayStatus;
+  }
+  if (!deviceError) {
+    // 00 = đang đo → OK (bỏ qua khi là lỗi thiết bị)
+    row.displayStatus = QLatin1String(CentralLogger::Sensor::kStatusOkLegacy);
   }
 
-  const bool alarm =
-      alarmBit || isOutOfRange(value, minThreshold, maxThreshold);
-  if (alarm) {
-    row.alarmType =
-        computeAlarmType(value, alarmBit, minThreshold, maxThreshold);
+  // Kiểm tra ngưỡng cảnh báo — ghi đè hiển thị thành ALARM khi vi phạm ngưỡng
+  const ThresholdBreach breach = checkThresholdBreach(value, minThreshold, maxThreshold);
+  if (breach.any()) {
     row.displayStatus = QLatin1String(CentralLogger::Sensor::kStatusAlarm);
-    return;
+    if (breach.min && breach.max) {
+      row.alarmType = QLatin1String(CentralLogger::Sensor::kAlarmMinMax);
+    } else if (breach.min) {
+      row.alarmType = QLatin1String(CentralLogger::Sensor::kAlarmMin);
+    } else {
+      row.alarmType = QLatin1String(CentralLogger::Sensor::kAlarmMax);
+    }
+  } else if (deviceError) {
+    // Lỗi thiết bị nhưng không vi phạm ngưỡng → generic device alarm
+    row.alarmType = QLatin1String(CentralLogger::Sensor::kAlarmDevice);
   }
-  row.displayStatus = QLatin1String(CentralLogger::Sensor::kStatusOk);
+
+  return row.displayStatus;
 }
 
 } // namespace
@@ -246,26 +274,23 @@ SensorMerger::buildRows(qint64 loggerId, const Network::PollSnapshot &snapshot,
     row.name = (cat && !cat->name.isEmpty())
                    ? cat->name
                    : fallbackName(row.sensorType, row.edgeSensorId);
-    row.valid = sample.isValid();
-    row.alarm = sample.isAlarm();
-    row.stale = sample.isStale();
-    // A Modbus analog block always contains a float, even when the valid bit
-    // is clear. That float may just be a transport placeholder, not a reading.
-    // This also protects the summary table, which displays row.value directly.
-    // The summary table has no per-cell status, so stale values must not
-    // appear there as current measurements either.
-    row.value = row.valid && !row.stale
-                    ? formatAnalog(sample.value, cat ? cat->decimals
-                                                     : CentralLogger::Defaults::kDecimalsDefault)
-                    : QString::fromUtf8(CentralLogger::Sensor::kValuePlaceholder);
+    // Status code comes from the edge (TT10) — no separate valid/stale/alarm
+    // flags. The placeholder protects the summary table from showing stale
+    // transport values as current measurements.
+    row.value = (sample.statusCode.isEmpty()
+                 || sample.statusCode == QLatin1String("STALE"))
+                    ? QString::fromUtf8(CentralLogger::Sensor::kValuePlaceholder)
+                    : formatAnalog(sample.value, cat ? cat->decimals
+                                                     : CentralLogger::Defaults::kDecimalsDefault);
     row.timestamp = timestamp;
+    row.statusCode = sample.statusCode;
 
     const bool active = cat ? cat->active : true;
     const QStringList attachCodes =
         resolveAttachDiCodes(catalog, sample.edgeSensorId, snapshot.diBits);
     applyAnalogStatus(
-        row, active, rtuConnected, pollingActive, row.valid, row.stale,
-        row.alarm, static_cast<double>(sample.value),
+        row, active, rtuConnected, pollingActive, sample.statusCode,
+        static_cast<double>(sample.value),
         cat ? cat->minThreshold : std::nullopt,
         cat ? cat->maxThreshold : std::nullopt, attachCodes,
         resolveAttachDiLabels(catalog, sample.edgeSensorId, attachCodes));
@@ -294,9 +319,7 @@ SensorMerger::buildRows(qint64 loggerId, const Network::PollSnapshot &snapshot,
     row.value = QString::fromUtf8(CentralLogger::Sensor::kValuePlaceholder);
     row.displayStatus = QLatin1String(CentralLogger::Sensor::kStatusWait);
     row.timestamp = QString();
-    row.valid = false;
-    row.alarm = false;
-    row.stale = false;
+    row.statusCode = QString();
     rows.append(row);
   }
 
@@ -314,9 +337,7 @@ SensorMerger::buildRows(qint64 loggerId, const Network::PollSnapshot &snapshot,
     row.name = cat.name.isEmpty()
                    ? fallbackName(cat.sensorType, cat.edgeSensorId)
                    : cat.name;
-    row.valid = true;
-    row.alarm = false;
-    row.stale = false;
+    row.statusCode = QLatin1String("00");
     row.value = on ? QLatin1String(CentralLogger::Sensor::kBitOn)
                    : QLatin1String(CentralLogger::Sensor::kBitOff);
     row.timestamp = timestamp;
@@ -325,7 +346,7 @@ SensorMerger::buildRows(qint64 loggerId, const Network::PollSnapshot &snapshot,
     } else if (!rtuConnected && pollingActive) {
       row.displayStatus = QLatin1String(CentralLogger::Sensor::kStatusErr);
     } else {
-      row.displayStatus = QLatin1String(CentralLogger::Sensor::kStatusOk);
+      row.displayStatus = QLatin1String(CentralLogger::Sensor::kStatusOkLegacy);
     }
     rows.append(row);
   };
@@ -412,9 +433,7 @@ QVector<SensorLiveRow> SensorMerger::buildCatalogPlaceholders(
     row.value = QString::fromUtf8(CentralLogger::Sensor::kValuePlaceholder);
     row.displayStatus = QLatin1String(CentralLogger::Sensor::kStatusWait);
     row.timestamp = QString();
-    row.valid = false;
-    row.alarm = false;
-    row.stale = false;
+    row.statusCode = QString();
     rows.append(row);
   }
 

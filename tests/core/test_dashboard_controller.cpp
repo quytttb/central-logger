@@ -342,7 +342,7 @@ void TestDashboardController::summaryResolvesPrimaryLoggerAndBuildsOverview()
         snap.measuredAt = QDateTime::currentDateTimeUtc();
         AnalogSample analog;
         analog.edgeSensorId = 1;
-        analog.flags        = 0x01; // valid
+        analog.statusCode   = QLatin1String("00"); // valid
         analog.value        = value;
         snap.analogs.append(analog);
         return snap;
@@ -429,17 +429,17 @@ void TestDashboardController::summaryBuildsPerSensorMiniCharts()
     snap.measuredAt = QDateTime::currentDateTimeUtc();
     AnalogSample outOfRange;
     outOfRange.edgeSensorId = 1;
-    outOfRange.flags        = 0x01; // valid
+    outOfRange.statusCode   = QLatin1String("00"); // valid
     outOfRange.value        = 9.5f; // >= max (9.0)
     snap.analogs.append(outOfRange);
     AnalogSample noThresholds;
     noThresholds.edgeSensorId = 3;
-    noThresholds.flags        = 0x01;
+    noThresholds.statusCode   = QLatin1String("00");
     noThresholds.value        = 42.0f;
     snap.analogs.append(noThresholds);
     AnalogSample distantLimit;
     distantLimit.edgeSensorId = 4;
-    distantLimit.flags        = 0x01;
+    distantLimit.statusCode   = QLatin1String("00");
     distantLimit.value        = 28.0f; // max 100 is far above the data
     snap.analogs.append(distantLimit);
 
@@ -560,7 +560,7 @@ void TestDashboardController::summaryGraphLoggerDropdownSwitchesChartAndOverview
         snap.measuredAt = QDateTime::currentDateTimeUtc();
         AnalogSample analog;
         analog.edgeSensorId = 1;
-        analog.flags        = 0x01; // valid
+        analog.statusCode   = QLatin1String("00"); // valid
         analog.value        = value;
         snap.analogs.append(analog);
         return snap;

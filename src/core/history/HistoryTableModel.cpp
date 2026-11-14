@@ -49,9 +49,7 @@ QVariant HistoryTableModel::data(const QModelIndex &index, int role) const
     case UnitRole:      return r.unit;
     case ValueRole:     return valueText(r);
     case StatusRole:    return statusText(r);
-    case ValidRole:     return r.valid;
-    case AlarmRole:     return r.alarm;
-    case StaleRole:     return r.stale;
+    case StatusCodeRole:return r.statusCode;
     case SensorIdRole:  return r.sensorId;
     default:            return {};
     }
@@ -76,9 +74,7 @@ QHash<int, QByteArray> HistoryTableModel::roleNames() const
         { UnitRole,     CentralLogger::Ui::kRoleUnit     },
         { ValueRole,    CentralLogger::Ui::kRoleValue    },
         { StatusRole,   CentralLogger::Ui::kRoleStatus   },
-        { ValidRole,    CentralLogger::Ui::kRoleValid    },
-        { AlarmRole,    CentralLogger::Ui::kRoleAlarm    },
-        { StaleRole,    CentralLogger::Ui::kRoleStale    },
+        { StatusCodeRole, CentralLogger::Ui::kRoleStatusCode },
         { SensorIdRole, CentralLogger::Ui::kRoleSensorId },
     };
 }
@@ -103,7 +99,7 @@ void HistoryTableModel::clear()
 
 QString HistoryTableModel::valueText(const Data::HistoryRow &r)
 {
-    if (!r.valid)
+    if (r.statusCode.isEmpty() || r.statusCode == QLatin1String("STALE"))
         return QString::fromUtf8(CentralLogger::Sensor::kValuePlaceholder);
     return QString::number(r.value, 'f',
                            qBound(CentralLogger::Defaults::kDecimalsMin,
@@ -113,10 +109,8 @@ QString HistoryTableModel::valueText(const Data::HistoryRow &r)
 
 QString HistoryTableModel::statusText(const Data::HistoryRow &r)
 {
-    if (!r.valid)  return QLatin1String(CentralLogger::Sensor::kStatusInvalid);
-    if (r.stale)   return QLatin1String(CentralLogger::Sensor::kStatusStale);
-    if (r.alarm)   return QLatin1String(CentralLogger::Sensor::kStatusAlarm);
-    return QLatin1String(CentralLogger::Sensor::kStatusOk);
+    if (r.statusCode.isEmpty())  return QLatin1String(CentralLogger::Sensor::kStatusStale);
+    return r.statusCode;
 }
 
 } // namespace CentralLogger::Core

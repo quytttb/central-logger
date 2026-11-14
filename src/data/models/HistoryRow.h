@@ -17,6 +17,7 @@ struct HistoryRow
     QString   sensorName;
     QString   unit;
     double    value = 0.0;
+    QString   statusCode; // TT10 status of the reading
     int       decimals = Defaults::kDecimalsDefault; ///< display precision from logger_sensor.decimals
     bool      valid = true;
     bool      alarm = false;

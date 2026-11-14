@@ -50,9 +50,7 @@ CREATE TABLE IF NOT EXISTS sensor_reading (
     id               INTEGER PRIMARY KEY AUTOINCREMENT,
     sensor_id        INTEGER NOT NULL,
     value            REAL    NOT NULL,
-    valid            INTEGER NOT NULL DEFAULT 1,
-    alarm            INTEGER NOT NULL DEFAULT 0,
-    stale            INTEGER NOT NULL DEFAULT 0,
+    status_code      TEXT    NOT NULL DEFAULT '',
     logger_timestamp INTEGER NOT NULL DEFAULT 0,
     recorded_at      TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
     FOREIGN KEY (sensor_id) REFERENCES logger_sensor(id) ON DELETE CASCADE
