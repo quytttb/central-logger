@@ -3,6 +3,7 @@
 
 qt_add_library(utils STATIC
     AppConstants.h
+    AdapterConstants.h
     Version.h
     Version.h.in
     DbConstants.h

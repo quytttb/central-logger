@@ -88,6 +88,10 @@ add_subdirectory(src/components)
 add_subdirectory(src/app)
 
 enable_testing()
+option(CENTRAL_LOGGER_BUILD_ADAPTERS "Build independent edge adapters" ON)
+if(CENTRAL_LOGGER_BUILD_ADAPTERS)
+    add_subdirectory(adapters)
+endif()
 add_subdirectory(tests)
 
 include(${CMAKE_SOURCE_DIR}/cmake/CPackOptions.cmake)
