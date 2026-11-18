@@ -35,6 +35,7 @@ private slots:
     void parseHeaderRejectsWrongMapVersion();
     void parseHeaderRejectsShortBuffer();
     void parseAnalogAbcdDecode();
+    void parseV2StatusAndQuality();
     void unpackDiscreteBitArray();
     void unpackDiscretePackedRegister();
     void unpackDiscreteQtBytePaddedValues();
@@ -64,8 +65,34 @@ void TestModbusMapParser::parseHeaderValid()
 
 void TestModbusMapParser::parseHeaderRejectsWrongMapVersion()
 {
-    const QVector<quint16> regs{ 2, 0, 0, 0, 1, 0, 0, 0, 0, 0 };
+    const QVector<quint16> regs{ 3, 0, 0, 0, 1, 0, 0, 0, 0, 0 };
     QVERIFY(!ModbusMapParser::parseHeader(regs).isValid());
+}
+
+void TestModbusMapParser::parseV2StatusAndQuality()
+{
+    const QVector<quint16> header{2, 1, 0, 0, 1, 0, 0, 1, 2, 0};
+    const auto h = ModbusMapParser::parseHeader(header);
+    QVERIFY(h.isValid());
+    QCOMPARE(h.status03Label, quint16(1));
+    QVERIFY(h.upstreamUnavailable());
+
+    for (quint16 status = 0; status <= 3; ++status) {
+        const QVector<quint16> block{7, 0x03, floatHigh(12.5f), floatLow(12.5f), status, 0, 0, 0};
+        const auto s = ModbusMapParser::parseAnalogBlock(block.constData(), block.size(), 2);
+        QCOMPARE(s.statusCode, QStringLiteral("%1").arg(status, 2, 10, QLatin1Char('0')));
+        QVERIFY(s.isValid());
+        QVERIFY(s.isAlarm());
+        QVERIFY(!s.isStale());
+    }
+    const QVector<quint16> invalid{7, 0, 0, 0, 2, 0, 0, 0};
+    const auto error = ModbusMapParser::parseAnalogBlock(invalid.constData(), invalid.size(), 2);
+    QCOMPARE(error.statusCode, QStringLiteral("02"));
+    QVERIFY(!error.isValid());
+    const QVector<quint16> unknown{7, 4, 0, 0, 0xffff, 0, 0, 0};
+    const auto missing = ModbusMapParser::parseAnalogBlock(unknown.constData(), unknown.size(), 2);
+    QVERIFY(missing.statusCode.isEmpty());
+    QVERIFY(missing.isStale());
 }
 
 void TestModbusMapParser::parseHeaderRejectsShortBuffer()
@@ -82,7 +109,7 @@ void TestModbusMapParser::parseAnalogAbcdDecode()
 
     const QVector<quint16> block{
         /*sensor*/ 7,
-        /*flags */ 0x01, // valid → statusCode "00"
+        /*flags */ 0x01, // valid, but v1 does not carry TT10 status
         high, low,
         0, 0, 0, 0,
     };
@@ -92,6 +119,7 @@ void TestModbusMapParser::parseAnalogAbcdDecode()
     QVERIFY(sample.isValid());
     QVERIFY(!sample.isAlarm());
     QVERIFY(!sample.isStale());
+    QCOMPARE(sample.statusCode, QStringLiteral("UNKNOWN"));
     QCOMPARE(sample.value, 25.5f);
 }
 

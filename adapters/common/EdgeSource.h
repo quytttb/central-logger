@@ -4,6 +4,7 @@
 #include <QString>
 #include <QVector>
 #include <QtGlobal>
+#include <optional>
 
 namespace CentralLogger::Adapters {
 
@@ -21,6 +22,9 @@ struct AnalogPoint
     bool stale = false;
     float value = 0.0f;
     qint64 timestampMs = 0;
+    // Empty means unknown; never infer TT10 device status from quality flags.
+    QString statusCode;
+    std::optional<int> decimals;
 };
 
 struct EdgeSnapshot
@@ -30,6 +34,7 @@ struct EdgeSnapshot
     bool rtuConnected = false;
     bool upstreamConnected = false;
     bool catalogAvailable = false;
+    quint16 status03Label = 0;
 };
 
 // Adapter vendor plugins implement this interface. The v1 servers only see

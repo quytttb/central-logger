@@ -109,7 +109,46 @@ private slots:
     void analogValueUsesPerSensorDecimals();
     void invalidValueDoesNotAppearAsAReading();
     void invalidHistoryValueIsNotDisplayed();
+    void v2ErrorDoesNotShowPlaceholderValue();
+    void invalidMeasuringValueDoesNotTriggerThreshold();
 };
+
+void TestSensorMerger::invalidMeasuringValueDoesNotTriggerThreshold()
+{
+    auto snap = makeSnapshot(1, 1);
+    snap.header.mapVersion = 2;
+    auto sample = makeAnalog(1, 0.0f, QStringLiteral("00"));
+    sample.hasQuality = true;
+    sample.qualityValid = false;
+    snap.analogs = {sample};
+    const QVector<LoggerSensor> catalog{
+        makeCatalog(1, 1, "ANALOG", QStringLiteral("O2"), {}, 0.0, 15.0)
+    };
+    const auto rows = SensorMerger::buildRows(1, snap, catalog);
+    QCOMPARE(rows[0].value, QStringLiteral("—"));
+    QCOMPARE(rows[0].displayStatus, QStringLiteral("00"));
+    QVERIFY(rows[0].alarmType.isEmpty());
+}
+
+void TestSensorMerger::v2ErrorDoesNotShowPlaceholderValue()
+{
+    auto snap = makeSnapshot(1, 1); // polling, RTU not verified
+    snap.header.mapVersion = 2;
+    snap.header.status03Label = 1;
+    auto error = makeAnalog(1, 0.0f, QStringLiteral("02"));
+    error.hasQuality = true;
+    error.qualityValid = false;
+    auto measuring = makeAnalog(2, 7.5f, QStringLiteral("00"));
+    measuring.hasQuality = true;
+    measuring.qualityValid = true;
+    snap.analogs = {error, measuring};
+    const auto rows = SensorMerger::buildRows(1, snap, {});
+    QCOMPARE(findRow(rows, 1)->displayStatus, QStringLiteral("02"));
+    QCOMPARE(findRow(rows, 1)->value, QStringLiteral("—"));
+    QCOMPARE(findRow(rows, 2)->displayStatus, QStringLiteral("00"));
+    QCOMPARE(findRow(rows, 2)->value, QStringLiteral("7.5000"));
+    QVERIFY(findRow(rows, 2)->status03Auto);
+}
 
 void TestSensorMerger::invalidHistoryValueIsNotDisplayed()
 {
@@ -133,7 +172,7 @@ void TestSensorMerger::invalidValueDoesNotAppearAsAReading()
     const auto rows = SensorMerger::buildRows(loggerId, snap, {});
     QCOMPARE(rows.size(), 2);
     QCOMPARE(findRow(rows, 1)->value, QStringLiteral("—"));
-    QCOMPARE(findRow(rows, 1)->displayStatus, QStringLiteral(""));
+    QCOMPARE(findRow(rows, 1)->displayStatus, QStringLiteral("UNKNOWN"));
     QCOMPARE(findRow(rows, 2)->value, QStringLiteral("0.0000"));
     QVERIFY(findRow(rows, 2)->statusCode == QLatin1String("00"));
 }
@@ -230,7 +269,7 @@ void TestSensorMerger::catalogOnlyYieldsWaitRow()
 
     const auto rows = SensorMerger::buildRows(loggerId, snap, catalog);
     QCOMPARE(rows.size(), 1);
-    QCOMPARE(rows[0].displayStatus, QStringLiteral(""));
+    QCOMPARE(rows[0].displayStatus, QStringLiteral("UNKNOWN"));
     QCOMPARE(rows[0].value, QStringLiteral("—"));
 }
 
@@ -258,13 +297,13 @@ void TestSensorMerger::displayStatusStaleAndThreshold()
     const auto rows = SensorMerger::buildRows(loggerId, snap, catalog);
     QCOMPARE(rows.size(), 4);
 
-    QCOMPARE(findRow(rows, 1)->displayStatus, QStringLiteral(""));
+    QCOMPARE(findRow(rows, 1)->displayStatus, QStringLiteral("UNKNOWN"));
     QCOMPARE(findRow(rows, 1)->value, QStringLiteral("—"));
     QCOMPARE(findRow(rows, 2)->displayStatus, QStringLiteral("00"));
     QCOMPARE(findRow(rows, 2)->alarmType, QStringLiteral("min"));
     QCOMPARE(findRow(rows, 3)->displayStatus, QStringLiteral("00"));
     QCOMPARE(findRow(rows, 3)->alarmType, QStringLiteral("max"));
-    QCOMPARE(findRow(rows, 4)->displayStatus, QStringLiteral(""));
+    QCOMPARE(findRow(rows, 4)->displayStatus, QStringLiteral("UNKNOWN"));
 }
 
 void TestSensorMerger::failedSnapshotEmpty()
@@ -358,7 +397,7 @@ void TestSensorMerger::alarmFlagWithoutThresholdYieldsGenericAlarm()
     const auto rows2 = SensorMerger::buildRows(loggerId, snap, catalog2);
     QCOMPARE(rows2.size(), 1);
     QCOMPARE(rows2[0].displayStatus, QStringLiteral("02"));
-    QCOMPARE(rows2[0].alarmType, QStringLiteral("max"));
+    QCOMPARE(rows2[0].alarmType, QStringLiteral("device"));
 }
 
 void TestSensorMerger::thresholdBoundaryAtMinWithAlarmBit()
@@ -375,11 +414,11 @@ void TestSensorMerger::thresholdBoundaryAtMinWithAlarmBit()
     const auto rows = SensorMerger::buildRows(loggerId, snap, catalog);
     QCOMPARE(rows.size(), 1);
     QCOMPARE(rows[0].displayStatus, QStringLiteral("02"));
-    QCOMPARE(rows[0].alarmType, QStringLiteral("min"));
+    QCOMPARE(rows[0].alarmType, QStringLiteral("device"));
 
     snap.analogs = { makeAnalog(1, 60.0f, QLatin1String("02")) };
     const auto rowsMax = SensorMerger::buildRows(loggerId, snap, catalog);
-    QCOMPARE(rowsMax[0].alarmType, QStringLiteral("max"));
+    QCOMPARE(rowsMax[0].alarmType, QStringLiteral("device"));
 }
 
 void TestSensorMerger::rtuDisconnectedYieldsErr()
@@ -391,7 +430,7 @@ void TestSensorMerger::rtuDisconnectedYieldsErr()
 
     const auto rows = SensorMerger::buildRows(loggerId, snap, {});
     QCOMPARE(rows.size(), 1);
-    QCOMPARE(rows[0].displayStatus, QStringLiteral(""));
+    QCOMPARE(rows[0].displayStatus, QStringLiteral("00"));
 }
 
 void TestSensorMerger::hr1ZeroDoesNotForceErrWhenValid()

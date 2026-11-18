@@ -16,6 +16,7 @@ struct SensorLiveRow
     QString value;        // formatted: "25.50" (analog) or "ON"/"OFF" (DI/DO)
     /// Operational chip: WAIT|OK|ALARM|ERR|STALE (not attach-DI labels).
     QString displayStatus;
+    bool status03Auto = false; // OSG calls its custom 03 state "Auto".
     /// Active attach-DI type codes for this analog (`di_type`, sorted 02→03→01→custom).
     QStringList attachDiTypeCodes;
     /// Chip labels parallel to attachDiTypeCodes (catalog name for custom di_type codes).

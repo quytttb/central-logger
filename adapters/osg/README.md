@@ -2,8 +2,8 @@
 
 `osg_adapter` is a separate process on the Central computer or another
 authorized LAN host. It reads OSG's HTTP API and presents an edge-compatible
-REST config v1 and Modbus TCP map v1 to Central. It does not run on the OSG
-logger. Vendor-independent v1 servers and `EdgeSource` live in
+REST config v1 and Modbus TCP map v2 to Central. It does not run on the OSG
+logger. Vendor-independent REST/Modbus servers and `EdgeSource` live in
 `adapters/common/`; an adapter for a different vendor can implement that
 interface without changing OSG-specific code.
 
@@ -17,8 +17,11 @@ client and returned them in REST config. Catalog `status` and realtime
 `status` disagree on both devices (e.g. `.17` ID 164 catalog 3 vs realtime 2;
 `.16` catalog all 3 vs realtime all 0), and `.17` uses lowercase `%v` while
 `.16` uses uppercase `%V`, so per-device quality policies and expected units
-must stay separate. The meanings of `status`, `syncing`, `alert`, `enabled`
-and `time` still need manufacturer confirmation. The parser deliberately rejects unrecognized response envelopes,
+must stay separate. `/api/data/defines` on the observed firmware identifies
+realtime `SensorStatus` values `0=MEASURING`, `1=CALIBRATING`, `2=ERROR`,
+`3=AUTO`. Catalog `status` is not the realtime status. The meanings of
+`syncing`, `alert`, `enabled` and `time` still need manufacturer confirmation.
+The parser deliberately rejects unrecognized response envelopes,
 invalid IDs and duplicate IDs. Do not treat this adapter as production-ready
 before completing the hardware checklist below.
 
@@ -155,12 +158,17 @@ differs. Keep per-device quality policies and units separate.
   invalid quality.
 - Empty strings are not numbers. `"0"` parses as numeric zero; it is marked
   valid **only** when all verified quality conditions also pass.
+- Map v2 transmits realtime status separately from measurement quality:
+  `00=Measuring`, `01=Calibrating`, `02=Error`, `03=Auto`. The adapter will
+  not mark a non-`00` value valid even if a policy incorrectly lists it. A
+  lost upstream connection or a stale timestamp makes the status unknown,
+  not a fabricated device error. Threshold alarms remain independent.
 - By default **no OSG status, syncing or alert value is trusted**: all values
   are reported invalid, shown as `—` in Central and excluded from average
   exports. This is intentional, not a claim that OSG sensors are broken.
   The debug endpoint exposes selected cached source fields, including raw value,
   status, time, enabled, alert and syncing, for investigation.
-  The v1 alarm bit is clear when no alarm can be verified; it is **not** proof
+  The alarm bit is clear when no alarm can be verified; it is **not** proof
   that no source alarm exists.
 - After the manufacturer/operator has verified exact meanings for this firmware,
   an optional external `--quality-policy` JSON file must contain four arrays:
@@ -190,10 +198,9 @@ differs. Keep per-device quality policies and units separate.
   source timestamps beyond 30 s as stale (clock skew guard) and rejects
   timestamps outside the range `(0, 10^15)` ms. Central's detail and summary values
   hide invalid/stale data. The RTU-connected flag remains false: successful
-  HTTP does not prove physical RTU connectivity. Central currently marks
-  sensors `ERR` while polling with RTU disconnected, even if other quality
-  criteria pass.
-- Map v1 has **one** uint32 seconds timestamp, whereas OSG has milliseconds per
+  HTTP does not prove physical RTU connectivity. It does not suppress the
+  independently reported sensor status.
+- Maps v1 and v2 have **one** uint32 seconds timestamp, whereas OSG has milliseconds per
   sensor. The adapter uses the oldest timestamp among valid, non-stale samples,
   rounded down to seconds; zero means no such timestamp was available. This
   is a conservative snapshot marker, **not** each sensor's original time.
@@ -203,8 +210,8 @@ differs. Keep per-device quality policies and units separate.
 - There is no confirmed DI/DO mapping (`Ndi=Ndo=0`) or report mapping. A single
   Central Modbus client is accepted at a time. Its header read pins a snapshot
   for the following chunks; an incomplete read expires and must restart.
-- On upstream loss the adapter can still be reachable, so Central's logger
-  **online** badge describes the adapter connection, not OSG health. Check
+- On upstream loss the adapter can still be reachable, but map v2 reports
+  upstream disconnected and Central marks the logger offline. Check
   the cached debug endpoint and sensor quality. If Central loses the adapter,
   cached table values are hidden and marked STALE; they return after a successful
   poll. Old chart points can remain visible and lines may bridge gaps; they are
@@ -212,10 +219,11 @@ differs. Keep per-device quality policies and units separate.
 
 ### History and averages
 
-Central stores a point on value/quality change and at a 15-minute heartbeat,
-including invalid or stale rows with flags; an invalid Modbus float is a
-transport placeholder, not a zero measurement. The history table hides it,
-and table CSV leaves its value blank. Average CSV filters `valid=1 AND stale=0`,
+Central stores a point on value/status change and at a 15-minute heartbeat.
+Because the current database schema has no separate quality column, it skips
+invalid or stale v2 samples rather than store their transport placeholders as
+real zero readings. Their status is still shown live but is not persisted as
+a reading. Average CSV includes only samples with status `00`,
 but uses SQL `AVG` over the **stored rows** and `recorded_at`, not a
 time-weighted average of every original sample. Store-on-change therefore
 overweights frequently changing values and misses intervals without valid data.

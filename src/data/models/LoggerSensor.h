@@ -19,6 +19,9 @@ struct LoggerSensor
     QString              unit;
     std::optional<double> minThreshold;
     std::optional<double> maxThreshold;
+    // Presence in a REST catalog, distinct from explicit JSON null. Not DB fields.
+    bool                 minThresholdSpecified = false;
+    bool                 maxThresholdSpecified = false;
     /// Display precision for ANALOG values (synced from edge GET /config
     /// `decimals`; range 0–6, default 4). Ignored for DI/DO (shown ON/OFF).
     int                  decimals = Defaults::kDecimalsDefault;

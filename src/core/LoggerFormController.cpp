@@ -407,6 +407,18 @@ bool LoggerFormController::upsertProbedCatalog(qint64 loggerId,
   for (auto sensor : m_probedSensors) {
     sensor.loggerId = loggerId;
     QString catErr;
+    const auto existing = catalogRepo.findByLoggerAndEdgeId(
+        loggerId, sensor.edgeSensorId, sensor.sensorType, &catErr);
+    if (!catErr.isEmpty()) {
+      if (errorOut) *errorOut = catErr;
+      return false;
+    }
+    // A metadata-only adapter does not supply Central's local thresholds.
+    // Preserve them when the field is absent; explicit null still clears it.
+    if (existing) {
+      if (!sensor.minThresholdSpecified) sensor.minThreshold = existing->minThreshold;
+      if (!sensor.maxThresholdSpecified) sensor.maxThreshold = existing->maxThreshold;
+    }
     if (!catalogRepo.upsert(sensor, &catErr)) {
       if (errorOut) {
         *errorOut = catErr;

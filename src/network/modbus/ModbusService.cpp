@@ -317,7 +317,11 @@ void ModbusService::readHeader(LoggerState &state)
         const auto regs = regsFromUnit(reply->result());
         s->currentSnapshot.header = ModbusMapParser::parseHeader(regs);
         if (!s->currentSnapshot.header.isValid()) {
-            finishCycle(*s, false, QStringLiteral("invalid header (HR0 != 1)"));
+            finishCycle(*s, false, QStringLiteral("unsupported Modbus map version"));
+            return;
+        }
+        if (s->currentSnapshot.header.upstreamUnavailable()) {
+            finishCycle(*s, false, QStringLiteral("adapter upstream unavailable"));
             return;
         }
         readAnalogChunks(*s);
@@ -365,7 +369,8 @@ void ModbusService::readNextAnalogChunk(LoggerState &state, int chunkIdx)
             return;
         }
         const auto regs = regsFromUnit(reply->result());
-        s->analogAccum.append(ModbusMapParser::parseAnalogChunk(regs.constData(), regs.size()));
+        s->analogAccum.append(ModbusMapParser::parseAnalogChunk(
+            regs.constData(), regs.size(), s->currentSnapshot.header.mapVersion));
         readNextAnalogChunk(*s, chunkIdx + 1);
     });
 }

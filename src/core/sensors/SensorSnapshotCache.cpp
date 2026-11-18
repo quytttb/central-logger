@@ -22,7 +22,7 @@ void SensorSnapshotCache::markOffline(qint64 loggerId)
         return;
     for (auto &row : *it) {
         row.value = QString::fromUtf8(CentralLogger::Sensor::kValuePlaceholder);
-        row.displayStatus = QString();
+        row.displayStatus = QLatin1String(CentralLogger::Sensor::kStatusUnknown);
         row.statusCode = QString();
         row.alarmType.clear();
         row.attachDiTypeCodes.clear();

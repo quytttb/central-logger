@@ -145,6 +145,23 @@ private slots:
         QCOMPARE(store.pointCount(10, 1), 0);
     }
 
+    void errorDoesNotKeepLiveChartGreen()
+    {
+        PollHistoryStore store;
+        auto snap = makeSnapshot(10, {{1, 42.0f}});
+        store.append(snap);
+        QVERIFY(store.seriesForLogger(10).at(0).toMap().value("currentValid").toBool());
+        snap.analogs[0].statusCode = QStringLiteral("02");
+        snap.analogs[0].hasQuality = true;
+        snap.analogs[0].qualityValid = false;
+        store.append(snap);
+        QCOMPARE(store.pointCount(10, 1), 1);
+        QVERIFY(!store.seriesForLogger(10).at(0).toMap().value("currentValid").toBool());
+        snap.success = false;
+        store.append(snap);
+        QVERIFY(!store.seriesForLogger(10).at(0).toMap().value("currentValid").toBool());
+    }
+
     void staleSampleSkipped()
     {
         PollHistoryStore store;

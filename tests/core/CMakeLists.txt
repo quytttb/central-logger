@@ -1,4 +1,12 @@
 add_central_logger_test(
+    NAME    test_status_chip_qml
+    SOURCES test_status_chip_qml.cpp
+    LIBS    central_logger_componentsplugin central_logger_themeplugin
+            central_logger_coreplugin logger_ui_kit_componentsplugin logger_ui_kit_themeplugin
+            Qt6::Quick Qt6::QuickControls2
+)
+
+add_central_logger_test(
     NAME    test_dashboard_controller
     SOURCES test_dashboard_controller.cpp
     LIBS    central_logger_core data

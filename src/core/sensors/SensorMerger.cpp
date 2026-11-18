@@ -164,8 +164,8 @@ QStringList resolveAttachDiCodes(const QVector<Data::LoggerSensor> &catalog,
   return codes;
 }
 
-QString applyAnalogStatus(SensorLiveRow &row, bool active, bool rtuConnected,
-                          bool pollingActive, const QString &statusCode,
+QString applyAnalogStatus(SensorLiveRow &row, bool active, const QString &statusCode,
+                          bool hasValidValue,
                           double value,
                           const std::optional<double> &minThreshold,
                           const std::optional<double> &maxThreshold,
@@ -180,21 +180,20 @@ QString applyAnalogStatus(SensorLiveRow &row, bool active, bool rtuConnected,
     row.displayStatus = QString();
     return row.displayStatus;
   }
-  // Mất kết nối adapter/Central → không hiển thị chip
-  if (!rtuConnected && pollingActive) {
-    row.displayStatus = QString();
-    return row.displayStatus;
-  }
-  // Không có mã TT10 từ thiết bị → không hiển thị chip
-  if (statusCode.isEmpty()) {
-    row.displayStatus = QString();
+  // RTU reachability is a station-level signal, not the status of an
+  // individual analog sensor (an HTTP adapter may not have an RTU at all).
+  // Unknown quality/connectivity is not evidence of device error.
+  if (statusCode.isEmpty() || statusCode == QLatin1String("STALE")) {
+    row.displayStatus = QLatin1String(CentralLogger::Sensor::kStatusUnknown);
     return row.displayStatus;
   }
 
-  // Mã TT10 02 = báo lỗi thiết bị → hiển thị "02", vẫn kiểm tra ngưỡng để xác định loại
+  // Mã TT10 02 là lỗi thiết bị, không thay bằng cảnh báo ngưỡng.
   const bool deviceError = (statusCode == QLatin1String(CentralLogger::Sensor::kStatusErr));
   if (deviceError) {
     row.alarmType = QLatin1String(CentralLogger::Sensor::kAlarmDevice);
+    row.displayStatus = statusCode;
+    return row.displayStatus;
   }
   // 01 = hiệu chuẩn, 03 = maintenance nội bộ → hiển thị mã, không coi là alarm
   if (statusCode == QLatin1String(CentralLogger::Sensor::kStatusCalib) ||
@@ -204,6 +203,8 @@ QString applyAnalogStatus(SensorLiveRow &row, bool active, bool rtuConnected,
   }
   // 00 = đang đo → hiển thị "00"
   row.displayStatus = statusCode;
+  if (!hasValidValue)
+    return row.displayStatus;
 
   // Kiểm tra ngưỡng cảnh báo — alarmType ghi nhận loại vi phạm, displayStatus giữ mã TT10
   const ThresholdBreach breach = checkThresholdBreach(value, minThreshold, maxThreshold);
@@ -265,22 +266,23 @@ SensorMerger::buildRows(qint64 loggerId, const Network::PollSnapshot &snapshot,
     row.name = (cat && !cat->name.isEmpty())
                    ? cat->name
                    : fallbackName(row.sensorType, row.edgeSensorId);
-    // Status code comes from the edge (TT10) — no separate valid/stale/alarm
-    // flags. The placeholder protects the summary table from showing stale
-    // transport values as current measurements.
-    row.value = (sample.statusCode.isEmpty()
-                 || sample.statusCode == QLatin1String("STALE"))
+    // Status and value quality are independent in v2. Never show the
+    // transport placeholder as a current measurement.
+    row.value = (!sample.isValid() || sample.isStale())
                     ? QString::fromUtf8(CentralLogger::Sensor::kValuePlaceholder)
                     : formatAnalog(sample.value, cat ? cat->decimals
                                                      : CentralLogger::Defaults::kDecimalsDefault);
     row.timestamp = timestamp;
     row.statusCode = sample.statusCode;
+    row.status03Auto =
+        snapshot.header.mapVersion == CentralLogger::Version::kModbusMapVersion2
+        && snapshot.header.status03Label == CentralLogger::Version::kModbusStatus03Auto;
 
     const bool active = cat ? cat->active : true;
     const QStringList attachCodes =
         resolveAttachDiCodes(catalog, sample.edgeSensorId, snapshot.diBits);
     applyAnalogStatus(
-        row, active, rtuConnected, pollingActive, sample.statusCode,
+        row, active, sample.statusCode, sample.isValid() && !sample.isStale(),
         static_cast<double>(sample.value),
         cat ? cat->minThreshold : std::nullopt,
         cat ? cat->maxThreshold : std::nullopt, attachCodes,
@@ -308,7 +310,7 @@ SensorMerger::buildRows(qint64 loggerId, const Network::PollSnapshot &snapshot,
                    ? fallbackName(sensor.sensorType, sensor.edgeSensorId)
                    : sensor.name;
     row.value = QString::fromUtf8(CentralLogger::Sensor::kValuePlaceholder);
-    row.displayStatus = QString();
+    row.displayStatus = QLatin1String(CentralLogger::Sensor::kStatusUnknown);
     row.timestamp = QString();
     row.statusCode = QString();
     rows.append(row);
@@ -422,7 +424,8 @@ QVector<SensorLiveRow> SensorMerger::buildCatalogPlaceholders(
                    ? fallbackName(cat.sensorType, cat.edgeSensorId)
                    : cat.name;
     row.value = QString::fromUtf8(CentralLogger::Sensor::kValuePlaceholder);
-    row.displayStatus = QString();
+    row.displayStatus = cat.active
+        ? QLatin1String(CentralLogger::Sensor::kStatusUnknown) : QString();
     row.timestamp = QString();
     row.statusCode = QString();
     rows.append(row);

@@ -65,7 +65,7 @@ bool ModbusV1Server::acceptNewConnection(QTcpSocket *newClient)
 QVector<quint16> ModbusV1Server::encodeSnapshot(const EdgeSnapshot &snapshot)
 {
     QVector<quint16> regs(kHeaderRegisters, 0);
-    regs[0] = CentralLogger::Version::kModbusMapVersion;
+    regs[0] = CentralLogger::Version::kModbusMapVersion2;
     if (snapshot.polling)
         regs[1] |= 0x01;
     if (snapshot.rtuConnected)
@@ -92,6 +92,9 @@ QVector<quint16> ModbusV1Server::encodeSnapshot(const EdgeSnapshot &snapshot)
         regs[3] = static_cast<quint16>(seconds & 0xffff);
     }
     regs[4] = static_cast<quint16>(snapshot.analogs.size());
+    regs[7] = snapshot.status03Label;
+    regs[8] = snapshot.upstreamConnected ? CentralLogger::Version::kModbusUpstreamConnected
+                                         : CentralLogger::Version::kModbusUpstreamDisconnected;
     // HR5/HR6 stay zero: no reliable DI/DO mapping has been supplied.
 
     regs.reserve(kHeaderRegisters + snapshot.analogs.size() * kAnalogRegisters);
@@ -110,7 +113,14 @@ QVector<quint16> ModbusV1Server::encodeSnapshot(const EdgeSnapshot &snapshot)
         regs.append(flags);
         regs.append(static_cast<quint16>(raw >> 16));
         regs.append(static_cast<quint16>(raw & 0xffff));
-        for (int i = 0; i < 4; ++i)
+        bool knownStatus = false;
+        const int status = point.statusCode.toInt(&knownStatus);
+        const bool canonicalStatus = point.statusCode.size() == 2
+            && knownStatus && status >= 0 && status <= 3
+            && point.statusCode == QStringLiteral("%1").arg(status, 2, 10, QLatin1Char('0'));
+        regs.append(canonicalStatus ? static_cast<quint16>(status)
+                                    : CentralLogger::Version::kModbusStatusUnknown);
+        for (int i = 0; i < 3; ++i)
             regs.append(0);
     }
     return regs;

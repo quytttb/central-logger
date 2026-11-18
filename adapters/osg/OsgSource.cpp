@@ -1,6 +1,8 @@
 #include "OsgSource.h"
 
 #include "utils/AdapterConstants.h"
+#include "utils/AppConstants.h"
+#include "utils/Version.h"
 
 #include <QDateTime>
 #include <QJsonDocument>
@@ -135,6 +137,16 @@ bool OsgSource::parseNumericValue(const QJsonValue &value, float *out)
 qint64 OsgSource::parseTimestampMs(const QJsonValue &value)
 {
     return timestampMs(value);
+}
+
+QString OsgSource::statusCodeFromOsg(const QJsonValue &value)
+{
+    if (!value.isDouble())
+        return {};
+    const double status = value.toDouble();
+    if (!std::isfinite(status) || std::floor(status) != status || status < 0 || status > 3)
+        return {};
+    return QStringLiteral("%1").arg(static_cast<int>(status), 2, 10, QLatin1Char('0'));
 }
 
 void OsgSource::schedule(int delayMs)
@@ -310,6 +322,7 @@ EdgeSnapshot OsgSource::snapshot() const
     EdgeSnapshot result;
     result.polling = m_running;
     result.rtuConnected = false; // HTTP reachability does not prove physical RTU state.
+    result.status03Label = CentralLogger::Version::kModbusStatus03Auto;
     result.upstreamConnected = m_online;
     const qint64 now = QDateTime::currentMSecsSinceEpoch();
     const bool upstreamStale = !m_online || m_lastSuccessMs <= 0
@@ -325,6 +338,11 @@ EdgeSnapshot OsgSource::snapshot() const
         point.id = id;
         point.name = stringField(meta, "name");
         point.unit = stringField(meta, "unit");
+        const auto precision = meta.value(QStringLiteral("precision"));
+        if (precision.isDouble() && precision.toDouble() == precision.toInt()
+            && precision.toInt() >= CentralLogger::Defaults::kDecimalsMin
+            && precision.toInt() <= CentralLogger::Defaults::kDecimalsMax)
+            point.decimals = precision.toInt();
         const auto enabled = reading.contains(QStringLiteral("enabled"))
                                  ? reading.value(QStringLiteral("enabled"))
                                  : meta.value(QStringLiteral("enabled"));
@@ -338,6 +356,9 @@ EdgeSnapshot OsgSource::snapshot() const
         float parsed = 0.0f;
         const bool numeric = numberFromValue(raw, &parsed);
         const auto rawStatus = reading.value(QStringLiteral("status"));
+        // Cached status is not evidence of the current state after upstream loss.
+        if (!point.stale && point.active)
+            point.statusCode = statusCodeFromOsg(rawStatus);
         const auto rawSyncing = reading.value(QStringLiteral("syncing"));
         const auto rawAlert = reading.value(QStringLiteral("alert"));
         const bool noAlarm = containsExact(m_settings.quality.noAlarmValues, rawAlert);
@@ -349,6 +370,7 @@ EdgeSnapshot OsgSource::snapshot() const
             && readingUnit == point.unit;
         point.valid = numeric && enabled.isBool() && enabled.toBool()
             && matchingUnit && point.timestampMs > 0
+            && point.statusCode == QLatin1String("00")
             && containsExact(m_settings.quality.validStatuses, rawStatus)
             && containsExact(m_settings.quality.acceptableSyncing, rawSyncing)
             && (noAlarm || alarm);
@@ -377,6 +399,7 @@ QJsonObject OsgSource::debugReadings() const
         item.insert(QStringLiteral("sensor_id"), point.id);
         item.insert(QStringLiteral("adapter_valid"), point.valid);
         item.insert(QStringLiteral("adapter_stale"), point.stale);
+        item.insert(QStringLiteral("adapter_status_code"), point.statusCode);
         values.append(item);
     }
     return {{QStringLiteral("upstream_connected"), current.upstreamConnected},

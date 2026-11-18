@@ -59,6 +59,7 @@ public:
     static bool parseId(const QJsonObject &object, quint16 *id);
     static bool parseNumericValue(const QJsonValue &value, float *out);
     static qint64 parseTimestampMs(const QJsonValue &value);
+    static QString statusCodeFromOsg(const QJsonValue &value);
 
 signals:
     void sourceStateChanged();

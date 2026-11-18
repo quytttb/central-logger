@@ -15,6 +15,7 @@ StatusChip {
 
     property string displayStatus: ""
     property string alarmType: ""
+    property bool status03Auto: false
 
     /// Attach-DI `di_type` code; empty = operational / indicator only.
     property string attachDiTypeCode: ""
@@ -33,16 +34,20 @@ StatusChip {
             return ""
         if (attachDiTypeMode)
             return AttachDiType.typeLabel(attachDiTypeCode, attachDiTypeLabel)
-        return OperationalStatus.statusText(normalizedStatus, normalizedAlarmType)
+        return OperationalStatus.statusText(normalizedStatus, normalizedAlarmType, status03Auto)
     }
 
     statusIconName: operationalMode
         ? OperationalStatus.statusIconName(normalizedAlarmType) : ""
 
+    readonly property string colorStatus: normalizedStatus === "00"
+        && (normalizedAlarmType === "min" || normalizedAlarmType === "max"
+            || normalizedAlarmType === "min+max") ? "02" : normalizedStatus
+
     chipFill: attachDiTypeMode ? AttachDiType.chipFill(attachDiTypeCode)
-                               : OperationalStatus.chipFill(normalizedStatus)
+                               : OperationalStatus.chipFill(colorStatus)
     chipBorder: attachDiTypeMode ? AttachDiType.chipBorder(attachDiTypeCode)
-                                 : OperationalStatus.chipBorder(normalizedStatus)
+                                 : OperationalStatus.chipBorder(colorStatus)
     chipTextColor: attachDiTypeMode ? AttachDiType.chipTextColor(attachDiTypeCode)
-                                    : OperationalStatus.chipTextColor(normalizedStatus)
+                                     : OperationalStatus.chipTextColor(colorStatus)
 }

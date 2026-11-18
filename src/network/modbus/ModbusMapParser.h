@@ -1,6 +1,7 @@
 #pragma once
 
 #include "ModbusTypes.h"
+#include "utils/SensorConstants.h"
 
 #include <QVector>
 #include <cstdint>
@@ -22,6 +23,10 @@ inline ModbusHeader parseHeader(const quint16 *regs, int size)
     h.na            = regs[4];
     h.ndi           = regs[5];
     h.ndo           = regs[6];
+    if (h.mapVersion == CentralLogger::Version::kModbusMapVersion2) {
+        h.status03Label = regs[7];
+        h.upstreamState = regs[8];
+    }
     return h;
 }
 
@@ -33,26 +38,34 @@ inline ModbusHeader parseHeader(const QVector<quint16> &regs)
 /// Decode one 8-register analog block (HR10 + i*8). Contract §2:
 ///   +0 sensor_id, +1 flags (legacy bit0=valid, bit1=alarm, bit2=stale),
 ///   +2..+3 float32 ABCD (big-endian IEEE754).
-/// Legacy flags are translated to TT10 status codes.
+/// Legacy flags do not carry a TT10 status. Do not infer one from alarm.
 inline QString statusCodeFromFlags(quint16 flags)
 {
     const bool valid  = (flags & 0x01) != 0;
-    const bool alarm  = (flags & 0x02) != 0;
     const bool stale  = (flags & 0x04) != 0;
     if (!valid) return QString();
     if (stale)  return QLatin1String("STALE");
-    if (alarm)  return QLatin1String("02"); // báo lỗi thiết bị
-    return QLatin1String("00");             // đang đo
+    return QLatin1String(CentralLogger::Sensor::kStatusUnknown);
 }
 
-inline AnalogSample parseAnalogBlock(const quint16 *regs, int size)
+inline AnalogSample parseAnalogBlock(const quint16 *regs, int size,
+                                     quint16 mapVersion = CentralLogger::Version::kModbusMapVersion)
 {
     AnalogSample a;
     if (!regs || size < 8) {
         return a;
     }
     a.edgeSensorId = regs[0];
-    a.statusCode   = statusCodeFromFlags(regs[1]);
+    a.hasQuality = true;
+    a.qualityValid = (regs[1] & 0x01) != 0;
+    a.qualityAlarm = (regs[1] & 0x02) != 0;
+    a.qualityStale = (regs[1] & 0x04) != 0;
+    if (mapVersion == CentralLogger::Version::kModbusMapVersion2) {
+        if (regs[4] <= 3)
+            a.statusCode = QStringLiteral("%1").arg(regs[4], 2, 10, QLatin1Char('0'));
+    } else {
+        a.statusCode = statusCodeFromFlags(regs[1]);
+    }
 
     // ABCD: register +2 holds the high word (AB), +3 the low word (CD).
     // Float bytes [A, B, C, D] → uint32 big-endian → bit_cast to float.
@@ -63,7 +76,8 @@ inline AnalogSample parseAnalogBlock(const quint16 *regs, int size)
 
 /// Take the first `size` analog blocks starting at `regs`, where size is
 /// the raw register count (must be `na * 8`). Returns `na` parsed samples.
-inline QVector<AnalogSample> parseAnalogChunk(const quint16 *regs, int size)
+inline QVector<AnalogSample> parseAnalogChunk(const quint16 *regs, int size,
+                                             quint16 mapVersion = CentralLogger::Version::kModbusMapVersion)
 {
     QVector<AnalogSample> out;
     if (!regs || size <= 0) {
@@ -72,7 +86,7 @@ inline QVector<AnalogSample> parseAnalogChunk(const quint16 *regs, int size)
     const int count = size / 8;
     out.reserve(count);
     for (int i = 0; i < count; ++i) {
-        out.append(parseAnalogBlock(regs + i * 8, 8));
+        out.append(parseAnalogBlock(regs + i * 8, 8, mapVersion));
     }
     return out;
 }

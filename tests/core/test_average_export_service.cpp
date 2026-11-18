@@ -133,6 +133,24 @@ private slots:
         QCOMPARE(csvCellAt(averageRow, 2), QStringLiteral("5.0"));
     }
 
+    void hourlyAverage_excludesNonMeasuringStatuses()
+    {
+        insertReading(1, 10.0, QStringLiteral("2026-11-05T10:00:00.000Z"));
+        QSqlQuery q(m_db.connection());
+        QVERIFY(q.exec(QStringLiteral(
+            "INSERT INTO sensor_reading (sensor_id,value,status_code,recorded_at) VALUES "
+            "(1,100,'01','2026-11-05T10:10:00.000Z'),"
+            "(1,200,'02','2026-11-05T10:20:00.000Z'),"
+            "(1,300,'03','2026-11-05T10:30:00.000Z'),"
+            "(1,400,'UNKNOWN','2026-11-05T10:40:00.000Z')")));
+        AverageExportService svc(m_db.connection());
+        const auto result = svc.build(hourlyParams());
+        QVERIFY2(result.error.isEmpty(), qPrintable(result.error));
+        const QStringList lines = result.csv.split(QLatin1Char('\n'), Qt::SkipEmptyParts);
+        const QString tenOclock = lineStartingWith(lines, QStringLiteral("10:00 05/11/2026,"));
+        QCOMPARE(csvCellAt(tenOclock, 1), QStringLiteral("10.00"));
+    }
+
     void shiftAverage_threeEightHourRows()
     {
         insertReading(1, 10.0, QStringLiteral("2026-11-05T10:00:00.000Z"));

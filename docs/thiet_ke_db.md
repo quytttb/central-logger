@@ -5,6 +5,13 @@
 **Stack C++:** `QSqlDatabase` + driver `QSQLITE` (`Qt6::Sql`) — xem [`adr/0001-db.md`](adr/0001-db.md)  
 **Cập nhật:** 2026-05-24
 
+> Cập nhật thử nghiệm TT10 2026-11-14: schema hiện hành v7 lưu
+> `sensor_reading.status_code` thay cho ba cột cờ cũ. Modbus map v2 mang
+> status và quality độc lập; vì v7 chưa lưu quality riêng, các mẫu v2
+> invalid/stale không được ghi thành giá trị số giả. Trạng thái lỗi vẫn có
+> thể hiển thị live nhưng chưa có lịch sử riêng khi giá trị không hợp lệ.
+> Xem [`contracts/modbus-map-v2.md`](contracts/modbus-map-v2.md).
+
 ---
 
 ## Tổng quan
@@ -83,9 +90,7 @@ erDiagram
         int id PK
         int sensor_id FK "indexed"
         float value
-        bool valid "default true"
-        bool alarm "default false"
-        bool stale "default false"
+        string status_code "00|01|02|03|UNKNOWN|STALE|empty"
         int logger_timestamp "Unix Modbus HR2-3"
         datetime recorded_at "indexed"
     }
@@ -191,9 +196,7 @@ Chỉ lưu giá trị theo thời gian; metadata nằm ở `logger_sensor`.
 | `id` | INTEGER PK | |
 | `sensor_id` | INTEGER FK | → `logger_sensor.id` |
 | `value` | REAL | ANALOG: float từ FC03; DI/DO: **0.0** hoặc **1.0** chuẩn hóa từ bit FC02/FC01 |
-| `valid` | BOOL | Cờ Modbus |
-| `alarm` | BOOL | Cờ alarm |
-| `stale` | BOOL | Cờ stale |
+| `status_code` | TEXT | Mã trạng thái; v1 không có TT10 chính xác nên dùng `UNKNOWN` |
 | `logger_timestamp` | INTEGER | Unix từ HR2–HR3 |
 | `recorded_at` | DATETIME | Thời điểm ghi (UTC) |
 
@@ -301,7 +304,7 @@ Nếu poll thất bại, Central giữ metadata nhưng ẩn giá trị cache và
 
 - **Primary logger** (`app_settings.primary_logger_id`, `0` = chưa chọn → fallback logger online đầu tiên): chart realtime lấy từ ring buffer `PollHistoryStore` (RAM, chỉ analog), không query DB.
 - **Other loggers** (`LoggerOverviewTableModel`): một hàng / logger phụ, cột sensor analog động theo bộ `(edge_sensor_id, tên, đơn vị)` từ `SensorSnapshotCache`. ID giống nhau nhưng tên hoặc đơn vị khác được tách cột để tránh gán sai nhãn; primary logger không nằm trong bảng.
-- **History export** (`AverageExportService`): CSV theo giờ + dòng trung bình 24h, hoặc theo ca 8h (giờ bắt đầu ca chỉnh trên HistoryView). Chỉ đọc `sensor_reading` có `valid = 1 AND stale = 0`; chạy nền bằng connection SQLite riêng.
+- **History export** (`AverageExportService`): CSV theo giờ + dòng trung bình 24h, hoặc theo ca 8h (giờ bắt đầu ca chỉnh trên HistoryView). Chỉ tính `status_code = '00'`; chạy nền bằng connection SQLite riêng. Mẫu v2 invalid/stale bị bỏ qua khi ghi vì schema v7 chưa lưu chất lượng riêng.
 
 ---
 

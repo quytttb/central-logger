@@ -20,31 +20,19 @@ QtObject {
     }
 
     // Map TT10 code → human-readable status text (shown on the chip)
-    function statusText(displayStatus, alarmType) {
+    function statusText(displayStatus, alarmType, status03Auto) {
         const code = String(displayStatus || "")
         const type = String(alarmType || "").toLowerCase()
         if (code.length === 0) {
             return "\u2014"
         }
-        // Threshold breach labels take precedence when alarmType is set
-        if (type === "min") {
-            return qsTr("MIN")
-        }
-        if (type === "max") {
-            return qsTr("MAX")
-        }
-        if (type === "min+max") {
-            return qsTr("MIN+MAX")
-        }
-        if (type === "device") {
-            return qsTr("Báo lỗi")
-        }
         // TT10 code → status text
         switch (code) {
-        case "00": return qsTr("Đang đo")
-        case "01": return qsTr("Hiệu chuẩn")
-        case "02": return qsTr("Báo lỗi")
-        case "03": return qsTr("Bảo trì")
+        case "00": return qsTr("Measuring")
+        case "01": return qsTr("Calibrating")
+        case "02": return qsTr("Error")
+        case "03": return status03Auto ? qsTr("Auto") : qsTr("Maintenance")
+        case "UNKNOWN": return qsTr("Unknown")
         default:   return code || "\u2014"
         }
     }
@@ -61,7 +49,7 @@ QtObject {
         if (code === "01" || code === "03") {
             return AppColors.warningContainer
         }
-        return AppColors.successContainer
+        return code === "00" ? AppColors.successContainer : AppColors.surfaceContainer
     }
 
     function chipBorder(displayStatus) {
@@ -75,7 +63,7 @@ QtObject {
         if (code === "01" || code === "03") {
             return AppColors.warning
         }
-        return AppColors.success
+        return code === "00" ? AppColors.success : AppColors.outline
     }
 
     function chipTextColor(displayStatus) {
@@ -89,6 +77,6 @@ QtObject {
         if (code === "01" || code === "03") {
             return AppColors.warning
         }
-        return AppColors.success
+        return code === "00" ? AppColors.success : AppColors.onSurfaceVariant
     }
 }

@@ -140,13 +140,16 @@ QJsonObject RestV1Server::configResponse()
     const auto snapshot = m_source.snapshot();
     QJsonArray sensors;
     for (const auto &point : snapshot.analogs) {
-        sensors.append(QJsonObject{
+        QJsonObject sensor{
             {QStringLiteral("sensor_id"), point.id},
             {QStringLiteral("sensor_type"), QStringLiteral("ANALOG")},
             {QStringLiteral("name"), point.name},
             {QStringLiteral("unit"), point.unit},
             {QStringLiteral("active"), point.active}
-        });
+        };
+        if (point.decimals.has_value())
+            sensor.insert(QStringLiteral("decimals"), *point.decimals);
+        sensors.append(sensor);
     }
     QJsonObject config{
         {QStringLiteral("station_code"), m_station.stationCode},

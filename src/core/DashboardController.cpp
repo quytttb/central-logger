@@ -421,14 +421,16 @@ void DashboardController::refreshGraphChart() {
     const double latest =
         points.constLast().toMap()
             .value(QLatin1String(CentralLogger::Ui::kChartY)).toDouble();
+    const bool currentValid =
+        s.value(QLatin1String(CentralLogger::Ui::kChartCurrentValid)).toBool();
 
     const bool hasMin = cat && cat->minThreshold.has_value();
     const bool hasMax = cat && cat->maxThreshold.has_value();
     const double minThreshold = hasMin ? *cat->minThreshold : 0.0;
     const double maxThreshold = hasMax ? *cat->maxThreshold : 0.0;
     // Same boundary rule as SensorMerger::checkThresholdBreach.
-    const bool outOfRange = (hasMin && latest <= minThreshold)
-                            || (hasMax && latest >= maxThreshold);
+    const bool outOfRange = currentValid && ((hasMin && latest <= minThreshold)
+                             || (hasMax && latest >= maxThreshold));
 
     double lo = latest;
     double hi = latest;
@@ -467,9 +469,10 @@ void DashboardController::refreshGraphChart() {
     chart.insert(QLatin1String(CentralLogger::Ui::kChartPoints), points);
     chart.insert(QLatin1String(CentralLogger::Ui::kChartLatest), latest);
     chart.insert(QLatin1String(CentralLogger::Ui::kChartLatestText),
-                 QString::number(latest, 'f', decimals));
+                 currentValid ? QString::number(latest, 'f', decimals)
+                              : QString::fromUtf8(CentralLogger::Sensor::kValuePlaceholder));
     chart.insert(QLatin1String(CentralLogger::Ui::kChartHasThresholds),
-                 hasMin || hasMax);
+                 currentValid && (hasMin || hasMax));
     chart.insert(QLatin1String(CentralLogger::Ui::kChartHasMinThreshold), hasMin);
     chart.insert(QLatin1String(CentralLogger::Ui::kChartHasMaxThreshold), hasMax);
     chart.insert(QLatin1String(CentralLogger::Ui::kChartThresholdMin),

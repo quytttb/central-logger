@@ -190,6 +190,7 @@ Item {
                                 required property var value
                                 required property var unit
                                 required property var displayStatus
+                                required property var status03Auto
                                 required property var attachDiTypeCodes
                                 required property var attachDiTypeLabels
                                 required property var alarmType
@@ -238,6 +239,7 @@ Item {
                                             verticalCenter: parent.verticalCenter
                                         }
                                         displayStatus: sensorCell.displayStatus
+                                        status03Auto: sensorCell.status03Auto
                                         alarmType: sensorCell.alarmType
                                         attachDiTypeCodes: sensorCell.attachDiTypeCodes
                                         attachDiTypeLabels: sensorCell.attachDiTypeLabels

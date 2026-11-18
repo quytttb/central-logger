@@ -63,6 +63,7 @@ QVariant SensorMonitoringTableModel::data(const QModelIndex &index, int role) co
     case SensorTypeRole:         return row.sensorType;
     case StatusCodeRole:         return row.statusCode;
     case TimestampRole:          return row.timestamp;
+    case Status03AutoRole:       return row.status03Auto;
     default:                     return {};
     }
 }
@@ -99,6 +100,7 @@ QHash<int, QByteArray> SensorMonitoringTableModel::roleNames() const
         { SensorTypeRole,           CentralLogger::Ui::kRoleSensorType },
         { StatusCodeRole,           CentralLogger::Ui::kRoleStatusCode },
         { TimestampRole,            CentralLogger::Ui::kRoleTimestamp },
+        { Status03AutoRole,         CentralLogger::Ui::kRoleStatus03Auto },
     };
 }
 
@@ -135,6 +137,7 @@ void SensorMonitoringTableModel::setRows(const QVector<SensorLiveRow> &rows)
             SensorTypeRole,
             StatusCodeRole,
             TimestampRole,
+            Status03AutoRole,
         };
         emit dataChanged(index(0, 0),
                          index(oldCount - 1, ColumnCount - 1),

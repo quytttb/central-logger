@@ -1,5 +1,7 @@
 #pragma once
 
+#include <QtGlobal>
+
 // Single source of truth for protocol / schema version constants.
 //
 // - kSchemaVersion: SQLite PRAGMA user_version baked into 001_initial.sql.
@@ -19,5 +21,12 @@ namespace CentralLogger::Version {
 inline constexpr int kSchemaVersion    = 7;
 inline constexpr int kApiVersion       = 1;
 inline constexpr int kModbusMapVersion = 1;
+inline constexpr int kModbusMapVersion2 = 2;
+inline constexpr quint16 kModbusStatusUnknown = 0xffff;
+inline constexpr quint16 kModbusStatus03Maintenance = 0;
+inline constexpr quint16 kModbusStatus03Auto = 1;
+inline constexpr quint16 kModbusUpstreamUnknown = 0;
+inline constexpr quint16 kModbusUpstreamConnected = 1;
+inline constexpr quint16 kModbusUpstreamDisconnected = 2;
 
 } // namespace CentralLogger::Version

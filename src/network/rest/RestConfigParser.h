@@ -100,6 +100,8 @@ inline QVector<Data::LoggerSensor> readSensors(qint64 loggerId, const QJsonArray
         s.unit         = readStr(obj, "unit");
         s.minThreshold = readOptDouble(obj, "min_threshold");
         s.maxThreshold = readOptDouble(obj, "max_threshold");
+        s.minThresholdSpecified = obj.contains(QLatin1String("min_threshold"));
+        s.maxThresholdSpecified = obj.contains(QLatin1String("max_threshold"));
         // Display precision (ANALOG). Edge field optional → default kDecimalsDefault, clamp [kDecimalsMin, kDecimalsMax].
         s.decimals     = std::clamp(readInt(obj, "decimals", CentralLogger::Defaults::kDecimalsDefault),
                                     CentralLogger::Defaults::kDecimalsMin,

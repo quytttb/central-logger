@@ -42,6 +42,7 @@ public:
         SensorTypeRole,
         StatusCodeRole,
         TimestampRole,
+        Status03AutoRole,
     };
     Q_ENUM(Role)
 

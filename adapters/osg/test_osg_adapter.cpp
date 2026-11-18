@@ -32,6 +32,8 @@ private slots:
     void localModbusHeader();
     void unreachableSourceFailsClosed();
     void liveCentralConfigProbe();
+    void osgStatusMapping();
+    void osgQualityDoesNotTrustErrorStatus();
 };
 
 void TestOsgAdapter::parseEmptyZeroAndMilliseconds()
@@ -76,24 +78,129 @@ void TestOsgAdapter::encodeV1AnalogAndQuality()
         AnalogPoint{161, QStringLiteral("NO"), QStringLiteral("mg"), true,
                     true, false, false, 0.0f, 1794620159951LL}
     };
+    source.analogs[0].statusCode = QStringLiteral("00");
+    source.analogs[1].statusCode = QStringLiteral("02");
+    source.analogs[2].statusCode = QStringLiteral("03");
     const auto regs = ModbusV1Server::encodeSnapshot(source);
     const auto header = ModbusMapParser::parseHeader(regs);
-    QCOMPARE(header.mapVersion, quint16(1));
+    QCOMPARE(header.mapVersion, quint16(2));
     QCOMPARE(header.na, quint16(3));
     QCOMPARE(header.ndi, quint16(0));
     QCOMPARE(header.ndo, quint16(0));
     QCOMPARE(header.unixTimestamp, quint32(1794620159));
     QVERIFY(header.isPolling());
     QVERIFY(!header.isRtuConnected());
-    const auto analog = ModbusMapParser::parseAnalogChunk(regs.constData() + 10, 24);
+    const auto analog = ModbusMapParser::parseAnalogChunk(regs.constData() + 10, 24, header.mapVersion);
     QCOMPARE(analog.size(), 3);
     QCOMPARE(analog[0].edgeSensorId, quint16(159));
     QCOMPARE(analog[0].value, 12.5f);
     QVERIFY(analog[0].isValid());
+    QCOMPARE(analog[0].statusCode, QStringLiteral("00"));
     QVERIFY(!analog[1].isValid());
     QVERIFY(analog[1].isStale());
+    QCOMPARE(analog[1].statusCode, QStringLiteral("02"));
     QVERIFY(analog[2].isValid());
     QCOMPARE(analog[2].value, 0.0f);
+    QCOMPARE(analog[2].statusCode, QStringLiteral("03"));
+}
+
+void TestOsgAdapter::osgStatusMapping()
+{
+    for (int i = 0; i <= 3; ++i)
+        QCOMPARE(OsgSource::statusCodeFromOsg(QJsonValue(i)),
+                 QStringLiteral("%1").arg(i, 2, 10, QLatin1Char('0')));
+    QVERIFY(OsgSource::statusCodeFromOsg(QJsonValue(4)).isEmpty());
+    QVERIFY(OsgSource::statusCodeFromOsg(QJsonValue(1.5)).isEmpty());
+    QVERIFY(OsgSource::statusCodeFromOsg(QJsonValue(QStringLiteral("0"))).isEmpty());
+    QVERIFY(OsgSource::statusCodeFromOsg(QJsonValue()).isEmpty());
+}
+
+void TestOsgAdapter::osgQualityDoesNotTrustErrorStatus()
+{
+    QTcpServer upstream;
+    QVERIFY(upstream.listen(QHostAddress::LocalHost, 0));
+    int status = 0;
+    bool alarm = false;
+    connect(&upstream, &QTcpServer::newConnection, &upstream, [&]() {
+        while (auto *socket = upstream.nextPendingConnection()) {
+            connect(socket, &QTcpSocket::readyRead, socket, [&, socket]() {
+                const QByteArray request = socket->readAll();
+                QByteArray body;
+                if (request.contains("/api/auth/login")) {
+                    body = R"({"data":{"accessToken":"test-token"}})";
+                } else if (request.contains("/api/sensors")) {
+                    body = R"({"data":[{"id":164,"name":"O2","unit":"%V","precision":1,"enabled":true}]})";
+                } else if (request.contains("/api/data/realtime")) {
+                    const QJsonObject reading{{QStringLiteral("id"), 164},
+                                              {QStringLiteral("name"), QStringLiteral("O2")},
+                                              {QStringLiteral("unit"), QStringLiteral("%V")},
+                                              {QStringLiteral("value"), QStringLiteral("7.5")},
+                                              {QStringLiteral("enabled"), true},
+                                              {QStringLiteral("syncing"), true},
+                                              {QStringLiteral("alert"), alarm},
+                                              {QStringLiteral("status"), status},
+                                              {QStringLiteral("time"), double(QDateTime::currentMSecsSinceEpoch())}};
+                    body = QJsonDocument(QJsonObject{{QStringLiteral("data"), QJsonArray{reading}}})
+                               .toJson(QJsonDocument::Compact);
+                } else {
+                    body = "{}";
+                }
+                socket->write("HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nConnection: close\r\nContent-Length: "
+                              + QByteArray::number(body.size()) + "\r\n\r\n" + body);
+                socket->disconnectFromHost();
+            });
+            connect(socket, &QTcpSocket::disconnected, socket, &QObject::deleteLater);
+        }
+    });
+    Settings settings;
+    settings.url = QUrl(QStringLiteral("http://127.0.0.1:%1").arg(upstream.serverPort()));
+    settings.pollIntervalMs = 30;
+    settings.timeoutMs = 1000;
+    settings.staleAfterMs = 30000;
+    settings.analogIds = {164};
+    settings.credentials = {QStringLiteral("test"), QStringLiteral("test")};
+    // Even a mistaken policy cannot mark ERROR or AUTO as a good measurement.
+    settings.quality.validStatuses = QJsonArray{0, 1, 2, 3};
+    settings.quality.acceptableSyncing = QJsonArray{true};
+    settings.quality.noAlarmValues = QJsonArray{false};
+    settings.quality.alarmValues = QJsonArray{true};
+    settings.quality.expectedUnits = QJsonObject{{QStringLiteral("164"), QStringLiteral("%V")}};
+    OsgSource source(settings);
+    source.start();
+    QTRY_VERIFY_WITH_TIMEOUT(!source.snapshot().analogs.isEmpty(), 3000);
+    QTRY_VERIFY_WITH_TIMEOUT(source.snapshot().analogs[0].valid, 3000);
+    QCOMPARE(source.snapshot().analogs[0].statusCode, QStringLiteral("00"));
+    QVERIFY(source.snapshot().analogs[0].decimals.has_value());
+    QCOMPARE(*source.snapshot().analogs[0].decimals, 1);
+    VirtualStation station{QStringLiteral("TEST"), QStringLiteral("Test"), 10,
+                           QHostAddress::LocalHost, 1};
+    RestV1Server rest(source, station, QByteArray("test-adapter-token"));
+    QVERIFY(rest.listen(QHostAddress::LocalHost, 0));
+    QNetworkAccessManager manager;
+    manager.setProxy(QNetworkProxy::NoProxy);
+    QNetworkRequest configRequest(QUrl(QStringLiteral("http://127.0.0.1:%1/api/v1/config")
+                                           .arg(rest.serverPort())));
+    configRequest.setRawHeader("Authorization", "Bearer test-adapter-token");
+    auto *reply = manager.get(configRequest);
+    QSignalSpy configDone(reply, &QNetworkReply::finished);
+    QVERIFY(configDone.wait(3000));
+    const auto config = QJsonDocument::fromJson(reply->readAll()).object()
+                            .value(QStringLiteral("config")).toObject();
+    QCOMPARE(config.value(QStringLiteral("sensors")).toArray()[0].toObject()
+                 .value(QStringLiteral("decimals")).toInt(), 1);
+    reply->deleteLater();
+    alarm = true;
+    QTRY_VERIFY_WITH_TIMEOUT(source.snapshot().analogs[0].alarm, 3000);
+    QVERIFY(source.snapshot().analogs[0].valid);
+    QCOMPARE(source.snapshot().analogs[0].statusCode, QStringLiteral("00"));
+    for (status = 1; status <= 3; ++status) {
+        const QString code = QStringLiteral("%1").arg(status, 2, 10, QLatin1Char('0'));
+        QTRY_COMPARE_WITH_TIMEOUT(source.snapshot().analogs[0].statusCode, code, 3000);
+        QVERIFY(!source.snapshot().analogs[0].valid);
+    }
+    source.stop();
+    QVERIFY(source.snapshot().analogs[0].statusCode.isEmpty());
+    QVERIFY(source.snapshot().analogs[0].stale);
 }
 
 void TestOsgAdapter::localRestAuthenticationAndStartup()
@@ -153,7 +260,7 @@ void TestOsgAdapter::localModbusHeader()
     if (!reply->isFinished())
         QVERIFY(done.wait(3000));
     QCOMPARE(reply->error(), QModbusDevice::NoError);
-    QCOMPARE(reply->result().value(0), quint16(1));
+    QCOMPARE(reply->result().value(0), quint16(2));
     QCOMPARE(reply->result().value(4), quint16(0));
     reply->deleteLater();
 

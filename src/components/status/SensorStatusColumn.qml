@@ -11,6 +11,7 @@ Row {
 
     property string displayStatus: ""
     property string alarmType: ""
+    property bool status03Auto: false
     property var attachDiTypeCodes: []
     property var attachDiTypeLabels: []
 
@@ -22,6 +23,7 @@ Row {
     SensorStatusChip {
         displayStatus: String(root.displayStatus || "")
         alarmType: String(root.alarmType || "")
+        status03Auto: root.status03Auto
     }
 
     Repeater {

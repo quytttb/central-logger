@@ -278,6 +278,13 @@ QVector<Data::SensorReading> ModbusBridge::buildReadings(const PollSnapshot &sna
         if (sensorId <= 0) {
             continue;
         }
+        // The v7 history schema has no separate quality column. Do not store
+        // the transport's zero placeholder as a real value for an invalid v2
+        // sample, even if the source supplied an error status.
+        if (sample.hasQuality && (!sample.isValid() || sample.isStale())) {
+            m_lastValue.remove(sensorId);
+            continue;
+        }
         appendIfChanged(sensorId, static_cast<double>(sample.value),
                         sample.statusCode);
     }

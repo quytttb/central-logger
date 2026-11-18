@@ -9,13 +9,20 @@ namespace CentralLogger::Core {
 
 void PollHistoryStore::append(const Network::PollSnapshot &snapshot)
 {
-    if (!snapshot.success) return;
-
     const qint64 loggerId = snapshot.loggerId;
+    if (!snapshot.success) {
+        m_currentValid.remove(loggerId);
+        return;
+    }
+
+    m_currentValid.remove(loggerId);
     auto &loggerStore = m_store[loggerId];
 
     for (const auto &analog : snapshot.analogs) {
-        if (!analog.isValid() || analog.isStale()) continue;
+        const bool currentValid = analog.isValid() && !analog.isStale()
+            && analog.statusCode == QLatin1String(CentralLogger::Sensor::kStatusOk);
+        m_currentValid[loggerId].insert(analog.edgeSensorId, currentValid);
+        if (!currentValid) continue;
 
         auto &deque = loggerStore[analog.edgeSensorId];
 
@@ -68,6 +75,8 @@ QVariantList PollHistoryStore::seriesForLogger(qint64 loggerId) const
                       m_sensorDecimals.value(loggerId).value(
                           edgeSensorId, CentralLogger::Defaults::kDecimalsDefault));
         series.insert(QLatin1String(CentralLogger::Ui::kChartPoints), points);
+        series.insert(QLatin1String(CentralLogger::Ui::kChartCurrentValid),
+                      m_currentValid.value(loggerId).value(edgeSensorId, false));
         result.append(series);
     }
 
@@ -92,6 +101,7 @@ void PollHistoryStore::updateSensorDecimals(qint64 loggerId, const QHash<int, in
 void PollHistoryStore::remove(qint64 loggerId)
 {
     m_store.remove(loggerId);
+    m_currentValid.remove(loggerId);
     m_sensorNames.remove(loggerId);
     m_sensorDecimals.remove(loggerId);
 }
@@ -99,6 +109,7 @@ void PollHistoryStore::remove(qint64 loggerId)
 void PollHistoryStore::clear()
 {
     m_store.clear();
+    m_currentValid.clear();
     m_sensorNames.clear();
     m_sensorDecimals.clear();
 }

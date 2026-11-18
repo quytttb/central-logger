@@ -78,6 +78,7 @@ private:
   // loggerId → (edgeSensorId → deque of points)
   using SensorDeque = QHash<int, std::deque<TrendingPoint>>;
   QHash<qint64, SensorDeque> m_store;
+  QHash<qint64, QHash<int, bool>> m_currentValid;
   // loggerId → (edgeSensorId → display name)
   QHash<qint64, QHash<int, QString>> m_sensorNames;
   // loggerId → (edgeSensorId → display precision)

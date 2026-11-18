@@ -375,7 +375,7 @@ Item {
                                     const rows = root.summaryGridRows()
                                     const maxCell = rows > 1 ? 240 : 300
                                     return Math.round(Math.max(112,
-                                        Math.min(maxCell, height / rows)))
+                                        Math.min(maxCell, parent.height / rows)))
                                 }
                                 cellWidth: {
                                     const cols = root.summaryGridColumns()

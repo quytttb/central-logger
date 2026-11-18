@@ -35,6 +35,7 @@ inline constexpr char kStatusOk[]      = "00";   // đang đo
 inline constexpr char kStatusCalib[]   = "01";   // hiệu chuẩn
 inline constexpr char kStatusErr[]     = "02";   // báo lỗi thiết bị
 inline constexpr char kStatusMaint[]   = "03";   // maintenance nội bộ
+inline constexpr char kStatusUnknown[] = "UNKNOWN"; // v1 cannot carry TT10
 
 // Chuỗi rỗng ("") = không có dữ liệu / mất kết nối (không hiển thị chip).
 // Các hằng legacy OK/ALARM/STALE/ERR/WAIT đã bị xoá hoàn toàn.
@@ -42,10 +43,12 @@ inline constexpr char kStatusMaint[]   = "03";   // maintenance nội bộ
 /// Map TT10 status code → human-readable status text (shown on chips).
 inline QString statusText(const QString &code)
 {
-    if (code == QLatin1String("00")) return QStringLiteral("Đang đo");
-    if (code == QLatin1String("01")) return QStringLiteral("Hiệu chuẩn");
-    if (code == QLatin1String("02")) return QStringLiteral("Báo lỗi");
-    if (code == QLatin1String("03")) return QStringLiteral("Bảo trì");
+    if (code == QLatin1String("00")) return QStringLiteral("Measuring");
+    if (code == QLatin1String("01")) return QStringLiteral("Calibrating");
+    if (code == QLatin1String("02")) return QStringLiteral("Error");
+    // History v7 stores the code but not the source-specific 03 label.
+    if (code == QLatin1String("03")) return QStringLiteral("Custom");
+    if (code == QLatin1String("UNKNOWN")) return QStringLiteral("Unknown");
     return QString();
 }
 

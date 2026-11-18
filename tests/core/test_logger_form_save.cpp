@@ -14,6 +14,7 @@
 #include "core/LoggerFormController.h"
 #include "data/db/Database.h"
 #include "data/repositories/LoggerRepository.h"
+#include "data/repositories/SensorCatalogRepository.h"
 #include "network/rest/RestConfigService.h"
 
 #include <QTcpServer>
@@ -49,6 +50,7 @@ public:
     int     postCount()    const { return m_postCount; }
 
     void setPostBehavior(PostBehavior b) { m_postBehavior = b; }
+    void setConfigResponse(const QByteArray &body) { m_configResponse = body; }
 
 private slots:
     void onNewConnection()
@@ -68,6 +70,10 @@ private slots:
                 httpReply(sock, 200, body);
             } else {
                 // GET /api/v1/config
+                if (!m_configResponse.isEmpty()) {
+                    httpReply(sock, 200, m_configResponse);
+                    return;
+                }
                 static const QByteArray body =
                     R"({"revision":1,)"
                     R"("config":{)"
@@ -99,6 +105,7 @@ private:
     QTcpServer   m_server;
     PostBehavior m_postBehavior = PostBehavior::Succeed;
     int          m_postCount    = 0;
+    QByteArray   m_configResponse;
 };
 
 // ---------------------------------------------------------------------------
@@ -174,7 +181,47 @@ private slots:
     void successPath_dbCommitted();
     void restFail_dbStillCommitted();
     void noRestCall_whenConfigUnchanged();
+    void metadataOnlyCatalogPreservesThresholds();
 };
+
+void TestLoggerFormSave::metadataOnlyCatalogPreservesThresholds()
+{
+    Harness h("catalog-thresholds");
+    h.edge.setConfigResponse(R"({"revision":1,"config":{"station_code":"TST-01","station_name":"EdgeName","poll_interval":2,"modbus_tcp_unit_id":1,"sensors":[{"sensor_id":164,"sensor_type":"ANALOG","name":"O2","unit":"%V","min_threshold":0,"max_threshold":15,"decimals":1}]}})");
+    QVERIFY(h.probe());
+    h.form.saveLoggerFromForm(true, -1, QStringLiteral(""), QStringLiteral("EdgeName"),
+                              QStringLiteral("127.0.0.1"), 5020, h.edge.port(),
+                              QStringLiteral("test-token"), 1, 2, 5);
+    const auto loggers = LoggerRepository(h.db.connection()).findAll();
+    QCOMPARE(loggers.size(), 1);
+    const auto id = loggers.first().id;
+    SensorCatalogRepository sensors(h.db.connection());
+    auto saved = sensors.findByLoggerAndEdgeId(id, 164, QStringLiteral("ANALOG"));
+    QVERIFY(saved.has_value());
+    QCOMPARE(saved->maxThreshold.value_or(-1), 15.0);
+
+    h.edge.setConfigResponse(R"({"revision":1,"config":{"station_code":"TST-01","station_name":"EdgeName","poll_interval":2,"modbus_tcp_unit_id":1,"sensors":[{"sensor_id":164,"sensor_type":"ANALOG","name":"O2 updated","unit":"%V","decimals":2}]}})");
+    QVERIFY(h.probe());
+    h.form.saveLoggerFromForm(false, int(id), QStringLiteral("TST-01"), QStringLiteral("EdgeName"),
+                              QStringLiteral("127.0.0.1"), 5020, h.edge.port(),
+                              QStringLiteral("test-token"), 1, 2, 5);
+    saved = sensors.findByLoggerAndEdgeId(id, 164, QStringLiteral("ANALOG"));
+    QVERIFY(saved.has_value());
+    QCOMPARE(saved->name, QStringLiteral("O2 updated"));
+    QCOMPARE(saved->decimals, 2);
+    QCOMPARE(saved->minThreshold.value_or(-1), 0.0);
+    QCOMPARE(saved->maxThreshold.value_or(-1), 15.0);
+
+    h.edge.setConfigResponse(R"({"revision":1,"config":{"station_code":"TST-01","station_name":"EdgeName","poll_interval":2,"modbus_tcp_unit_id":1,"sensors":[{"sensor_id":164,"sensor_type":"ANALOG","name":"O2","unit":"%V","max_threshold":null}]}})");
+    QVERIFY(h.probe());
+    h.form.saveLoggerFromForm(false, int(id), QStringLiteral("TST-01"), QStringLiteral("EdgeName"),
+                              QStringLiteral("127.0.0.1"), 5020, h.edge.port(),
+                              QStringLiteral("test-token"), 1, 2, 5);
+    saved = sensors.findByLoggerAndEdgeId(id, 164, QStringLiteral("ANALOG"));
+    QVERIFY(saved.has_value());
+    QCOMPARE(saved->minThreshold.value_or(-1), 0.0);
+    QVERIFY(!saved->maxThreshold.has_value());
+}
 
 // ---- No probe → save must fail, DB empty ---------------------------------
 

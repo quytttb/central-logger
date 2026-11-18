@@ -1,5 +1,10 @@
 # Handoff — Central Logger
 
+> 2026-11-14, thử nghiệm TT10: Central hỗ trợ Modbus map v2 bên cạnh v1;
+> adapter OSG và data-logger bản mới phát v2. Status TT10 tách khỏi cờ
+> chất lượng và cảnh báo. Xem [`docs/contracts/modbus-map-v2.md`](docs/contracts/modbus-map-v2.md);
+> v1 không mang đủ thông tin để khôi phục chính xác trạng thái TT10.
+
 ## Repo này là gì
 
 Ứng dụng desktop **quản lý tập trung Data Logger** qua Modbus TCP (FC03 + FC02 + FC01) + REST config API.  

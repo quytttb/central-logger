@@ -163,7 +163,7 @@ AverageExportResult AverageExportService::build(const AverageExportParams &param
             "JOIN %3 s ON r.sensor_id = s.id "
             "WHERE s.logger_id = :lid "
             "  AND s.sensor_type = :stype "
-            "  AND r.status_code IS NOT NULL AND r.status_code != '' AND r.status_code != 'STALE' "
+            "  AND r.status_code = '00' "
             "  AND r.recorded_at >= :from AND r.recorded_at <= :to "
             "GROUP BY s.id, bucket "
             "ORDER BY bucket ASC")
