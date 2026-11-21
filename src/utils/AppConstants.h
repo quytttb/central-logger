@@ -10,6 +10,7 @@
 // Version constants (DB schema, REST API, Modbus map) live in `Version.h`.
 
 #include <QtGlobal>
+#include <array>
 
 namespace CentralLogger::Defaults {
 
@@ -28,6 +29,7 @@ inline constexpr int kMaxIntervalSec = 3600; // 1 hour
 
 // --- Derived millisecond helpers --------------------------------------------
 inline constexpr int kMsPerSecond             = 1000;
+inline constexpr int kSecondsPerMinute        = 60;
 inline constexpr int kSecondsPerHour          = 3600;
 inline constexpr int kDefaultPollIntervalMs   = kDefaultPollIntervalSec * kMsPerSecond;
 inline constexpr int kDefaultTimeoutMs        = kDefaultTimeoutSec      * kMsPerSecond;
@@ -35,15 +37,13 @@ inline constexpr int kDefaultTimeoutMs        = kDefaultTimeoutSec      * kMsPer
 // --- Modbus connection / poll ------------------------------------------------
 inline constexpr int kConnectTimeoutMultiplier = 2;   // abort ConnectingState after timeout * N
 inline constexpr int kConnectTimeoutFallbackMs = 4000;// when timeout < 1
+inline constexpr int kModbusStartupStaggerMs   = 100; // per logger
 inline constexpr int kModbusHeartbeatMs        = 15 * 60 * 1000; // store-on-change force-write cadence
 inline constexpr int kMaxAnalogChunk           = 15;  // 15*8 = 120 ≤ 125-reg FC03 limit
 
 // --- REST config service -----------------------------------------------------
-inline constexpr int    kRestTransferTimeoutMs   = 10'000;  // GET / POST /config, GET /readings
+inline constexpr int    kRestTransferTimeoutMs   = 10'000;  // GET /config, GET /readings
 inline constexpr int    kRestProbeTimeoutMs      = 8'000;   // one-shot probe
-inline constexpr int    kRestReportTimeoutMs     = 30'000;  // large artifact download
-inline constexpr int    kRestConfigPushTimeoutMs = 15'000;  // client-side wait for /config apply
-inline constexpr qint64 kRestReportMaxBytes      = 50LL * 1024 * 1024; // 50 MB cap
 
 // --- SQLite pragmas / housekeeping -------------------------------------------
 inline constexpr int    kSqliteBusyTimeoutMs = 5'000;
@@ -65,11 +65,15 @@ inline constexpr int kHistoryFlushIntervalS  = 5;
 inline constexpr int kChartDisplayPointCount  = 20;
 inline constexpr int kReadingsChartRefreshMs  = 30'000;
 inline constexpr int kChartDefaultBucketMin   = 5;
+inline constexpr std::array kGraphZoomPresetsMin{1, 5, 15, 60, 180, 720, 1440, 10080};
+inline constexpr int kGraphDefaultZoomIndex   = 1; // live: last 5 minutes
+inline constexpr int kGraphRamMaxPoints       = 4000; // per analog sensor
+inline constexpr qint64 kGraphRamMaxMs        = 6LL * kSecondsPerHour * kMsPerSecond;
+inline constexpr int kGraphDownsamplePoints   = 800;
+inline constexpr int kGraphSqlRefreshMs       = 30 * kMsPerSecond;
 
 // --- Dashboard summary / average export --------------------------------------
 inline constexpr int    kNoPrimaryLoggerId  = 0;
-inline constexpr int    kShiftLengthHours   = 8;
-inline constexpr int    kShiftCount         = 3;
 inline constexpr int    kHoursPerDay        = 24;
 inline constexpr int    kHourBucketSeconds  = kSecondsPerHour;
 

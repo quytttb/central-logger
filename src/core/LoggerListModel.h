@@ -25,14 +25,14 @@ class LoggerListModel : public QAbstractTableModel
     QML_ANONYMOUS
 
 public:
-    // Display columns — matches QML columnWidthProvider indices.
+    // Display columns for Settings > Loggers table.
     enum Column {
         NameColumn = 0,
+        StationColumn,
         HostColumn,
-        ModbusPortColumn,
-        SensorCountColumn,
+        PortsColumn,
+        EnabledColumn,
         StatusColumn,
-        ActionsColumn,
         ColumnCount,
     };
 
@@ -43,14 +43,13 @@ public:
         NameRole,
         HostRole,
         ModbusPortRole,
-        ModbusUnitIdRole,
         ApiPortRole,
         StatusRole,
         SensorCountRole,
         OnlineRole,
         PollingRole,
         AnyAlarmRole,
-        RtuConnectedRole,
+        EnabledRole,
     };
 
     explicit LoggerListModel(QObject *parent = nullptr);
@@ -66,26 +65,24 @@ public:
 
     /// Reloads from `LoggerRepository::findAllWithSensorCounts()`. Emits
     /// modelReset; safe to call from the UI thread.
-    Q_INVOKABLE void reload();
+    void reload();
 
     /// Returns the row index of @p loggerId, or -1 if not found.
-    Q_INVOKABLE int indexOfLogger(qint64 loggerId) const;
+    int indexOfLogger(qint64 loggerId) const;
 
     /// Patches a single row's live-state columns (status, sensor count,
     /// polling, any-alarm). Used by `ModbusBridge::snapshotApplied` so we
     /// don't reset the whole model every poll cycle.
-    Q_INVOKABLE void updateLoggerRow(qint64 loggerId,
-                                     const QString &status,
-                                     int sensorCount,
-                                     bool polling,
-                                     bool anyAlarm,
-                                     bool rtuConnected);
+    void updateLoggerRow(qint64 loggerId,
+                         const QString &status,
+                         int sensorCount,
+                         bool polling,
+                         bool anyAlarm);
 
 private:
     struct LiveState {
         bool polling = false;
         bool anyAlarm = false;
-        bool rtuConnected = false;
     };
 
     Data::Database *m_db = nullptr;

@@ -25,6 +25,12 @@ public:
     /// On success @p sensor.id is set to the row id.
     bool upsert(LoggerSensor &sensor, QString *errorOut = nullptr);
 
+    /// Upserts @p sensors for @p loggerId while preserving any existing local
+    /// thresholds on fields whose `*Specified` flag is false.
+    bool upsertBatchPreservingThresholds(qint64 loggerId,
+                                         const QVector<LoggerSensor> &sensors,
+                                         QString *errorOut = nullptr);
+
     std::optional<LoggerSensor> findByLoggerAndEdgeId(qint64 loggerId,
                                                       int edgeSensorId,
                                                       const QString &sensorType,

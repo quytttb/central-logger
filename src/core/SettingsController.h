@@ -4,6 +4,7 @@
 
 #include <QObject>
 #include <QString>
+#include <QTimeZone>
 #include <QVariantList>
 #include <QtQmlIntegration/qqmlintegration.h>
 
@@ -33,6 +34,7 @@ class SettingsController : public QObject
     Q_PROPERTY(int     dataRetentionDays      READ dataRetentionDays      WRITE setDataRetentionDays      NOTIFY dataRetentionDaysChanged)
     Q_PROPERTY(int     historyFlushIntervalS  READ historyFlushIntervalS  WRITE setHistoryFlushIntervalS  NOTIFY historyFlushIntervalSChanged)
     Q_PROPERTY(qint64  primaryLoggerId        READ primaryLoggerId        WRITE setPrimaryLoggerId        NOTIFY primaryLoggerIdChanged)
+    Q_PROPERTY(QString loggersViewMode        READ loggersViewMode        WRITE setLoggersViewMode        NOTIFY loggersViewModeChanged)
     Q_PROPERTY(QVariantList loggerChoices     READ loggerChoices                                          NOTIFY loggerChoicesChanged)
     Q_PROPERTY(QString lastError          READ lastError                                       NOTIFY lastErrorChanged)
     Q_PROPERTY(QString logFilePath        READ logFilePath        CONSTANT)
@@ -47,6 +49,7 @@ public:
     int     dataRetentionDays()     const { return m_settings.dataRetentionDays; }
     int     historyFlushIntervalS() const { return m_settings.historyFlushIntervalS; }
     qint64  primaryLoggerId()       const { return m_settings.primaryLoggerId; }
+    QString loggersViewMode()       const { return m_settings.loggersViewMode; }
     QVariantList loggerChoices()    const { return m_loggerChoices; }
     QString lastError()         const { return m_lastError; }
     QString logFilePath()       const { return m_logFilePath; }
@@ -57,11 +60,16 @@ public:
     void setDataRetentionDays(int value);
     void setHistoryFlushIntervalS(int value);
     void setPrimaryLoggerId(qint64 value);
+    void setLoggersViewMode(const QString &value);
 
     /// QML singleton accessor + factory — see AppState.
     static SettingsController *instance();
     static void setInstance(SettingsController *controller);
     static SettingsController *create(QQmlEngine *, QJSEngine *);
+
+    /// Valid timezone from settings, falling back to system timezone.
+    QTimeZone effectiveTimeZone() const;
+    static QTimeZone resolveTimeZone();
 
     void setDatabase(Data::Database *db);
 
@@ -69,6 +77,7 @@ public:
     /// Falls back to local time when the timezone name is invalid.
     /// Callable from QML: SettingsController.formatTimestamp(model.createdAt)
     Q_INVOKABLE QString formatTimestamp(const QDateTime &dt) const;
+    Q_INVOKABLE QString formatGraphTime(double epochMs, double windowMs) const;
 
     /// Re-reads the logger list for the primary-logger picker. Called by
     /// SettingsView on open so newly added loggers appear without an app
@@ -87,18 +96,26 @@ public slots:
     /// Convenience for an instant theme toggle from the top bar.
     bool saveTheme(const QString &value);
 
+    /// Convenience for persisting the Loggers > Data Cards/List toggle immediately.
+    bool saveLoggersViewMode(const QString &value);
+
+    /// Resets primaryLoggerId to 0 without emitting saved() when a logger is deleted.
+    void clearDeletedPrimaryLogger(qint64 deletedId);
+
 signals:
     void themeChanged();
     void systemTimezoneChanged();
     void dataRetentionDaysChanged();
     void historyFlushIntervalSChanged();
     void primaryLoggerIdChanged();
+    void loggersViewModeChanged();
     void loggerChoicesChanged();
     void lastErrorChanged();
     void saved();
     void error(const QString &message);
 
 private:
+    bool persistSettings(bool emitSavedSignal);
     void setError(const QString &message);
 
     Data::Database  *m_db = nullptr;

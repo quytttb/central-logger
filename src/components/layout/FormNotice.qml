@@ -16,7 +16,7 @@ import LoggerKit.Components
 //       visible:    root.probeMessage.length > 0
 //       semantic:   root.probeStatus     // "success" | "error" | "info" | "warning"
 //       summary:    root.probeMessage
-//       detailText: root.configLoadError
+//       detailText: root.saveError
 //       onDetailRequested: (title, body) => AppNotifier.openDetail(title, body, -1)
 //   }
 Item {

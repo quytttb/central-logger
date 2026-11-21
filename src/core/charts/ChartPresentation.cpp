@@ -7,8 +7,6 @@
 #include <QDateTime>
 #include <QHash>
 
-#include <QtMath>
-
 #include <limits>
 
 namespace CentralLogger::Core {
@@ -21,7 +19,6 @@ const QString kCountKey    = QLatin1String(CentralLogger::Ui::kChartCount);
 const QString kPointsKey   = QLatin1String(CentralLogger::Ui::kChartPoints);
 const QString kXKey        = QLatin1String(CentralLogger::Ui::kChartX);
 const QString kYKey        = QLatin1String(CentralLogger::Ui::kChartY);
-const QString kTimeKey     = QLatin1String(CentralLogger::Ui::kChartTime);
 
 int nearestBucketIndex(const QVariantList &plotPoints, qint64 tsMs)
 {
@@ -36,24 +33,6 @@ int nearestBucketIndex(const QVariantList &plotPoints, qint64 tsMs)
         if (dist < bestDist) {
             bestDist = dist;
             best = i;
-        }
-    }
-    return best;
-}
-
-int nearestTrendingPointIndex(const QVariantList &points, qint64 tsMs)
-{
-    if (points.isEmpty())
-        return -1;
-
-    int best = 0;
-    qint64 bestDist = std::numeric_limits<qint64>::max();
-    for (int p = 0; p < points.size(); ++p) {
-        const qint64 xMs = static_cast<qint64>(points.at(p).toMap().value(kXKey).toDouble());
-        const qint64 dist = qAbs(xMs - tsMs);
-        if (dist < bestDist) {
-            bestDist = dist;
-            best = p;
         }
     }
     return best;
@@ -170,21 +149,13 @@ QVariantMap snapReadingsChart(const QVariantList &plotPoints,
 
 QVariantMap computeTrendingAxisRange(const QVariantList &series)
 {
-    double yMin = std::numeric_limits<double>::max();
-    double yMax = -std::numeric_limits<double>::max();
     double xMin = std::numeric_limits<double>::max();
     double xMax = -std::numeric_limits<double>::max();
 
     for (const QVariant &sv : series) {
         const QVariantList pts = sv.toMap().value(kPointsKey).toList();
         for (const QVariant &pv : pts) {
-            const QVariantMap pt = pv.toMap();
-            const double y = pt.value(kYKey).toDouble();
-            const double x = pt.value(kXKey).toDouble();
-            if (y < yMin)
-                yMin = y;
-            if (y > yMax)
-                yMax = y;
+            const double x = pv.toMap().value(kXKey).toDouble();
             if (x < xMin)
                 xMin = x;
             if (x > xMax)
@@ -192,101 +163,16 @@ QVariantMap computeTrendingAxisRange(const QVariantList &series)
         }
     }
 
-    if (yMin > yMax) {
+    if (xMin > xMax) {
         const qint64 nowMs = QDateTime::currentDateTimeUtc().toMSecsSinceEpoch();
-        return {{QLatin1String(CentralLogger::Ui::kChartYMin), 0.0},
-                {QLatin1String(CentralLogger::Ui::kChartYMax), 1.0},
-                {QLatin1String(CentralLogger::Ui::kChartXMin), static_cast<double>(nowMs)},
+        return {{QLatin1String(CentralLogger::Ui::kChartXMin), static_cast<double>(nowMs)},
                 {QLatin1String(CentralLogger::Ui::kChartXMax), static_cast<double>(nowMs + 1)}};
     }
 
-    const double yRange = yMax - yMin;
-    const double yPad   = yRange > 0.0 ? yRange * 0.1 : 1.0;
-
-    if (xMin > xMax) {
-        const qint64 nowMs = QDateTime::currentDateTimeUtc().toMSecsSinceEpoch();
-        xMin = static_cast<double>(nowMs);
-        xMax = static_cast<double>(nowMs + 1);
-    } else {
-        const double xRange = xMax - xMin;
-        const double xPad   = xRange > 0.0 ? xRange * 0.05 : 60'000.0;
-        xMin -= xPad;
-        xMax += xPad;
-    }
-
-    return {{QLatin1String(CentralLogger::Ui::kChartYMin), yMin - yPad},
-            {QLatin1String(CentralLogger::Ui::kChartYMax), yMax + yPad},
-            {QLatin1String(CentralLogger::Ui::kChartXMin), xMin},
-            {QLatin1String(CentralLogger::Ui::kChartXMax), xMax}};
-}
-
-QVariantMap snapTrendingChart(const QVariantList &trendingSeries,
-                              double axisXMinMs,
-                              double axisXMaxMs,
-                              double plotX,
-                              double plotY,
-                              double plotW,
-                              double plotH,
-                              double mouseX,
-                              double mouseY)
-{
-    if (!mouseInPlotArea(plotX, plotY, plotW, plotH, mouseX, mouseY))
-        return {};
-    if (trendingSeries.isEmpty())
-        return {};
-
-    const double ratio = (mouseX - plotX) / plotW;
-    const qint64 tsMs = static_cast<qint64>(axisXMinMs + ratio * (axisXMaxMs - axisXMinMs));
-
-    const QVariantList anchorPts = trendingSeries.first().toMap().value(kPointsKey).toList();
-    const int idx = nearestTrendingPointIndex(anchorPts, tsMs);
-    if (idx < 0)
-        return {};
-
-    QString caption;
-    QVariantList valueRows;
-    double anchorX = 0.0;
-    double anchorY = 0.0;
-
-    for (const QVariant &sv : trendingSeries) {
-        const QVariantMap series = sv.toMap();
-        const QVariantList pts = series.value(kPointsKey).toList();
-        if (idx >= pts.size())
-            continue;
-
-        const QVariantMap pt = pts.at(idx).toMap();
-        if (caption.isEmpty())
-            caption = pt.value(kTimeKey).toString();
-        const int decimals = qBound(CentralLogger::Defaults::kDecimalsMin,
-                                    series.value(QLatin1String(CentralLogger::Ui::kChartDecimals),
-                                                 CentralLogger::Defaults::kDecimalsDefault).toInt(),
-                                    CentralLogger::Defaults::kDecimalsMax);
-        QVariantMap row;
-        row.insert(QLatin1String(CentralLogger::Ui::kChartText),
-                   QStringLiteral("%1: %2")
-                       .arg(series.value(QLatin1String(CentralLogger::Ui::kChartLabel)).toString())
-                       .arg(QString::number(pt.value(kYKey).toDouble(), 'f', decimals)));
-        row.insert(QLatin1String(CentralLogger::Ui::kChartSeriesIndex), valueRows.size());
-        valueRows.append(row);
-
-        if (valueRows.size() == 1) {
-            anchorX = pt.value(kXKey).toDouble();
-            anchorY = pt.value(kYKey).toDouble();
-        }
-    }
-
-    if (valueRows.isEmpty())
-        return {};
-
-    QVariantMap position;
-    position.insert(kXKey, anchorX);
-    position.insert(kYKey, anchorY);
-
-    QVariantMap hit;
-    hit.insert(QLatin1String(CentralLogger::Ui::kChartPosition), position);
-    hit.insert(QLatin1String(CentralLogger::Ui::kChartCaptionText), caption);
-    hit.insert(QLatin1String(CentralLogger::Ui::kChartValueRows), valueRows);
-    return hit;
+    const double xRange = xMax - xMin;
+    const double xPad   = xRange > 0.0 ? xRange * 0.05 : 60'000.0;
+    return {{QLatin1String(CentralLogger::Ui::kChartXMin), xMin - xPad},
+            {QLatin1String(CentralLogger::Ui::kChartXMax), xMax + xPad}};
 }
 
 } // namespace CentralLogger::Core

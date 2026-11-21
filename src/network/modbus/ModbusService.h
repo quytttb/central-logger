@@ -27,22 +27,6 @@ struct LoggerRuntimeConfig
     int     pollIntervalMs = Defaults::kDefaultPollIntervalMs;
     int     timeoutMs      = Defaults::kDefaultTimeoutMs;
     bool    enabled        = true;
-
-    bool operator==(const LoggerRuntimeConfig &other) const
-    {
-        return loggerId == other.loggerId
-            && host == other.host
-            && modbusPort == other.modbusPort
-            && unitId == other.unitId
-            && pollIntervalMs == other.pollIntervalMs
-            && timeoutMs == other.timeoutMs
-            && enabled == other.enabled;
-    }
-
-    bool operator!=(const LoggerRuntimeConfig &other) const
-    {
-        return !(*this == other);
-    }
 };
 
 /// Owns one QModbusTcpClient per logger and a per-logger QTimer. Designed
@@ -66,8 +50,8 @@ public slots:
     /// enabled rows. Closes connections for loggers not in @p configs.
     void syncLoggers(const QVector<CentralLogger::Network::LoggerRuntimeConfig> &configs);
 
-    void registerLogger(const CentralLogger::Network::LoggerRuntimeConfig &config);
-    void unregisterLogger(qint64 loggerId);
+    /// Discard the current TCP connection and poll now (enabled loggers only).
+    void reconnectLogger(qint64 loggerId);
 
     /// Stops timers + closes clients. Call before quitting the worker thread.
     void shutdown();
@@ -81,22 +65,22 @@ private:
         LoggerRuntimeConfig   config;
         QModbusTcpClient     *client         = nullptr;
         QTimer               *timer          = nullptr;
+        QTimer               *watchdog       = nullptr;
         bool                  pollInFlight   = false;
-        // C-A fix: bumped every time the client instance is replaced. Reply
-        // lambdas capture the epoch at send time and drop stale replies that
-        // arrive after a reconnect destroyed the client they belonged to.
+        bool                  awaitingConnection = false;
+        quint64               consecutiveFailures = 0;
+        // Unique to the client instance, including if a logger ID is removed
+        // and registered again while a reply or socket signal is pending.
         quint64               clientEpoch    = 0;
         PollSnapshot          currentSnapshot; // built up across PDUs
         QVector<AnalogSample> analogAccum;
         QVector<PollPdu>      analogPlan;      // sequential chunk list, set in readAnalogChunks
-        // M-9: heap-allocated connection handle for the transient stateChanged
-        // lambda created in startPollCycle. Owned here so destroyState can
-        // disconnect and free it when the state is torn down before the signal fires.
-        QMetaObject::Connection *connectHolder = nullptr;
     };
 
     LoggerState *stateFor(qint64 loggerId);
+    void registerLogger(const LoggerRuntimeConfig &config);
     void ensureClient(LoggerState &state);
+    void forceReconnect(LoggerState &state);
     bool isStaleReply(const LoggerState &state, quint64 replyEpoch) const;
     void destroyState(qint64 loggerId);
     void startPollCycle(LoggerState &state);
@@ -108,10 +92,10 @@ private:
     void finishCycle(LoggerState &state, bool success, const QString &errorMessage = {});
 
     QHash<qint64, LoggerState *> m_states;
+    quint64 m_nextClientEpoch = 0;
     // M-4 fix: sequential stagger for the first poll of every logger so
     // startup does not open all TCP connections simultaneously.
     int m_staggerCounter = 0;
-    static constexpr int kStartupStaggerMs = 100;
 };
 
 } // namespace CentralLogger::Network

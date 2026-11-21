@@ -79,7 +79,7 @@ jobs:
       - name: Sync CMake project version
         env:
           VERSION: ${{ needs.prepare.outputs.version }}
-        run: python3 packaging/linux/sync_cmake_version.py
+        run: python3 packaging/linux/bump_version.py set
 
       - name: Install system packages
         run: |
@@ -90,6 +90,7 @@ jobs:
             libdbus-1-3 libfontconfig1 libxcb-cursor0 libxcb-icccm4 \
             libxcb-image0 libxcb-keysyms1 libxcb-randr0 libxcb-render-util0 \
             libxcb-shape0 libxcb-sync1 libxcb-xfixes0 libxcb-xkb1 \
+            libwayland-dev libwayland-client0 \
             patchelf dpkg-dev
 
       - name: Install Qt
@@ -162,7 +163,7 @@ jobs:
       - name: Sync CMake project version
         env:
           VERSION: ${{ needs.prepare.outputs.version }}
-        run: python packaging/linux/sync_cmake_version.py
+        run: python packaging/linux/bump_version.py set
 
       - name: Install Qt
         uses: jurplel/install-qt-action@v4.5.0

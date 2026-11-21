@@ -8,13 +8,11 @@ on:
       - "**.h"
       - "**.qml"
       - "**/CMakeLists.txt"
-      - "CMakePresets.json"
       - ".gitmodules"
       - "shared/**"
       - "tests/**"
       - "cmake/**"
       - "packaging/**"
-      - "resources/**"
       - ".github/workflows/**"
   workflow_dispatch:
 

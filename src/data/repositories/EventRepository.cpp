@@ -1,9 +1,9 @@
 #include "EventRepository.h"
 
+#include "SqlHelper.h"
 #include "utils/DbConstants.h"
 #include "utils/time/DateTimeUtils.h"
 
-#include <QSqlError>
 #include <QSqlQuery>
 #include <QVariant>
 #include <QDateTime>
@@ -42,56 +42,18 @@ SystemEvent rowToModel(const QSqlQuery &q)
     return e;
 }
 
-void setErr(QString *out, const QSqlQuery &q)
-{
-    if (out) {
-        *out = q.lastError().text();
-    }
-}
-
 } // namespace
 
 int EventRepository::purgeOlderThan(const QDateTime &cutoffUtc,
                                     QString *errorOut,
                                     int chunkSize)
 {
-    const QString cutoff = CentralLogger::Utils::isoUtc(cutoffUtc);
-    QSqlQuery q(m_db);
-
-    if (chunkSize <= 0) {
-        q.prepare(QStringLiteral("DELETE FROM %1 WHERE created_at < :cutoff")
-                      .arg(QString::fromLatin1(CentralLogger::Data::Db::kTableSystemEvent)));
-        q.bindValue(QLatin1String(CentralLogger::Data::Db::kBindCutoff), cutoff);
-        if (!q.exec()) {
-            if (errorOut) *errorOut = q.lastError().text();
-            return -1;
-        }
-        return q.numRowsAffected();
-    }
-
-    q.prepare(QStringLiteral(
-        "DELETE FROM %1 WHERE id IN ("
-        "SELECT id FROM %1 WHERE created_at < :cutoff "
-        "ORDER BY created_at LIMIT :lim)")
-        .arg(QString::fromLatin1(CentralLogger::Data::Db::kTableSystemEvent)));
-    int deleted = 0;
-    for (;;) {
-        q.bindValue(QLatin1String(CentralLogger::Data::Db::kBindCutoff), cutoff);
-        q.bindValue(QLatin1String(CentralLogger::Data::Db::kBindLim), chunkSize);
-        if (!q.exec()) {
-            if (errorOut) *errorOut = q.lastError().text();
-            return -1;
-        }
-        const int affected = q.numRowsAffected();
-        if (affected <= 0) {
-            break;
-        }
-        deleted += affected;
-        if (affected < chunkSize) {
-            break;
-        }
-    }
-    return deleted;
+    return purgeOlderThanChunked(m_db,
+                                 CentralLogger::Data::Db::kTableSystemEvent,
+                                 "created_at",
+                                 cutoffUtc,
+                                 chunkSize,
+                                 errorOut);
 }
 
 bool EventRepository::insert(SystemEvent &event, QString *errorOut)
@@ -108,7 +70,7 @@ bool EventRepository::insert(SystemEvent &event, QString *errorOut)
     q.bindValue(QLatin1String(CentralLogger::Data::Db::kBindMessage),    event.message);
     q.bindValue(QLatin1String(CentralLogger::Data::Db::kBindLevel),      event.level);
     if (!q.exec()) {
-        setErr(errorOut, q);
+        setSqlError(errorOut, q);
         return false;
     }
     event.id = q.lastInsertId().toLongLong();
@@ -136,7 +98,7 @@ QVector<SystemEvent> EventRepository::listRecent(int limit, QString *errorOut) c
         .arg(QString::fromLatin1(CentralLogger::Data::Db::kTableSystemEvent)));
     q.bindValue(QLatin1String(CentralLogger::Data::Db::kBindLimit), limit);
     if (!q.exec()) {
-        setErr(errorOut, q);
+        setSqlError(errorOut, q);
         return result;
     }
     while (q.next()) {
@@ -161,7 +123,7 @@ QVector<SystemEventListItem> EventRepository::listRecentWithLoggerName(
              QString::fromLatin1(CentralLogger::Data::Db::kTableLoggerInfo)));
     q.bindValue(QLatin1String(CentralLogger::Data::Db::kBindLimit), limit);
     if (!q.exec()) {
-        setErr(errorOut, q);
+        setSqlError(errorOut, q);
         return result;
     }
     while (q.next()) {

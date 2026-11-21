@@ -39,7 +39,6 @@ public:
 
     /// Process-wide singleton handed to the QML engine. Set once at startup
     /// from main.cpp before the QML engine loads.
-    static AppState *instance();
     static void setInstance(AppState *state);
 
     /// QML_SINGLETON factory — returns the process-wide instance set above.

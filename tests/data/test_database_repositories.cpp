@@ -103,12 +103,14 @@ void TestDatabaseRepositories::seedAppSettings()
     QCOMPARE(s.dataRetentionDays, 30);
     QCOMPARE(s.historyFlushIntervalS, 5);
     QCOMPARE(s.primaryLoggerId, qint64(0));
+    QCOMPARE(s.loggersViewMode, QStringLiteral("cards"));
 
     AppSettings updated = s;
     updated.theme                 = QStringLiteral("light");
     updated.dataRetentionDays     = 7;
     updated.historyFlushIntervalS = 10;
     updated.primaryLoggerId       = 42;
+    updated.loggersViewMode       = QStringLiteral("list");
     QVERIFY(repo.update(updated));
 
     const AppSettings reloaded = repo.get();
@@ -116,6 +118,7 @@ void TestDatabaseRepositories::seedAppSettings()
     QCOMPARE(reloaded.dataRetentionDays,     7);
     QCOMPARE(reloaded.historyFlushIntervalS, 10);
     QCOMPARE(reloaded.primaryLoggerId,       qint64(42));
+    QCOMPARE(reloaded.loggersViewMode,       QStringLiteral("list"));
 }
 
 void TestDatabaseRepositories::stationCodeUnique()
@@ -135,9 +138,11 @@ void TestDatabaseRepositories::stationCodeUnique()
     QVERIFY(!repo.insert(b, &err));
     QVERIFY(!err.isEmpty());
 
-    const auto fetched = repo.findByStationCode(QStringLiteral("TRAM-001"));
+    QCOMPARE(repo.countTotal(), 1);
+    const auto fetched = repo.findById(a.id);
     QVERIFY(fetched.has_value());
     QCOMPARE(fetched->id,   a.id);
+    QCOMPARE(fetched->stationCode, QStringLiteral("TRAM-001"));
     QCOMPARE(fetched->name, QStringLiteral("Trạm test"));
 }
 

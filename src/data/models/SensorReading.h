@@ -1,6 +1,7 @@
 #pragma once
 
 #include <QDateTime>
+#include <QString>
 
 namespace CentralLogger::Data {
 

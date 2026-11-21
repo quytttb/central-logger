@@ -15,7 +15,7 @@ QtObject {
                      text: AppColors.success }
         case "02":
             return { fill: AppColors.errorContainer, border: AppColors.error,
-                     text: AppColors.error }
+                     text: AppColors.errorContainerFg }
         case "03":
             return { fill: AppColors.warningContainer, border: AppColors.warning,
                      text: AppColors.warning }

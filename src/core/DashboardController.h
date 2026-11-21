@@ -2,8 +2,11 @@
 
 #include "LoggerListModel.h"
 #include "core/events/RecentEventsModel.h"
+#include "core/sensors/LoggerLiveCardsModel.h"
+#include "core/sensors/LoggerLiveListModel.h"
 #include "core/sensors/LoggerOverviewTableModel.h"
-#include "core/sensors/SensorMonitoringTableModel.h"
+#include "core/charts/GraphChartsModel.h"
+#include "core/charts/GraphHistoryQueryService.h"
 #include "core/charts/PollHistoryStore.h"
 #include "core/sensors/SensorSnapshotCache.h"
 #include "utils/AppConstants.h"
@@ -17,6 +20,7 @@
 #include <QVariantMap>
 #include <QVector>
 #include <QtQmlIntegration/qqmlintegration.h>
+#include <memory>
 
 class QJSEngine;
 class QQmlEngine;
@@ -51,37 +55,34 @@ class DashboardController : public QObject
     QML_SINGLETON
 
     Q_PROPERTY(CentralLogger::Core::LoggerListModel *loggers READ loggers CONSTANT)
-    Q_PROPERTY(CentralLogger::Core::SensorMonitoringTableModel *sensorTable
-                   READ sensorTable CONSTANT)
+    Q_PROPERTY(CentralLogger::Core::LoggerLiveCardsModel *liveCards
+                   READ liveCards CONSTANT)
+    Q_PROPERTY(CentralLogger::Core::LoggerLiveListModel *liveList
+                   READ liveList CONSTANT)
     Q_PROPERTY(CentralLogger::Core::LoggerOverviewTableModel *overviewTable
                    READ overviewTable CONSTANT)
     Q_PROPERTY(CentralLogger::Core::RecentEventsModel *recentEvents
                    READ recentEvents CONSTANT)
-    Q_PROPERTY(qint64 primaryLoggerId READ primaryLoggerId NOTIFY primaryLoggerChanged)
-    Q_PROPERTY(QString primaryLoggerName READ primaryLoggerName NOTIFY primaryLoggerChanged)
     /// Logger currently plotted on the summary view. Defaults to the
     /// configured primary logger until the user picks another one in the
     /// "Show graph" dropdown (explicit choice wins until that logger is
     /// removed).
     Q_PROPERTY(qint64 graphLoggerId READ graphLoggerId WRITE setGraphLoggerId
                    NOTIFY graphLoggerChanged)
-    Q_PROPERTY(QString graphLoggerName READ graphLoggerName
-                   NOTIFY graphLoggerChanged)
     /// Dropdown model: [{ id, name, online, status }] for every configured
     /// logger. Rebuilt whenever the logger catalog changes.
     Q_PROPERTY(QVariantList graphLoggerOptions READ graphLoggerOptions
                    NOTIFY graphLoggerOptionsChanged)
-    Q_PROPERTY(QVariantList graphChartSeries READ graphChartSeries
-                   NOTIFY graphChartChanged)
     Q_PROPERTY(QVariantMap graphChartAxis READ graphChartAxis
                    NOTIFY graphChartChanged)
-    Q_PROPERTY(bool graphChartHasData READ graphChartHasData
-                   NOTIFY graphChartChanged)
-    /// Summary mode: one entry per ANALOG sensor of the graph logger.
-    /// Each map carries label/unit/points/latest + threshold state used by
-    /// the per-sensor mini charts (see SensorMiniChart.qml).
-    Q_PROPERTY(QVariantList graphSensorCharts READ graphSensorCharts
-                   NOTIFY graphChartChanged)
+    Q_PROPERTY(CentralLogger::Core::GraphChartsModel *graphCharts READ graphCharts CONSTANT)
+    Q_PROPERTY(int graphWindowMinutes READ graphWindowMinutes NOTIFY graphWindowChanged)
+    Q_PROPERTY(QString graphWindowLabel READ graphWindowLabel NOTIFY graphWindowChanged)
+    Q_PROPERTY(bool canZoomGraphIn READ canZoomGraphIn NOTIFY graphWindowChanged)
+    Q_PROPERTY(bool canZoomGraphOut READ canZoomGraphOut NOTIFY graphWindowChanged)
+    Q_PROPERTY(bool atDefaultGraphZoom READ atDefaultGraphZoom NOTIFY graphWindowChanged)
+    Q_PROPERTY(bool graphHistoryLoading READ graphHistoryLoading NOTIFY graphHistoryStateChanged)
+    Q_PROPERTY(QString graphHistoryError READ graphHistoryError NOTIFY graphHistoryStateChanged)
     Q_PROPERTY(QVariantList readingsChartPlotPoints READ readingsChartPlotPoints
                    NOTIFY readingsChartChanged)
     Q_PROPERTY(QVariantMap readingsChartAxis READ readingsChartAxis
@@ -95,22 +96,30 @@ public:
     explicit DashboardController(QObject *parent);
     ~DashboardController() override;
 
-    LoggerListModel *loggers() { return &m_loggers; }
-    SensorMonitoringTableModel *sensorTable() { return &m_sensorTable; }
+    LoggerListModel           *loggers() { return &m_loggers; }
+    LoggerLiveCardsModel      *liveCards() { return &m_liveCards; }
+    LoggerLiveListModel       *liveList() { return &m_liveList; }
+    Q_INVOKABLE void           setLiveFilterText(const QString &text);
     LoggerOverviewTableModel   *overviewTable() { return &m_overviewTable; }
-    SensorSnapshotCache       *sensorCache() { return &m_sensorCache; }
-    PollHistoryStore          *pollHistory() { return &m_pollHistory; }
     RecentEventsModel         *recentEvents() { return &m_recentEvents; }
-    qint64        primaryLoggerId() const { return m_primaryLoggerId; }
-    QString       primaryLoggerName() const { return m_primaryLoggerName; }
     qint64        graphLoggerId() const;
-    QString       graphLoggerName() const { return m_graphLoggerName; }
     QVariantList  graphLoggerOptions() const { return m_graphLoggerOptions; }
     void          setGraphLoggerId(qint64 id);
-    QVariantList  graphChartSeries() const { return m_graphChartSeries; }
     QVariantMap   graphChartAxis() const { return m_graphChartAxis; }
-    bool          graphChartHasData() const { return m_graphChartHasData; }
-    QVariantList  graphSensorCharts() const { return m_graphSensorCharts; }
+    GraphChartsModel *graphCharts() { return &m_graphCharts; }
+    QVariantList  graphSensorCharts() const { return m_graphCharts.charts(); }
+    int graphWindowMinutes() const { return Defaults::kGraphZoomPresetsMin[m_graphZoomIndex]; }
+    QString graphWindowLabel() const;
+    bool canZoomGraphIn() const { return m_graphZoomIndex > 0; }
+    bool canZoomGraphOut() const { return m_graphZoomIndex + 1 < Defaults::kGraphZoomPresetsMin.size(); }
+    bool atDefaultGraphZoom() const { return m_graphZoomIndex == Defaults::kGraphDefaultZoomIndex; }
+    bool graphHistoryLoading() const { return m_graphHistoryLoading; }
+    QString graphHistoryError() const { return m_graphHistoryError; }
+    Q_INVOKABLE void setGraphActive(bool active);
+    Q_INVOKABLE void zoomGraphIn();
+    Q_INVOKABLE void zoomGraphOut();
+    Q_INVOKABLE void resetGraphZoom();
+    Q_INVOKABLE void refreshGraphHistory();
     QVariantList readingsChartPlotPoints() const { return m_readingsChartPlotPoints; }
     QVariantMap  readingsChartAxis() const { return m_readingsChartAxis; }
     bool         readingsChartHasData() const { return m_readingsChartHasData; }
@@ -123,7 +132,6 @@ public:
     void setModbusService(Network::ModbusService *service);
     void setSettingsController(SettingsController *settings);
 
-    static DashboardController *instance();
     static void setInstance(DashboardController *controller);
     static DashboardController *create(QQmlEngine *, QJSEngine *);
 
@@ -136,6 +144,13 @@ public:
     /// Called by LoggerFormController inside removeLogger.
     void cleanupRemovedLogger(qint64 id);
 
+    /// Clear cached live values when a logger is disabled so UI badges and
+    /// cards immediately reflect non-polling/offline state.
+    void markLoggerDisabled(qint64 id);
+
+    /// True when @p loggerId exists, is enabled, and its current status is online.
+    bool isLoggerOnline(qint64 loggerId) const;
+
 public slots:
     void reloadLoggers();
     void refreshReadingsChart();
@@ -147,21 +162,12 @@ public slots:
     void refreshSummary();
 
     /// Re-read the sensor catalog for @p loggerId into the summary cache and
-    /// drop the bridge's cached catalog so the next poll re-evaluates ALARM
-    /// with the new thresholds. Called by ThresholdController after Save.
+    /// drop the bridge's cached catalog so the next poll uses the refreshed
+    /// metadata. Called after Reload config.
     void refreshLoggerCatalog(qint64 loggerId);
 
-    /// Tooltip snap for the summary graph. Empty map = miss.
-    Q_INVOKABLE QVariantMap snapGraphChart(double mouseX,
-                                           double mouseY,
-                                           double plotX,
-                                           double plotY,
-                                           double plotW,
-                                           double plotH) const;
-
-    /// Purge sensor_reading rows older than `data_retention_days`.
-    /// Emits retentionPurgeCompleted(deleted) and refreshes the
-    /// readings chart when rows were removed.  FE-016.
+    /// Purge sensor_reading rows older than `data_retention_days` and refresh
+    /// the readings chart when rows were removed. FE-016.
     void purgeOldData();
 
     /// Tooltip snap for readings chart (plot area coords + mouse). Empty map = miss.
@@ -175,7 +181,9 @@ public slots:
     /// Pushes loggers with `logger_info.enabled` to the Modbus worker and starts polling.
     /// Idempotent; safe to call again after CRUD.
     void startModbusPolling();
-    void stopModbusPolling();
+
+    /// Reopen the connection through the existing worker, without changing settings.
+    void reconnectLogger(qint64 loggerId);
 
     /// Bridge → DashboardController on the main thread. Wired from main.cpp
     /// so it has to be public; not intended for direct QML use.
@@ -186,20 +194,20 @@ public slots:
                            const QVector<Data::LoggerSensor> &catalogRows);
 
     /// Insert a row into `system_event` and refresh the recent-events list.
-    /// Called from LoggerDetailViewModel and LoggerFormController.
+    /// Called from LoggerFormController.
     /// @p loggerId may be 0 for app-level events.
     void logEvent(qint64 loggerId, const QString &eventType, const QString &message);
 
 signals:
     void readingsChartChanged();
     void graphChartChanged();
-    void primaryLoggerChanged();
     void graphLoggerChanged();
     void graphLoggerOptionsChanged();
-    void retentionPurgeCompleted(int deletedCount);
+    void graphWindowChanged();
+    void graphHistoryStateChanged();
     /// Emitted on the main thread after the snapshot cache has been
-    /// updated for @p loggerId. Task 8 wires this to LoggerDetailViewModel.
-    void loggerSnapshotUpdated(qint64 loggerId, bool pollSuccess, QString modbusError);
+    /// updated for @p loggerId.
+    void loggerSnapshotUpdated(qint64 loggerId, bool pollSuccess);
 
 private:
     void syncModbusRegistry();
@@ -220,8 +228,18 @@ private:
     qint64 resolvePrimaryLoggerId() const;
     /// Rebuild the logger dropdown from the current logger list.
     void   refreshGraphLoggerOptions();
-    void   refreshGraphChart();
+    void   refreshGraphChart(bool forceQuery = false);
+    void   setGraphZoomIndex(std::size_t index);
+    void   updateGraphChart(qint64 loggerId, qint64 fromMs, qint64 toMs, const GraphSeries *history);
+    void   setGraphHistoryState(bool loading, const QString &error);
+    struct GraphWindow {
+        qint64 loggerId = 0;
+        int minutes = 0;
+        bool operator==(const GraphWindow &) const = default;
+    };
+    void   startGraphHistoryQuery(const QString &dbPath, GraphWindow window, qint64 fromMs, qint64 toMs);
     void   refreshOverviewTable();
+    void   refreshLiveModels();
 
     Data::Database        *m_db       = nullptr;
     AppState              *m_appState = nullptr;
@@ -229,22 +247,29 @@ private:
     Network::ModbusBridge *m_bridge   = nullptr;
     Network::ModbusService *m_modbus  = nullptr;
     LoggerListModel        m_loggers;
-    SensorMonitoringTableModel m_sensorTable;
+    LoggerLiveCardsModel   m_liveCards;
+    LoggerLiveListModel    m_liveList;
     LoggerOverviewTableModel   m_overviewTable;
     SensorSnapshotCache    m_sensorCache;
     PollHistoryStore       m_pollHistory;
     RecentEventsModel      m_recentEvents;
     QHash<qint64, QString> m_lastStatus;
-    qint64                 m_primaryLoggerId = Defaults::kNoPrimaryLoggerId;
-    QString                m_primaryLoggerName;
     /// 0 = follow the configured primary logger; >0 = explicit dropdown pick.
     qint64                 m_graphLoggerId = Defaults::kNoPrimaryLoggerId;
-    QString                m_graphLoggerName;
+    qint64                 m_lastGraphLoggerId = Defaults::kNoPrimaryLoggerId;
     QVariantList           m_graphLoggerOptions;
-    QVariantList           m_graphChartSeries;
     QVariantMap            m_graphChartAxis;
-    bool                   m_graphChartHasData = false;
-    QVariantList           m_graphSensorCharts;
+    GraphChartsModel       m_graphCharts;
+    std::size_t            m_graphZoomIndex = Defaults::kGraphDefaultZoomIndex;
+    bool                   m_graphActive = true;
+    bool                   m_graphHistoryLoading = false;
+    QString                m_graphHistoryError;
+    GraphWindow            m_displayedGraphWindow;
+    GraphWindow            m_graphQueryWindow;
+    GraphWindow            m_graphHistoryWindow;
+    qint64                 m_graphHistoryQueriedToMs = 0;
+    GraphHistoryResult     m_graphHistory;
+    std::shared_ptr<std::atomic_bool> m_cancelGraphQuery;
     /// Latest catalog rows per logger (from the bridge snapshot or a manual
     /// threshold refresh). Used by the summary mini charts for thresholds.
     QHash<qint64, QVector<Data::LoggerSensor>> m_catalogCache;

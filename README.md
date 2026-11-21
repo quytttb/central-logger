@@ -1,6 +1,7 @@
 # Central Logger (Qt 6 C++)
 
-Desktop app quản lý Data Logger qua Modbus TCP + REST.
+Desktop app giám sát logger qua Modbus TCP và REST chỉ đọc. Cài đặt kết nối
+và giám sát lưu riêng trong Central; ứng dụng không đổi cấu hình thiết bị.
 
 ## Bắt đầu
 

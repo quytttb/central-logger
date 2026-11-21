@@ -5,11 +5,9 @@ import QtQuick.Controls
 import QtQuick.Layouts
 
 import CentralLogger.Core
-import CentralLogger.Theme
 import LoggerKit.Theme
-import LoggerKit.Components
 
-// One ANALOG sensor tile on the Dashboard summary view.
+// One ANALOG sensor tile on Loggers > Graph.
 //
 // Background follows the latest live value vs. the configured thresholds
 // (success container = within limits, error container = out of range, neutral
@@ -29,7 +27,8 @@ Rectangle {
     property string unit: ""
     property string latestText: ""
     property int    decimals: 2
-    /// [{ x: epochMs, y: value, time: "HH:mm:ss" }]
+    property bool   compact: false
+    /// [{ x: epochMs, y: value }]
     property var points: []
 
     property bool   hasThresholds: false
@@ -42,43 +41,14 @@ Rectangle {
     property double xMinMs: 0
     property double xMaxMs: 0
 
-    readonly property color stateColor: !hasThresholds
-                                        ? AppColors.surfaceContainerLow
-                                        : (outOfRange ? AppColors.errorContainer
-                                                      : AppColors.successContainer)
+    readonly property color stateColor: outOfRange ? AppColors.errorContainer
+        : hasThresholds ? AppColors.successContainer : AppColors.surfaceContainerLow
     readonly property color gridColor: AppColors.divider(AppColors.primaryText)
-    /// Tiles shrink to ~150 px tall when a logger has 8 ANALOG sensors; the
-    /// header and plot margins must follow instead of eating the trend area.
-    readonly property bool compact: root.height < 190 || root.width < 280
 
     radius: AppTheme.cardRadius
     color: stateColor
     border.width: 1
     border.color: AppColors.elevatedBorder
-
-    function resolvedXRange() {
-        const pts = root.points || []
-        let x0 = 0
-        let x1 = 0
-        // The tile's own samples always win: the shared chart axis window can
-        // be stale when a logger stops reporting.
-        if (pts.length === 1) {
-            // Single sample: centre it instead of pinning it to the left edge.
-            return { x0: pts[0].x - 500, x1: pts[0].x + 500 }
-        }
-        if (pts.length > 1) {
-            x0 = pts[0].x
-            x1 = pts[pts.length - 1].x
-        } else {
-            x0 = root.xMinMs
-            x1 = root.xMaxMs
-        }
-        if (!x0)
-            x0 = 0
-        if (!x1 || x1 <= x0)
-            x1 = x0 + 1000
-        return { x0: x0, x1: x1 }
-    }
 
     function resolvedYRange() {
         let yMin = root.axisYMin
@@ -109,16 +79,6 @@ Rectangle {
             ++digits
         }
         return digits
-    }
-
-    function formatClock(epochMs, withSeconds) {
-        const date = new Date(epochMs)
-        const hours = String(date.getHours()).padStart(2, "0")
-        const minutes = String(date.getMinutes()).padStart(2, "0")
-        if (!withSeconds)
-            return hours + ":" + minutes
-        const seconds = String(date.getSeconds()).padStart(2, "0")
-        return hours + ":" + minutes + ":" + seconds
     }
 
     ColumnLayout {
@@ -166,6 +126,17 @@ Rectangle {
             id: spark
             Layout.fillWidth: true
             Layout.fillHeight: true
+            renderStrategy: Canvas.Immediate
+
+            function paintIfVisible() {
+                if (spark.available && spark.visible)
+                    spark.requestPaint()
+            }
+
+            function scheduleRepaint() {
+                if (visible)
+                    Qt.callLater(spark.paintIfVisible)
+            }
 
             onPaint: {
                 const ctx = getContext("2d")
@@ -174,9 +145,8 @@ Rectangle {
                     return
 
                 const pts = root.points || []
-                const xr = root.resolvedXRange()
                 const yr = root.resolvedYRange()
-                const xSpan = xr.x1 - xr.x0
+                const xSpan = root.xMaxMs - root.xMinMs
                 const ySpan = yr.yMax - yr.yMin
                 if (!(xSpan > 0) || !(ySpan > 0))
                     return
@@ -190,23 +160,26 @@ Rectangle {
                 ctx.font = AppTypography.labelTiny.pixelSize + "px "
                            + AppTypography.monoFamily
 
-                // Left gutter sized to the widest tick label, capped so the
-                // plot still gets most of the tile on narrow cards.
-                const labelWidth = Math.max(ctx.measureText(yTopText).width,
-                                            ctx.measureText(yMidText).width,
-                                            ctx.measureText(yBottomText).width)
-                const gutter = Math.min(Math.max(24, Math.ceil(labelWidth) + 8),
-                                        Math.max(24, Math.floor(width * 0.3)))
-                const plotTop = root.compact ? 4 : 8
-                const plotBottom = root.compact ? 14 : 16
+                // Reserve space for signed ticks instead of moving the plot
+                // every time a reading crosses a decimal boundary.
+                const labelGap = AppTheme.spacingXS
+                const gutter = Math.min(Math.ceil(ctx.measureText("-0000.000000").width) + 2 * labelGap,
+                                        Math.floor(width * 0.29))
+                const maxLabel = root.hasMaxThreshold
+                    ? qsTr("Max %1").arg(root.formatAxisValue(root.thresholdMax)) : ""
+                const rightGutter = maxLabel.length > 0
+                    ? Math.min(Math.ceil(ctx.measureText(maxLabel).width) + 2 * labelGap,
+                               Math.floor(width * 0.32)) : labelGap
+                const plotTop = AppTypography.labelTiny.pixelSize / 2 + 1
+                const plotBottom = AppTypography.labelTiny.pixelSize + AppTheme.spacingS
                 const plotX = gutter
                 const plotY = plotTop
-                const plotW = width - gutter - 2
+                const plotW = width - gutter - rightGutter
                 const plotH = height - plotTop - plotBottom
                 if (plotW < 40 || plotH < 30)
                     return
 
-                function px(x) { return plotX + (x - xr.x0) / xSpan * plotW }
+                function px(x) { return plotX + (x - root.xMinMs) / xSpan * plotW }
                 function py(y) { return plotY + (1 - (y - yr.yMin) / ySpan) * plotH }
 
                 // --- grid ---
@@ -224,91 +197,38 @@ Rectangle {
                 ctx.stroke()
 
                 // --- y tick labels (min / mid / max) ---
-                ctx.fillStyle = AppColors.textFaint
+                ctx.fillStyle = AppColors.onSurfaceVariant
                 ctx.textAlign = "right"
                 ctx.textBaseline = "middle"
-                ctx.fillText(yTopText, plotX - 6, plotY)
-                ctx.fillText(yMidText, plotX - 6, plotY + plotH / 2)
-                ctx.fillText(yBottomText, plotX - 6, plotY + plotH)
+                ctx.fillText(yTopText, plotX - labelGap, plotY, gutter - labelGap)
+                ctx.fillText(yMidText, plotX - labelGap, plotY + plotH / 2, gutter - labelGap)
+                ctx.fillText(yBottomText, plotX - labelGap, plotY + plotH, gutter - labelGap)
 
-                // --- x tick labels (HH:mm, or HH:mm:ss on short windows) ---
-                const withSeconds = xSpan < 5 * 60 * 1000
-                const tStart = root.formatClock(xr.x0, withSeconds)
-                const tMid = root.formatClock((xr.x0 + xr.x1) / 2, withSeconds)
-                const tEnd = root.formatClock(xr.x1, withSeconds)
-                const tickY = plotY + plotH + 4
+                // Like Data Logger Trending, use seconds on short windows
+                // and include the date when the span exceeds a day.
+                const tStart = SettingsController.formatGraphTime(root.xMinMs, xSpan)
+                const tMid = SettingsController.formatGraphTime(root.xMinMs + xSpan / 2, xSpan)
+                const tEnd = SettingsController.formatGraphTime(root.xMaxMs, xSpan)
+                const tickY = plotY + plotH + labelGap
                 ctx.textBaseline = "top"
                 ctx.textAlign = "left"
-                ctx.fillText(tStart, plotX, tickY)
-                if (!root.compact && tMid !== tStart && tMid !== tEnd) {
+                const leftWidth = ctx.measureText(tStart).width
+                const rightWidth = ctx.measureText(tEnd).width
+                const midWidth = ctx.measureText(tMid).width
+                if (leftWidth + rightWidth + labelGap <= plotW)
+                    ctx.fillText(tStart, plotX, tickY)
+                if (2 * Math.max(leftWidth, rightWidth) + midWidth + 2 * labelGap <= plotW) {
                     ctx.textAlign = "center"
                     ctx.fillText(tMid, plotX + plotW / 2, tickY)
                 }
                 ctx.textAlign = "right"
-                ctx.fillText(tEnd, plotX + plotW, tickY)
+                ctx.fillText(tEnd, plotX + plotW, tickY, plotW)
 
                 // --- plot contents clipped to the plot rect ---
                 ctx.save()
                 ctx.beginPath()
                 ctx.rect(plotX, plotY, plotW, plotH)
                 ctx.clip()
-
-                const maxVisible = root.hasMaxThreshold
-                                   && root.thresholdMax >= yr.yMin
-                                   && root.thresholdMax <= yr.yMax
-                if (maxVisible) {
-                    const ty = py(root.thresholdMax)
-                    ctx.strokeStyle = AppColors.warning
-                    ctx.lineWidth = 1.5
-                    ctx.beginPath()
-                    ctx.moveTo(plotX, ty)
-                    ctx.lineTo(plotX + plotW, ty)
-                    ctx.stroke()
-
-                    ctx.fillStyle = AppColors.warning
-                    ctx.textAlign = "right"
-                    const maxText = root.formatAxisValue(root.thresholdMax)
-                    if (ty - plotY > 14) {
-                        ctx.textBaseline = "bottom"
-                        ctx.fillText(maxText, plotX + plotW - 2, ty - 2)
-                    } else {
-                        ctx.textBaseline = "top"
-                        ctx.fillText(maxText, plotX + plotW - 2, ty + 2)
-                    }
-                } else if (root.hasMaxThreshold && root.thresholdMax > yr.yMax) {
-                    // Limit above the data-driven window: show it as a small
-                    // marker instead of stretching the axis and flattening
-                    // the trend.
-                    const maxText = "max " + root.formatAxisValue(root.thresholdMax)
-                    const textX = plotX + plotW - ctx.measureText(maxText).width - 2
-                    const textY = plotY + 7
-                    ctx.fillStyle = AppColors.warning
-                    ctx.textAlign = "left"
-                    ctx.textBaseline = "middle"
-                    ctx.fillText(maxText, textX, textY)
-                    ctx.beginPath()
-                    ctx.moveTo(textX - 10, textY - 3)
-                    ctx.lineTo(textX - 14, textY + 3)
-                    ctx.lineTo(textX - 6, textY + 3)
-                    ctx.closePath()
-                    ctx.fill()
-                } else if (root.hasMaxThreshold && root.thresholdMax < yr.yMin) {
-                    // Reading is above the limit: the limit is below the
-                    // visible window, mark it at the bottom edge.
-                    const maxText = "max " + root.formatAxisValue(root.thresholdMax)
-                    const textX = plotX + plotW - ctx.measureText(maxText).width - 2
-                    const textY = plotY + plotH - 7
-                    ctx.fillStyle = AppColors.warning
-                    ctx.textAlign = "left"
-                    ctx.textBaseline = "middle"
-                    ctx.fillText(maxText, textX, textY)
-                    ctx.beginPath()
-                    ctx.moveTo(textX - 10, textY + 3)
-                    ctx.lineTo(textX - 14, textY - 3)
-                    ctx.lineTo(textX - 6, textY - 3)
-                    ctx.closePath()
-                    ctx.fill()
-                }
 
                 // --- trend line + soft area fill ---
                 if (pts.length >= 2) {
@@ -336,6 +256,20 @@ Rectangle {
                     ctx.stroke()
                 }
 
+                const maxY = py(root.thresholdMax)
+                const maxVisible = root.hasMaxThreshold && maxY >= plotY && maxY <= plotY + plotH
+                if (maxVisible) {
+                    ctx.save()
+                    ctx.strokeStyle = AppColors.warning
+                    ctx.lineWidth = 1.5
+                    ctx.setLineDash([4, 3])
+                    ctx.beginPath()
+                    ctx.moveTo(plotX, maxY)
+                    ctx.lineTo(plotX + plotW, maxY)
+                    ctx.stroke()
+                    ctx.restore()
+                }
+
                 // --- latest sample dot ---
                 if (pts.length > 0) {
                     const last = pts[pts.length - 1]
@@ -353,29 +287,45 @@ Rectangle {
                 }
 
                 ctx.restore()
+
+                // Draw the max label in a gutter outside the line/area clip.
+                if (maxLabel.length > 0) {
+                    const labelY = Math.max(plotY, Math.min(plotY + plotH, maxY))
+                    const caption = maxVisible ? maxLabel
+                        : (maxY < plotY ? "▲ " : "▼ ") + maxLabel
+                    ctx.fillStyle = AppColors.primaryText
+                    ctx.textAlign = "left"
+                    ctx.textBaseline = "middle"
+                    ctx.fillText(caption, plotX + plotW + labelGap, labelY, rightGutter - labelGap)
+                }
             }
 
             Connections {
                 target: root
-                function onPointsChanged() { spark.requestPaint() }
-                function onAxisYMinChanged() { spark.requestPaint() }
-                function onAxisYMaxChanged() { spark.requestPaint() }
-                function onDecimalsChanged() { spark.requestPaint() }
-                function onOutOfRangeChanged() { spark.requestPaint() }
-                function onHasThresholdsChanged() { spark.requestPaint() }
-                function onThresholdMaxChanged() { spark.requestPaint() }
-                function onHasMaxThresholdChanged() { spark.requestPaint() }
-                function onXMinMsChanged() { spark.requestPaint() }
-                function onXMaxMsChanged() { spark.requestPaint() }
+                function onPointsChanged() { spark.scheduleRepaint() }
+                function onAxisYMinChanged() { spark.scheduleRepaint() }
+                function onAxisYMaxChanged() { spark.scheduleRepaint() }
+                function onDecimalsChanged() { spark.scheduleRepaint() }
+                function onStateColorChanged() { spark.scheduleRepaint() }
+                function onOutOfRangeChanged() { spark.scheduleRepaint() }
+                function onThresholdMaxChanged() { spark.scheduleRepaint() }
+                function onHasMaxThresholdChanged() { spark.scheduleRepaint() }
+                function onXMinMsChanged() { spark.scheduleRepaint() }
+                function onXMaxMsChanged() { spark.scheduleRepaint() }
             }
 
             Connections {
                 target: SettingsController
-                function onThemeChanged() { spark.requestPaint() }
+                function onSystemTimezoneChanged() { spark.scheduleRepaint() }
             }
-
-            onWidthChanged: requestPaint()
-            onHeightChanged: requestPaint()
+            Connections {
+                target: AppColors
+                function onIsDarkChanged() { spark.scheduleRepaint() }
+            }
+            onWidthChanged: scheduleRepaint()
+            onHeightChanged: scheduleRepaint()
+            onVisibleChanged: scheduleRepaint()
+            onAvailableChanged: scheduleRepaint()
         }
     }
 }

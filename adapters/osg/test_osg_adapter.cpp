@@ -6,6 +6,7 @@
 #include "network/rest/RestConfigService.h"
 
 #include <QFile>
+#include <QJsonArray>
 #include <QJsonDocument>
 #include <QModbusTcpClient>
 #include <QNetworkProxy>
@@ -34,6 +35,7 @@ private slots:
     void liveCentralConfigProbe();
     void osgStatusMapping();
     void osgQualityDoesNotTrustErrorStatus();
+    void restV1ThresholdsReadOnlyAndOptionalLimits();
 };
 
 void TestOsgAdapter::parseEmptyZeroAndMilliseconds()
@@ -184,10 +186,13 @@ void TestOsgAdapter::osgQualityDoesNotTrustErrorStatus()
     auto *reply = manager.get(configRequest);
     QSignalSpy configDone(reply, &QNetworkReply::finished);
     QVERIFY(configDone.wait(3000));
-    const auto config = QJsonDocument::fromJson(reply->readAll()).object()
-                            .value(QStringLiteral("config")).toObject();
-    QCOMPARE(config.value(QStringLiteral("sensors")).toArray()[0].toObject()
-                 .value(QStringLiteral("decimals")).toInt(), 1);
+    const auto configRoot = QJsonDocument::fromJson(reply->readAll()).object();
+    QVERIFY(!configRoot.contains(QStringLiteral("thresholds_writable")));
+    const auto config = configRoot.value(QStringLiteral("config")).toObject();
+    const auto firstSensor = config.value(QStringLiteral("sensors")).toArray()[0].toObject();
+    QCOMPARE(firstSensor.value(QStringLiteral("decimals")).toInt(), 1);
+    QVERIFY(!firstSensor.contains(QStringLiteral("min_threshold")));
+    QVERIFY(!firstSensor.contains(QStringLiteral("max_threshold")));
     reply->deleteLater();
     alarm = true;
     QTRY_VERIFY_WITH_TIMEOUT(source.snapshot().analogs[0].alarm, 3000);
@@ -328,6 +333,107 @@ void TestOsgAdapter::liveCentralConfigProbe()
     QVERIFY(!parsed.sensors.isEmpty());
     for (const auto &sensor : parsed.sensors)
         QCOMPARE(sensor.sensorType, QStringLiteral("ANALOG"));
+}
+
+namespace {
+class StaticLimitSource final : public EdgeSource
+{
+public:
+    EdgeSnapshot snapshot() const override
+    {
+        EdgeSnapshot snap;
+        snap.polling = true;
+        snap.upstreamConnected = true;
+        snap.catalogAvailable = true;
+        AnalogPoint p1;
+        p1.id = 10;
+        p1.name = QStringLiteral("Temp");
+        p1.unit = QStringLiteral("C");
+        p1.minThreshold = 5.0;
+        p1.maxThreshold = 45.0;
+        AnalogPoint p2;
+        p2.id = 11;
+        p2.name = QStringLiteral("Pressure");
+        p2.unit = QStringLiteral("bar");
+        snap.analogs = {p1, p2};
+        return snap;
+    }
+
+    QJsonObject debugReadings() const override { return {}; }
+};
+} // namespace
+
+void TestOsgAdapter::restV1ThresholdsReadOnlyAndOptionalLimits()
+{
+    StaticLimitSource source;
+    VirtualStation station{QStringLiteral("LIM-01"), QStringLiteral("Limit Adapter"), 5,
+                           QHostAddress::LocalHost, 1};
+    RestV1Server rest(source, station, QByteArray("adapter-secret"));
+    QVERIFY(rest.listen(QHostAddress::LocalHost, 0));
+
+    QNetworkAccessManager nam;
+    nam.setProxy(QNetworkProxy::NoProxy);
+    const QUrl url(QStringLiteral("http://127.0.0.1:%1/api/v1/config").arg(rest.serverPort()));
+
+    QNetworkRequest getReq(url);
+    getReq.setRawHeader("Authorization", "Bearer adapter-secret");
+    auto *getReply = nam.get(getReq);
+    QSignalSpy getDone(getReply, &QNetworkReply::finished);
+    QVERIFY(getDone.wait(3000));
+    QCOMPARE(getReply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt(), 200);
+    const QByteArray getBody = getReply->readAll();
+    getReply->deleteLater();
+
+    const auto parsed = RestConfigParser::parseConfigResponse(1, getBody);
+    QVERIFY(parsed.valid);
+    const auto getEnvelope = QJsonDocument::fromJson(getBody).object();
+    const auto capability = QStringLiteral("thresholds_writable");
+    QVERIFY(!getEnvelope.contains(capability));
+    QVERIFY(!getEnvelope.value(QStringLiteral("config")).toObject().contains(capability));
+    QCOMPARE(parsed.sensors.size(), 2);
+    QVERIFY(parsed.sensors[0].minThresholdSpecified);
+    QVERIFY(parsed.sensors[0].maxThresholdSpecified);
+    QCOMPARE(parsed.sensors[0].minThreshold, std::optional<double>(5.0));
+    QCOMPARE(parsed.sensors[0].maxThreshold, std::optional<double>(45.0));
+    QVERIFY(!parsed.sensors[1].minThresholdSpecified);
+    QVERIFY(!parsed.sensors[1].maxThresholdSpecified);
+    QVERIFY(!parsed.sensors[1].minThreshold.has_value());
+    QVERIFY(!parsed.sensors[1].maxThreshold.has_value());
+
+    auto postPatch = [&](int expectedRevision) -> std::pair<int, QByteArray> {
+        QNetworkRequest postReq(url);
+        postReq.setHeader(QNetworkRequest::ContentTypeHeader, QStringLiteral("application/json"));
+        postReq.setRawHeader("Authorization", "Bearer adapter-secret");
+        const QJsonArray changes{QJsonObject{
+            {QStringLiteral("sensor_id"), 10},
+            {QStringLiteral("min_threshold"), 0.0},
+            {QStringLiteral("max_threshold"), 50.0},
+        }};
+        const QJsonObject env{
+            {QStringLiteral("api_version"), 1},
+            {QStringLiteral("request_id"), QStringLiteral("central-adapter-test")},
+            {QStringLiteral("expected_revision"), expectedRevision},
+            {QStringLiteral("config"), QJsonObject{{QStringLiteral("sensors"), changes}}},
+        };
+        auto *reply = nam.post(postReq, QJsonDocument(env).toJson(QJsonDocument::Compact));
+        QSignalSpy done(reply, &QNetworkReply::finished);
+        if (!reply->isFinished())
+            done.wait(3000);
+        const int status = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
+        const QByteArray body = reply->readAll();
+        reply->deleteLater();
+        return {status, body};
+    };
+
+    // Revision mismatch -> 409
+    const auto [staleStatus, staleBody] = postPatch(parsed.revision + 1);
+    QCOMPARE(staleStatus, 409);
+    QVERIFY(staleBody.contains("Revision mismatch"));
+
+    // Matching revision with sensors[] -> 422 "Adapter is read-only..."
+    const auto [roStatus, roBody] = postPatch(parsed.revision);
+    QCOMPARE(roStatus, 422);
+    QVERIFY(roBody.contains("Adapter is read-only"));
 }
 
 QTEST_GUILESS_MAIN(TestOsgAdapter)

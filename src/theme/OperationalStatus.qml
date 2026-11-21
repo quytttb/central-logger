@@ -72,7 +72,7 @@ QtObject {
             return AppColors.onSurfaceVariant
         }
         if (code === "02") {
-            return AppColors.error
+            return AppColors.errorContainerFg
         }
         if (code === "01" || code === "03") {
             return AppColors.warning

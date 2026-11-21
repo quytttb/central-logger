@@ -1,6 +1,7 @@
 #include "RecentEventsModel.h"
 
 #include "data/db/Database.h"
+#include "utils/AppConstants.h"
 #include "utils/UiConstants.h"
 #include "utils/events/EventLevels.h"
 
@@ -61,20 +62,12 @@ QHash<int, QByteArray> RecentEventsModel::roleNames() const {
   };
 }
 
-void RecentEventsModel::setLimit(int limit) {
-  if (limit <= 0 || limit == m_limit)
-    return;
-  m_limit = limit;
-  emit limitChanged();
-  reload();
-}
-
 void RecentEventsModel::reload() {
   beginResetModel();
   m_rows.clear();
   if (m_db && m_db->isOpen()) {
     Data::EventRepository repo(m_db->connection());
-    m_rows = repo.listRecentWithLoggerName(m_limit);
+    m_rows = repo.listRecentWithLoggerName(Defaults::kRecentEventsLimit);
   }
   endResetModel();
 }

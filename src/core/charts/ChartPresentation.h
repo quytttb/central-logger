@@ -39,15 +39,4 @@ QVariantMap snapReadingsChart(const QVariantList &plotPoints,
 /// Axis range for multi-series trending chart (from PollHistoryStore series list).
 QVariantMap computeTrendingAxisRange(const QVariantList &trendingSeries);
 
-/// Multi-series trending tooltip snap (uses first series for anchor x/y).
-QVariantMap snapTrendingChart(const QVariantList &trendingSeries,
-                              double axisXMinMs,
-                              double axisXMaxMs,
-                              double plotX,
-                              double plotY,
-                              double plotW,
-                              double plotH,
-                              double mouseX,
-                              double mouseY);
-
 } // namespace CentralLogger::Core

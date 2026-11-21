@@ -11,7 +11,6 @@ namespace CentralLogger::Data {
 /// Combines sensor_reading data with logger_sensor metadata.
 struct HistoryRow
 {
-    qint64    id = 0;
     QDateTime recordedAt;          ///< UTC
     QString   loggerName;          ///< from logger_info.name
     QString   sensorName;
@@ -19,10 +18,9 @@ struct HistoryRow
     double    value = 0.0;
     QString   statusCode; // TT10 status of the reading
     int       decimals = Defaults::kDecimalsDefault; ///< display precision from logger_sensor.decimals
-    bool      valid = true;
-    bool      alarm = false;
-    bool      stale = false;
-    qint64    sensorId = 0;
+    qint64    readingId = 0;       ///< stable identity, even when timestamps match
+
+    bool operator==(const HistoryRow &) const = default;
 };
 
 } // namespace CentralLogger::Data

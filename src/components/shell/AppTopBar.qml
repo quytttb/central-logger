@@ -3,7 +3,6 @@ pragma ComponentBehavior: Bound
 import QtQuick
 import QtQuick.Window
 
-import CentralLogger.Theme
 import LoggerKit.Theme
 
 // Per-view toolbar host (no page title — navigation rail shows the screen).
@@ -12,7 +11,8 @@ Item {
 
     property Component toolbarSource: null
 
-    readonly property int barHeight: AppTheme.topBarHeight
+    readonly property int barHeight: Math.max(AppTheme.topBarHeight,
+        Math.ceil(toolbarLoader.implicitHeight) + 2 * AppTheme.spacingS)
     readonly property int hPad: AppTheme.pagePadding
 
     implicitHeight: barHeight

@@ -1,6 +1,7 @@
 #include "core/history/AverageExportService.h"
 
 #include "utils/AppConstants.h"
+#include "utils/CsvUtils.h"
 #include "utils/DbConstants.h"
 #include "utils/FormatConstants.h"
 #include "utils/SensorConstants.h"
@@ -15,20 +16,18 @@ namespace CentralLogger::Core {
 
 namespace {
 
-using CentralLogger::Defaults::kDecimalsMax;
-using CentralLogger::Defaults::kDecimalsMin;
 using CentralLogger::Defaults::kHourBucketSeconds;
-using CentralLogger::Defaults::kShiftLengthHours;
+using CentralLogger::Utils::csvEscape;
 
 struct AvgAccumulator
 {
     double sum   = 0.0;
     int    count = 0;
 
-    void add(double value, int n)
+    void add(const AvgAccumulator &bucket)
     {
-        sum += value * n;
-        count += n;
+        sum += bucket.sum;
+        count += bucket.count;
     }
 };
 
@@ -41,24 +40,12 @@ struct SensorColumn
     int     decimals = CentralLogger::Defaults::kDecimalsDefault;
 };
 
-QString csvEscape(const QString &s)
-{
-    if (s.contains(QLatin1Char(',')) || s.contains(QLatin1Char('"')) ||
-        s.contains(QLatin1Char('\n'))) {
-        return QStringLiteral("\"%1\"").arg(
-            QString(s).replace(QStringLiteral("\""), QStringLiteral("\"\"")));
-    }
-    return s;
-}
-
 QString formatValue(const AvgAccumulator &acc, int decimals)
 {
     if (acc.count <= 0) {
         return QString();
     }
-    return QString::number(acc.sum / acc.count, 'f',
-                           qBound(static_cast<int>(kDecimalsMin), decimals,
-                                  static_cast<int>(kDecimalsMax)));
+    return CentralLogger::Sensor::formatAnalogValue(acc.sum / acc.count, decimals);
 }
 
 QString headerFor(const SensorColumn &col)
@@ -101,11 +88,6 @@ AverageExportResult AverageExportService::build(const AverageExportParams &param
         tz = QTimeZone::systemTimeZone();
     }
 
-    int shiftStartHour = params.shiftStartHour;
-    if (shiftStartHour < 0 || shiftStartHour > 23) {
-        shiftStartHour = 0;
-    }
-
     // --- Columns: active analog sensors of the logger, ordered by edge id ---
     QVector<SensorColumn> columns;
     {
@@ -113,11 +95,11 @@ AverageExportResult AverageExportService::build(const AverageExportParams &param
         q.prepare(QStringLiteral(
             "SELECT id, edge_sensor_id, name, unit, decimals "
             "FROM %1 "
-            "WHERE logger_id = :lid AND sensor_type = :stype AND active = 1 "
+            "WHERE logger_id = :logger_id AND sensor_type = :sensor_type AND active = 1 "
             "ORDER BY edge_sensor_id ASC")
             .arg(QString::fromLatin1(CentralLogger::Data::Db::kTableLoggerSensor)));
-        q.bindValue(QLatin1String(CentralLogger::Data::Db::kBindLid), params.loggerId);
-        q.bindValue(QLatin1String(CentralLogger::Data::Db::kBindStype),
+        q.bindValue(QLatin1String(CentralLogger::Data::Db::kBindLoggerId), params.loggerId);
+        q.bindValue(QLatin1String(CentralLogger::Data::Db::kBindSensorType),
                     QLatin1String(CentralLogger::Sensor::kTypeAnalog));
         if (!q.exec()) {
             result.error = q.lastError().text();
@@ -131,8 +113,7 @@ AverageExportResult AverageExportService::build(const AverageExportParams &param
             col.unit         = q.value(3).toString();
             col.decimals     = q.value(4).toInt();
             if (col.name.isEmpty()) {
-                col.name = QString(QLatin1String(CentralLogger::Sensor::kFallbackNameFmt))
-                               .arg(col.edgeSensorId);
+                col.name = CentralLogger::Sensor::fallbackSensorName(col.edgeSensorId);
             }
             columns.append(col);
         }
@@ -161,19 +142,20 @@ AverageExportResult AverageExportService::build(const AverageExportParams &param
             "       COUNT(*) AS n "
             "FROM %2 r "
             "JOIN %3 s ON r.sensor_id = s.id "
-            "WHERE s.logger_id = :lid "
-            "  AND s.sensor_type = :stype "
-            "  AND r.status_code = '00' "
+            "WHERE s.logger_id = :logger_id "
+            "  AND s.sensor_type = :sensor_type "
+            "  AND r.status_code = '%4' "
             "  AND r.recorded_at >= :from AND r.recorded_at <= :to "
             "GROUP BY s.id, bucket "
             "ORDER BY bucket ASC")
             .arg(bucketSql,
                  QString::fromLatin1(CentralLogger::Data::Db::kTableSensorReading),
-                 QString::fromLatin1(CentralLogger::Data::Db::kTableLoggerSensor)));
+                 QString::fromLatin1(CentralLogger::Data::Db::kTableLoggerSensor),
+                 QLatin1String(CentralLogger::Sensor::kStatusOk)));
         q.bindValue(QLatin1String(CentralLogger::Data::Db::kBindOffset), tzOffsetSeconds);
         q.bindValue(QLatin1String(CentralLogger::Data::Db::kBindHour), kHourBucketSeconds);
-        q.bindValue(QLatin1String(CentralLogger::Data::Db::kBindLid), params.loggerId);
-        q.bindValue(QLatin1String(CentralLogger::Data::Db::kBindStype),
+        q.bindValue(QLatin1String(CentralLogger::Data::Db::kBindLoggerId), params.loggerId);
+        q.bindValue(QLatin1String(CentralLogger::Data::Db::kBindSensorType),
                     QLatin1String(CentralLogger::Sensor::kTypeAnalog));
         q.bindValue(QLatin1String(CentralLogger::Data::Db::kBindFrom),
                     params.fromUtc.toUTC().toString(Qt::ISODateWithMs));
@@ -191,47 +173,10 @@ AverageExportResult AverageExportService::build(const AverageExportParams &param
         }
     }
 
-    // --- Build time buckets (hourly rows or 8h shift rows) ------------------
-    struct Bucket
-    {
-        QDateTime      startLocal;
-        QDateTime      endLocal;   // exclusive
-        QString        label;
-    };
-    QVector<Bucket> buckets;
-
     const QDateTime fromLocal = params.fromUtc.toTimeZone(tz);
     const QDateTime toLocal   = params.toUtc.toTimeZone(tz);
-
-    if (params.mode == AverageExportMode::Hourly) {
-        QDateTime cursor(fromLocal.date(), QTime(fromLocal.time().hour(), 0), tz);
-        while (cursor <= toLocal) {
-            Bucket b;
-            b.startLocal = cursor;
-            b.endLocal   = cursor.addSecs(Defaults::kSecondsPerHour);
-            b.label = cursor.toString(QLatin1String(CentralLogger::Format::kTimeHhMmDdMmYyyy));
-            buckets.append(b);
-            cursor = b.endLocal;
-        }
-    } else {
-        const int shiftSeconds = kShiftLengthHours * Defaults::kSecondsPerHour;
-        QDateTime cursor(fromLocal.date(), QTime(0, 0), tz);
-        cursor = cursor.addSecs(static_cast<qint64>(shiftStartHour) * Defaults::kSecondsPerHour);
-        // Start at the last shift boundary at/before the range start.
-        while (cursor > fromLocal) {
-            cursor = cursor.addSecs(-shiftSeconds);
-        }
-        while (cursor <= toLocal) {
-            Bucket b;
-            b.startLocal = cursor;
-            b.endLocal   = cursor.addSecs(shiftSeconds);
-            b.label = cursor.toString(QLatin1String(CentralLogger::Format::kTimeHhMmDdMmYyyy));
-            buckets.append(b);
-            cursor = b.endLocal;
-        }
-    }
-
-    if (buckets.isEmpty()) {
+    const QDateTime firstHour(fromLocal.date(), QTime(fromLocal.time().hour(), 0), tz);
+    if (!firstHour.isValid() || firstHour > toLocal) {
         result.error = QStringLiteral("No time buckets in the selected range.");
         return result;
     }
@@ -262,24 +207,17 @@ AverageExportResult AverageExportService::build(const AverageExportParams &param
     QVector<AvgAccumulator> totals(columns.size());
     int dataRows = 0;
 
-    for (const auto &bucket : buckets) {
+    for (auto hour = firstHour; hour <= toLocal; hour = hour.addSecs(hourSec)) {
         QStringList cells;
-        cells.append(csvEscape(bucket.label));
+        cells.append(csvEscape(hour.toString(QLatin1String(CentralLogger::Format::kTimeHhMmDdMmYyyy))));
+        const auto key = bucketKey(hour.toUTC());
 
         for (int c = 0; c < columns.size(); ++c) {
             AvgAccumulator acc;
             const auto sensorIt = hourly.constFind(columns.at(c).sensorId);
-            if (sensorIt != hourly.constEnd()) {
-                for (QDateTime t = bucket.startLocal;
-                     t < bucket.endLocal;
-                     t = t.addSecs(hourSec)) {
-                    const auto it = sensorIt->constFind(bucketKey(t.toUTC()));
-                    if (it != sensorIt->constEnd()) {
-                        acc.add(it->count > 0 ? it->sum / it->count : 0.0, it->count);
-                    }
-                }
-            }
-            totals[c].add(acc.count > 0 ? acc.sum / acc.count : 0.0, acc.count);
+            if (sensorIt != hourly.constEnd())
+                acc = sensorIt->value(key);
+            totals[c].add(acc);
             cells.append(formatValue(acc, columns.at(c).decimals));
         }
 
@@ -289,9 +227,7 @@ AverageExportResult AverageExportService::build(const AverageExportParams &param
 
     // --- Overall average row ----------------------------------------------
     QStringList avgCells;
-    avgCells.append(csvEscape(params.mode == AverageExportMode::Hourly
-                                  ? QString::fromUtf8(CentralLogger::Format::kAverageLabel24h)
-                                  : QString::fromUtf8(CentralLogger::Format::kAverageLabelShift)));
+    avgCells.append(csvEscape(QString::fromUtf8(CentralLogger::Format::kAverageLabel24h)));
     for (int c = 0; c < columns.size(); ++c) {
         avgCells.append(formatValue(totals.at(c), columns.at(c).decimals));
     }

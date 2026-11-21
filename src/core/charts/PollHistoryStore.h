@@ -1,63 +1,36 @@
 #pragma once
 
+#include "Downsampler.h"
 #include "network/modbus/ModbusTypes.h"
-#include "utils/charts/ChartDisplayLimits.h"
 
-#include <QDateTime>
 #include <QHash>
-#include <QVariantList>
-#include <QVariantMap>
-#include <QVector>
 
 #include <deque>
+#include <limits>
+#include <optional>
 
 namespace CentralLogger::Core {
 
-/// One data point in the trending ring buffer.
-struct TrendingPoint {
-  QDateTime timestamp;
-  float value = 0.0f;
-};
-
-/// Per-logger, per-analog-sensor ring buffer (max kChartDisplayPointCount
-/// entries). Fed by `DashboardController::onSnapshotApplied` on every
-/// successful poll. Consumed by `LoggerDetailViewModel` to expose a
-/// `QVariantList` of series for the Qt Graphs trending chart (Task 15).
-///
-/// Only **analog** samples are stored — DI/DO are 0/1 toggles and don't
-/// benefit from a continuous line chart.
+/// Per-logger, per-analog-sensor history bounded by both age and sample count.
+/// Latest validity is independent of the retained measurements.
 class PollHistoryStore {
 public:
-  static constexpr int kMaxPoints = Utils::kChartDisplayPointCount;
+  static constexpr int kMaxPoints = Defaults::kGraphRamMaxPoints;
 
   /// Appends one data point per analog sample from a successful snapshot.
-  /// Failed snapshots (`!snapshot.success`) are silently ignored.
+  /// Failed snapshots clear live validity but keep existing history.
   void append(const Network::PollSnapshot &snapshot);
 
-  /// L-21: Update the display name map for a logger's analog sensors.
-  /// Called by DashboardController after each successful snapshot when the
-  /// catalog rows are available. Names are used as series labels instead of
-  /// the generic "Sensor #N" fallback.
-  void updateSensorNames(qint64 loggerId, const QHash<int, QString> &names);
+  GraphSeries seriesForLogger(qint64 loggerId, qint64 fromMs = std::numeric_limits<qint64>::min(),
+                             qint64 toMs = std::numeric_limits<qint64>::max()) const;
+  bool coversStart(qint64 loggerId, qint64 fromMs) const;
+  qint64 latestTimestamp(qint64 loggerId) const { return m_lastSampleMs.value(loggerId); }
+  qint64 latestEvictedTimestamp(qint64 loggerId) const { return m_lastEvictedMs.value(loggerId); }
+  std::optional<double> currentValue(qint64 loggerId, int edgeSensorId) const;
 
-  /// Update the per-analog display precision map (edge `decimals`, default 4).
-  /// Exposed as `decimals` on each series so the trending tooltip rounds
-  /// consistently with the live table and History.
-  void updateSensorDecimals(qint64 loggerId, const QHash<int, int> &decimals);
-
-  /// Returns a list of series suitable for QML / Qt Graphs:
-  ///
-  /// ```
-  /// [
-  ///   { "edgeSensorId": 1, "label": "Sensor #1",
-  ///     "points": [ { "x": 0, "y": 25.3, "time": "14:30:05" }, … ] },
-  ///   …
-  /// ]
-  /// ```
-  ///
-  /// `x` is measurement time as UTC epoch milliseconds (for DateTimeAxis);
-  /// `y` is the analog value; `time` is formatted `HH:mm:ss` for legends.
-  QVariantList seriesForLogger(qint64 loggerId) const;
+  /// Marks all sensors for @p loggerId as having no current live sample
+  /// (e.g. when the logger is disabled) without discarding buffered points.
+  void markOffline(qint64 loggerId);
 
   /// True when there is at least one sensor with history for this logger.
   bool has(qint64 loggerId) const;
@@ -76,13 +49,11 @@ public:
 
 private:
   // loggerId → (edgeSensorId → deque of points)
-  using SensorDeque = QHash<int, std::deque<TrendingPoint>>;
+  using SensorDeque = QHash<int, std::deque<GraphPoint>>;
   QHash<qint64, SensorDeque> m_store;
-  QHash<qint64, QHash<int, bool>> m_currentValid;
-  // loggerId → (edgeSensorId → display name)
-  QHash<qint64, QHash<int, QString>> m_sensorNames;
-  // loggerId → (edgeSensorId → display precision)
-  QHash<qint64, QHash<int, int>> m_sensorDecimals;
+  QHash<qint64, QHash<int, double>> m_currentValues;
+  QHash<qint64, qint64> m_lastSampleMs;
+  QHash<qint64, qint64> m_lastEvictedMs;
 };
 
 } // namespace CentralLogger::Core

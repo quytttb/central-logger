@@ -7,9 +7,9 @@
 #include <QModbusReply>
 #include <QModbusTcpClient>
 #include <QTimer>
-#include <QUrl>
 #include <QDateTime>
 #include <QtDebug>
+#include <utility>
 
 namespace CentralLogger::Network {
 
@@ -68,61 +68,56 @@ void ModbusService::registerLogger(const LoggerRuntimeConfig &config)
 {
     LoggerState *state = m_states.value(config.loggerId, nullptr);
     const bool created = (state == nullptr);
-    if (!state) {
+    const bool wasEnabled = state && state->config.enabled;
+    if (created) {
         state = new LoggerState;
-        state->config = config;
         m_states.insert(config.loggerId, state);
-    } else {
-        const bool reconnect = state->config.host != config.host
-                            || state->config.modbusPort != config.modbusPort
-                            || state->config.unitId != config.unitId
-                            || state->config.timeoutMs != config.timeoutMs;
-         state->config = config;
-         if (reconnect && state->client) {
-             // C-A fix: drop any pending stateChanged watcher + all signals so
-             // queued events from the discarded client can't reach this state.
-             if (state->connectHolder) {
-                 disconnect(*state->connectHolder);
-                 delete state->connectHolder;
-                 state->connectHolder = nullptr;
-             }
-             state->client->disconnect(this);
-             state->client->disconnectDevice();
-             state->client->deleteLater();
-             state->client = nullptr;
-             // Invalidate any in-flight replies that belonged to the discarded
-             // client so their queued `finished` signals are dropped on arrival.
-             ++state->clientEpoch;
-             // C-7 fix: reset in-flight state so the next onPollTimer fires a
-             // fresh cycle rather than returning immediately (pollInFlight guard).
-             state->pollInFlight = false;
-            state->analogAccum.clear();
-            state->analogPlan.clear();
-        }
     }
+    const bool endpointChanged = !created && (state->config.host != config.host
+        || state->config.modbusPort != config.modbusPort || state->config.unitId != config.unitId
+        || state->config.timeoutMs != config.timeoutMs);
+    state->config = config;
 
-    if (!state->timer) {
+    if (created) {
         state->timer = new QTimer(this);
-        state->timer->setSingleShot(false);
         connect(state->timer, &QTimer::timeout, this, &ModbusService::onPollTimer);
         state->timer->setProperty("loggerId", QVariant::fromValue(config.loggerId));
+
+        state->watchdog = new QTimer(this);
+        state->watchdog->setSingleShot(true);
+        state->watchdog->setTimerType(Qt::PreciseTimer);
+        connect(state->watchdog, &QTimer::timeout, this, [this, id = config.loggerId,
+                                                         timer = state->watchdog]() {
+            auto *s = stateFor(id);
+            if (s && s->watchdog == timer && s->pollInFlight) {
+                finishCycle(*s, false, s->awaitingConnection ? QStringLiteral("connect timeout")
+                                                            : QStringLiteral("poll cycle timeout"));
+            }
+        });
     }
-    state->timer->setInterval(config.pollIntervalMs > 0 ? config.pollIntervalMs
-                                                        : Defaults::kDefaultPollIntervalMs);
+
+    if (endpointChanged || !config.enabled) {
+        forceReconnect(*state);
+        state->consecutiveFailures = 0;
+    }
+    const int interval = config.pollIntervalMs > 0 ? config.pollIntervalMs
+                                                   : Defaults::kDefaultPollIntervalMs;
+    if (state->timer->interval() != interval)
+        state->timer->setInterval(interval);
 
     if (config.enabled) {
         if (!state->timer->isActive()) {
             state->timer->start();
         }
-        if (created) {
+        if (!wasEnabled) {
             // First-time register: poll soon so the UI doesn't wait a full
             // interval to see status. Audit M-4: stagger the first poll per
             // logger (100 ms each) so startup doesn't open every TCP
             // connection at once.
-            const int delayMs = m_staggerCounter++ * kStartupStaggerMs;
-            QTimer::singleShot(delayMs, this, [this, id = config.loggerId]() {
+            const int delayMs = created ? m_staggerCounter++ * Defaults::kModbusStartupStaggerMs : 0;
+            QTimer::singleShot(delayMs, state->timer, [this, id = config.loggerId, timer = state->timer]() {
                 if (auto *s = stateFor(id)) {
-                    if (s->config.enabled && !s->pollInFlight) {
+                    if (s->timer == timer && s->config.enabled && !s->pollInFlight) {
                         startPollCycle(*s);
                     }
                 }
@@ -133,9 +128,14 @@ void ModbusService::registerLogger(const LoggerRuntimeConfig &config)
     }
 }
 
-void ModbusService::unregisterLogger(qint64 loggerId)
+void ModbusService::reconnectLogger(qint64 loggerId)
 {
-    destroyState(loggerId);
+    auto *state = stateFor(loggerId);
+    if (!state || !state->config.enabled)
+        return;
+    forceReconnect(*state);
+    state->timer->start();
+    startPollCycle(*state);
 }
 
 void ModbusService::shutdown()
@@ -155,19 +155,65 @@ void ModbusService::ensureClient(LoggerState &state)
 {
     if (state.client) return;
     state.client = new QModbusTcpClient(this);
+    state.clientEpoch = ++m_nextClientEpoch;
     state.client->setConnectionParameter(QModbusDevice::NetworkAddressParameter,
                                          state.config.host);
     state.client->setConnectionParameter(QModbusDevice::NetworkPortParameter,
                                          state.config.modbusPort);
-    state.client->setTimeout(state.config.timeoutMs);
+    state.client->setTimeout(state.config.timeoutMs > 0 ? state.config.timeoutMs
+                                                        : Defaults::kDefaultTimeoutMs);
     state.client->setNumberOfRetries(0);
+    const auto id = state.config.loggerId;
+    const auto epoch = state.clientEpoch;
+    // Queue device signals: connectDevice()/sendReadRequest() can emit an
+    // error synchronously, before their caller has handled the return value.
+    connect(state.client, &QModbusDevice::stateChanged, this, [this, id, epoch](QModbusDevice::State next) {
+        auto *s = stateFor(id);
+        if (!s || isStaleReply(*s, epoch))
+            return;
+        if (next == QModbusDevice::ConnectedState && s->awaitingConnection
+            && s->client->state() == QModbusDevice::ConnectedState) {
+            s->awaitingConnection = false;
+            s->watchdog->start(s->client->timeout());
+            readHeader(*s);
+        } else if (next == QModbusDevice::UnconnectedState) {
+            finishCycle(*s, false, s->client->errorString().isEmpty()
+                                     ? QStringLiteral("connection closed") : s->client->errorString());
+        }
+    }, Qt::QueuedConnection);
+    connect(state.client, &QModbusDevice::errorOccurred, this, [this, id, epoch](QModbusDevice::Error error) {
+        if (error != QModbusDevice::ConnectionError && error != QModbusDevice::ReadError
+            && error != QModbusDevice::WriteError)
+            return;
+        auto *s = stateFor(id);
+        if (s && !isStaleReply(*s, epoch))
+            finishCycle(*s, false, s->client->errorString());
+    }, Qt::QueuedConnection);
+}
+
+void ModbusService::forceReconnect(LoggerState &state)
+{
+    state.watchdog->stop();
+    state.pollInFlight = false;
+    state.awaitingConnection = false;
+    state.analogAccum.clear();
+    state.analogPlan.clear();
+
+    if (auto *client = std::exchange(state.client, nullptr)) {
+        client->disconnect(this);
+        // Don't close a socket inside its reply/readyRead callback. From this
+        // point its replies are ignored and the next poll gets a new client.
+        QMetaObject::invokeMethod(client, [client]() { client->disconnectDevice(); },
+                                  Qt::QueuedConnection);
+        client->deleteLater();
+    }
 }
 
 bool ModbusService::isStaleReply(const LoggerState &state, quint64 replyEpoch) const
 {
     // C-A fix: stale if the state's client has been replaced (epoch advanced)
     // or no cycle is currently in flight (state reset/destroyed mid-request).
-    return replyEpoch != state.clientEpoch || !state.pollInFlight;
+    return !state.client || replyEpoch != state.clientEpoch || !state.pollInFlight;
 }
 
 void ModbusService::destroyState(qint64 loggerId)
@@ -175,29 +221,10 @@ void ModbusService::destroyState(qint64 loggerId)
     LoggerState *state = m_states.take(loggerId);
     if (!state) return;
 
-    // M-9: disconnect the transient stateChanged lambda before touching the
-    // client. Without this, if the state is torn down while the client is still
-    // in ConnectingState the lambda fires after `state` is deleted — reading a
-    // dangling pointer via stateFor(id) (now removed from m_states, so null)
-    // and leaking the heap-allocated holder.
-    if (state->connectHolder) {
-        disconnect(*state->connectHolder);
-        delete state->connectHolder;
-        state->connectHolder = nullptr;
-    }
-
-    if (state->timer) {
-        state->timer->stop();
-        state->timer->deleteLater();
-    }
-    if (state->client) {
-        // Disconnect all remaining signals from this client to ModbusService
-        // before scheduling deletion, so no queued signals can reach a freed
-        // LoggerState after we `delete state` below.
-        state->client->disconnect(this);
-        state->client->disconnectDevice();
-        state->client->deleteLater();
-    }
+    forceReconnect(*state);
+    state->timer->stop();
+    state->timer->deleteLater();
+    state->watchdog->deleteLater();
     delete state;
 }
 
@@ -207,7 +234,7 @@ void ModbusService::onPollTimer()
     if (!timer) return;
     const qint64 loggerId = timer->property("loggerId").toLongLong();
     if (auto *state = stateFor(loggerId)) {
-        if (!state->config.enabled) return;
+        if (state->timer != timer || !state->config.enabled) return;
         if (state->pollInFlight) return;
         startPollCycle(*state);
     }
@@ -226,69 +253,21 @@ void ModbusService::startPollCycle(LoggerState &state)
     state.analogPlan.clear();
 
     if (state.client->state() == QModbusDevice::UnconnectedState) {
-        // connectDevice is async; defer the actual read until the state
-        // transitions to ConnectedState.
-        QMetaObject::Connection *holder = new QMetaObject::Connection;
-        // M-9: store the holder in LoggerState so destroyState can clean it up
-        // if the state is removed while the connection attempt is still in-flight.
-        state.connectHolder = holder;
-        *holder = connect(state.client, &QModbusDevice::stateChanged,
-                          this, [this, id = state.config.loggerId, holder](QModbusDevice::State newState) {
-            if (newState == QModbusDevice::ConnectedState) {
-                disconnect(*holder);
-                delete holder;
-                if (auto *s = stateFor(id)) {
-                    s->connectHolder = nullptr;
-                    // H-F fix: the connect-timeout may already have ended the
-                    // cycle — don't start reading on a dead cycle.
-                    if (s->pollInFlight) {
-                        readHeader(*s);
-                    }
-                }
-            } else if (newState == QModbusDevice::UnconnectedState) {
-                disconnect(*holder);
-                delete holder;
-                if (auto *s = stateFor(id)) {
-                    s->connectHolder = nullptr;
-                    // H-F fix: finish exactly once — skip if the cycle ended
-                    // already (e.g. connect timeout ran before this signal).
-                    if (s->pollInFlight) {
-                        finishCycle(*s, false, QStringLiteral("connect failed"));
-                    }
-                }
-            }
-        });
-
-        // C-2 fix: guard against TCP stalling in ConnectingState indefinitely.
-        // After 2× timeoutMs we abort the connection attempt and finish the cycle.
+        state.awaitingConnection = true;
         const int connectTimeoutMs = state.config.timeoutMs > 0
-                                     ? state.config.timeoutMs * kConnectTimeoutMultiplier
-                                     : kConnectTimeoutFallbackMs;
-        QTimer::singleShot(connectTimeoutMs, this, [this, id = state.config.loggerId]() {
-            auto *s = stateFor(id);
-            if (!s || !s->pollInFlight) return;
-            if (s->client
-                && s->client->state() == QModbusDevice::ConnectingState) {
-                qWarning() << "ModbusService: connect timeout for logger" << id
-                           << "— aborting cycle";
-                // Clearing pollInFlight first guarantees the UnconnectedState
-                // watcher that disconnectDevice() triggers below is a no-op,
-                // so the cycle is finished exactly once (H-F fix).
-                s->pollInFlight = false;
-                s->client->disconnectDevice();
-                finishCycle(*s, false, QStringLiteral("connect timeout"));
-            }
-        });
-
-        if (!state.client->connectDevice()) {
-            disconnect(*holder);
-            delete holder;
-            state.connectHolder = nullptr;
+                                      ? state.config.timeoutMs * kConnectTimeoutMultiplier
+                                      : kConnectTimeoutFallbackMs;
+        state.watchdog->start(connectTimeoutMs);
+        if (!state.client->connectDevice())
             finishCycle(state, false, state.client->errorString());
-        }
         return;
     }
-
+    if (state.client->state() != QModbusDevice::ConnectedState) {
+        finishCycle(state, false, QStringLiteral("connection not ready"));
+        return;
+    }
+    // The read deadline covers all FC03/FC02/FC01 PDUs, not each one separately.
+    state.watchdog->start(state.client->timeout());
     readHeader(state);
 }
 
@@ -445,12 +424,25 @@ void ModbusService::readCoils(LoggerState &state)
 
 void ModbusService::finishCycle(LoggerState &state, bool success, const QString &errorMessage)
 {
-    state.pollInFlight = false;
+    if (!state.pollInFlight)
+        return;
     state.currentSnapshot.success = success;
     state.currentSnapshot.errorMessage = errorMessage;
     if (!success) {
-        state.analogAccum.clear();
-        state.analogPlan.clear();
+        if (++state.consecutiveFailures == 1) {
+            qWarning() << "Modbus poll failed for logger" << state.config.loggerId
+                       << "client state" << state.client->state() << "epoch" << state.clientEpoch
+                       << errorMessage << "— reopening TCP on the next poll";
+        }
+        forceReconnect(state);
+    } else {
+        state.watchdog->stop();
+        state.pollInFlight = false;
+        if (state.consecutiveFailures > 0) {
+            qInfo() << "Modbus recovered for logger" << state.config.loggerId
+                    << "after" << state.consecutiveFailures << "failed polls";
+            state.consecutiveFailures = 0;
+        }
     }
     emit pollFinished(state.currentSnapshot);
 }

@@ -73,28 +73,27 @@ private slots:
         const auto series = store.seriesForLogger(10);
         QCOMPARE(series.size(), 1);
 
-        const auto s0 = series.at(0).toMap();
-        QCOMPARE(s0.value("edgeSensorId").toInt(), 1);
-        const auto points = s0.value("points").toList();
+        QVERIFY(series.contains(1));
+        const auto points = series.value(1);
         QCOMPARE(points.size(), 5);
 
         // Verify ascending X (epoch ms)
         for (int i = 1; i < 5; ++i) {
-            QVERIFY(points.at(i).toMap().value("x").toDouble()
-                    > points.at(i - 1).toMap().value("x").toDouble());
+            QVERIFY(points.at(i).timestampMs > points.at(i - 1).timestampMs);
         }
 
         // Verify y values ascending
-        QCOMPARE(points.at(0).toMap().value("y").toDouble(), 20.0);
-        QCOMPARE(points.at(4).toMap().value("y").toDouble(), 24.0);
+        QCOMPARE(points.at(0).value, 20.0);
+        QCOMPARE(points.at(4).value, 24.0);
     }
 
-    void ringBufferCapsAtDisplayLimit()
+    void ringBufferCapsAtMemoryLimit()
     {
         PollHistoryStore store;
-        for (int i = 0; i < 30; ++i) {
+        const auto start = QDateTime::currentDateTimeUtc();
+        for (int i = 0; i < PollHistoryStore::kMaxPoints + 10; ++i) {
             const auto snap = makeSnapshot(10, {{1, static_cast<float>(i)}},
-                QDateTime::currentDateTimeUtc().addSecs(i));
+                start.addSecs(i));
             store.append(snap);
         }
 
@@ -102,10 +101,31 @@ private slots:
 
         // The oldest 10 entries (0..9) should have been evicted.
         const auto series = store.seriesForLogger(10);
-        const auto points = series.at(0).toMap().value("points").toList();
-        QCOMPARE(points.size(), 20);
-        QCOMPARE(points.at(0).toMap().value("y").toDouble(), 10.0);
-        QCOMPARE(points.at(19).toMap().value("y").toDouble(), 29.0);
+        const auto points = series.value(1);
+        QCOMPARE(points.size(), PollHistoryStore::kMaxPoints);
+        QCOMPARE(points.constFirst().value, 10.0);
+        QCOMPARE(points.constLast().value, PollHistoryStore::kMaxPoints + 9.0);
+        QVERIFY(!store.coversStart(10, start.toMSecsSinceEpoch()));
+        QCOMPARE(store.latestEvictedTimestamp(10), start.addSecs(9).toMSecsSinceEpoch());
+    }
+
+    void ageLimitAndWindowFiltering()
+    {
+        using CentralLogger::Defaults::kGraphRamMaxMs;
+        PollHistoryStore store;
+        const auto now = QDateTime::currentDateTimeUtc();
+        const qint64 ms = now.toMSecsSinceEpoch();
+        store.append(makeSnapshot(10, {{1, 9}}, now.addMSecs(-kGraphRamMaxMs - 1)));
+        store.append(makeSnapshot(10, {{1, 10}}, now.addMSecs(-kGraphRamMaxMs)));
+        store.append(makeSnapshot(10, {{1, 20}}, now.addMSecs(-1000)));
+        store.append(makeSnapshot(10, {{1, 30}}, now));
+        QCOMPARE(store.pointCount(10, 1), 3);
+        QVERIFY(store.coversStart(10, ms - kGraphRamMaxMs));
+        QVERIFY(!store.coversStart(10, ms - kGraphRamMaxMs - 1));
+        const auto points = store.seriesForLogger(10, ms - 1000, ms - 1).value(1);
+        QCOMPARE(points.size(), 1);
+        QCOMPARE(points.constFirst().value, 20.0);
+        QVERIFY(store.seriesForLogger(10, ms + 1).isEmpty());
     }
 
     void failedSnapshotIgnored()
@@ -150,16 +170,16 @@ private slots:
         PollHistoryStore store;
         auto snap = makeSnapshot(10, {{1, 42.0f}});
         store.append(snap);
-        QVERIFY(store.seriesForLogger(10).at(0).toMap().value("currentValid").toBool());
+        QVERIFY(store.currentValue(10, 1).has_value());
         snap.analogs[0].statusCode = QStringLiteral("02");
         snap.analogs[0].hasQuality = true;
         snap.analogs[0].qualityValid = false;
         store.append(snap);
         QCOMPARE(store.pointCount(10, 1), 1);
-        QVERIFY(!store.seriesForLogger(10).at(0).toMap().value("currentValid").toBool());
+        QVERIFY(!store.currentValue(10, 1).has_value());
         snap.success = false;
         store.append(snap);
-        QVERIFY(!store.seriesForLogger(10).at(0).toMap().value("currentValid").toBool());
+        QVERIFY(!store.currentValue(10, 1).has_value());
     }
 
     void staleSampleSkipped()
@@ -207,7 +227,7 @@ private slots:
         QCOMPARE(store.loggerCount(), 0);
     }
 
-    void seriesFormatHasTimeField()
+    void seriesFormatHasTimestampAndValue()
     {
         PollHistoryStore store;
         const QDateTime ts = QDateTime(QDate(2025, 6, 1), QTime(14, 30, 5), QTimeZone::utc());
@@ -215,16 +235,11 @@ private slots:
 
         const auto series = store.seriesForLogger(10);
         QCOMPARE(series.size(), 1);
-        const auto s0 = series.at(0).toMap();
-        const auto points = s0.value("points").toList();
+        const auto points = series.value(1);
         QCOMPARE(points.size(), 1);
-        const auto p0 = points.at(0).toMap();
-        QVERIFY(p0.contains("time"));
-        QCOMPARE(p0.value("x").toLongLong(), ts.toMSecsSinceEpoch());
-        // time field should be non-empty HH:mm:ss format
-        const QString timeStr = p0.value("time").toString();
-        QVERIFY(!timeStr.isEmpty());
-        QVERIFY(timeStr.contains(':')); // basic sanity
+        const auto p0 = points.at(0);
+        QCOMPARE(p0.timestampMs, ts.toMSecsSinceEpoch());
+        QCOMPARE(p0.value, 25.5);
     }
 };
 

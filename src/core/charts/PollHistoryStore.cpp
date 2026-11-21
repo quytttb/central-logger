@@ -1,83 +1,77 @@
 #include "PollHistoryStore.h"
 
-#include "utils/AppConstants.h"
-#include "utils/FormatConstants.h"
 #include "utils/SensorConstants.h"
-#include "utils/UiConstants.h"
+
+#include <algorithm>
+#include <cmath>
 
 namespace CentralLogger::Core {
 
 void PollHistoryStore::append(const Network::PollSnapshot &snapshot)
 {
     const qint64 loggerId = snapshot.loggerId;
-    if (!snapshot.success) {
-        m_currentValid.remove(loggerId);
+    m_currentValues.remove(loggerId);
+    if (!snapshot.success || !snapshot.measuredAt.isValid())
         return;
-    }
 
-    m_currentValid.remove(loggerId);
+    const auto timestamp = snapshot.measuredAt.toMSecsSinceEpoch();
+    if (m_lastSampleMs.contains(loggerId) && timestamp < m_lastSampleMs.value(loggerId)) {
+        // System clock went backwards; restart the sorted RAM horizon.
+        m_store.remove(loggerId);
+        m_lastEvictedMs.remove(loggerId);
+    }
+    m_lastSampleMs[loggerId] = timestamp;
     auto &loggerStore = m_store[loggerId];
 
     for (const auto &analog : snapshot.analogs) {
         const bool currentValid = analog.isValid() && !analog.isStale()
-            && analog.statusCode == QLatin1String(CentralLogger::Sensor::kStatusOk);
-        m_currentValid[loggerId].insert(analog.edgeSensorId, currentValid);
-        if (!currentValid) continue;
+            && std::isfinite(analog.value)
+            && analog.statusCode != QLatin1String(CentralLogger::Sensor::kStatusErr);
+        if (!currentValid)
+            continue;
 
-        auto &deque = loggerStore[analog.edgeSensorId];
-
-        TrendingPoint pt;
-        pt.timestamp = snapshot.measuredAt;
-        pt.value     = analog.value;
-        deque.push_back(pt);
-
-        while (deque.size() > static_cast<std::size_t>(kMaxPoints)) {
-            deque.pop_front();
-        }
+        m_currentValues[loggerId].insert(analog.edgeSensorId, analog.value);
+        loggerStore[analog.edgeSensorId].push_back({timestamp, analog.value, analog.isAlarm()});
     }
+    const auto cutoff = timestamp - Defaults::kGraphRamMaxMs;
+    for (auto it = loggerStore.begin(); it != loggerStore.end();) {
+        auto &points = it.value();
+        while (!points.empty() && (points.size() > std::size_t(kMaxPoints)
+                                  || points.front().timestampMs < cutoff)) {
+            auto &lastEvicted = m_lastEvictedMs[loggerId];
+            lastEvicted = std::max(lastEvicted, points.front().timestampMs);
+            points.pop_front();
+        }
+        if (points.empty())
+            it = loggerStore.erase(it);
+        else
+            ++it;
+    }
+    if (loggerStore.isEmpty())
+        m_store.remove(loggerId);
 }
 
-QVariantList PollHistoryStore::seriesForLogger(qint64 loggerId) const
+void PollHistoryStore::markOffline(qint64 loggerId)
 {
-    QVariantList result;
+    m_currentValues.remove(loggerId);
+}
+
+GraphSeries PollHistoryStore::seriesForLogger(qint64 loggerId, qint64 fromMs, qint64 toMs) const
+{
+    GraphSeries result;
 
     const auto loggerIt = m_store.constFind(loggerId);
     if (loggerIt == m_store.constEnd()) return result;
 
     const auto &loggerStore = *loggerIt;
     for (auto it = loggerStore.constBegin(); it != loggerStore.constEnd(); ++it) {
-        const int edgeSensorId = it.key();
-        const auto &deque = it.value();
-        if (deque.empty()) continue;
-
-        QVariantList points;
-        points.reserve(static_cast<QList<QVariant>::size_type>(deque.size()));
-        for (const auto &pt : deque) {
-            QVariantMap p;
-            p.insert(QLatin1String(CentralLogger::Ui::kChartX),
-                     static_cast<double>(pt.timestamp.toMSecsSinceEpoch()));
-            p.insert(QLatin1String(CentralLogger::Ui::kChartY), static_cast<double>(pt.value));
-            p.insert(QLatin1String(CentralLogger::Ui::kChartTime),
-                     pt.timestamp.toLocalTime()
-                         .toString(QLatin1String(CentralLogger::Format::kTimeHhMmSs)));
-            points.append(p);
-        }
-
-        QVariantMap series;
-        series.insert(QLatin1String(CentralLogger::Ui::kChartEdgeSensorId), edgeSensorId);
-        // L-21: prefer the catalog name stored via updateSensorNames();
-        // fall back to "Sensor #N" when name is unavailable.
-        const QString label = m_sensorNames.value(loggerId).value(
-            edgeSensorId,
-            QString(QLatin1String(CentralLogger::Sensor::kFallbackNameFmt)).arg(edgeSensorId));
-        series.insert(QLatin1String(CentralLogger::Ui::kChartLabel), label);
-        series.insert(QLatin1String(CentralLogger::Ui::kChartDecimals),
-                      m_sensorDecimals.value(loggerId).value(
-                          edgeSensorId, CentralLogger::Defaults::kDecimalsDefault));
-        series.insert(QLatin1String(CentralLogger::Ui::kChartPoints), points);
-        series.insert(QLatin1String(CentralLogger::Ui::kChartCurrentValid),
-                      m_currentValid.value(loggerId).value(edgeSensorId, false));
-        result.append(series);
+        const auto &points = it.value();
+        const auto begin = std::lower_bound(points.begin(), points.end(), fromMs,
+            [](const GraphPoint &p, qint64 cutoff) { return p.timestampMs < cutoff; });
+        const auto end = std::upper_bound(begin, points.end(), toMs,
+            [](qint64 cutoff, const GraphPoint &p) { return cutoff < p.timestampMs; });
+        if (begin != end)
+            result.insert(it.key(), QVector<GraphPoint>(begin, end));
     }
 
     return result;
@@ -88,30 +82,38 @@ bool PollHistoryStore::has(qint64 loggerId) const
     return m_store.contains(loggerId);
 }
 
-void PollHistoryStore::updateSensorNames(qint64 loggerId, const QHash<int, QString> &names)
+bool PollHistoryStore::coversStart(qint64 loggerId, qint64 fromMs) const
 {
-    m_sensorNames[loggerId] = names;
+    const auto it = m_store.constFind(loggerId);
+    return it != m_store.cend() && std::all_of(it->cbegin(), it->cend(),
+        [fromMs](const auto &points) { return points.front().timestampMs <= fromMs; });
 }
 
-void PollHistoryStore::updateSensorDecimals(qint64 loggerId, const QHash<int, int> &decimals)
+std::optional<double> PollHistoryStore::currentValue(qint64 loggerId, int edgeSensorId) const
 {
-    m_sensorDecimals[loggerId] = decimals;
+    const auto logger = m_currentValues.constFind(loggerId);
+    if (logger != m_currentValues.cend()) {
+        const auto sensor = logger->constFind(edgeSensorId);
+        if (sensor != logger->cend())
+            return *sensor;
+    }
+    return std::nullopt;
 }
 
 void PollHistoryStore::remove(qint64 loggerId)
 {
     m_store.remove(loggerId);
-    m_currentValid.remove(loggerId);
-    m_sensorNames.remove(loggerId);
-    m_sensorDecimals.remove(loggerId);
+    m_currentValues.remove(loggerId);
+    m_lastSampleMs.remove(loggerId);
+    m_lastEvictedMs.remove(loggerId);
 }
 
 void PollHistoryStore::clear()
 {
     m_store.clear();
-    m_currentValid.clear();
-    m_sensorNames.clear();
-    m_sensorDecimals.clear();
+    m_currentValues.clear();
+    m_lastSampleMs.clear();
+    m_lastEvictedMs.clear();
 }
 
 int PollHistoryStore::pointCount(qint64 loggerId, int edgeSensorId) const

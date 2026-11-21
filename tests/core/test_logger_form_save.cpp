@@ -1,24 +1,14 @@
-// Regression and contract tests for LoggerFormController::saveLoggerFromForm.
-//
-// The production flow triggered by the UI "Save" button:
-//   1. Requires a prior probe (GET /config) to set m_probedRevision.
-//   2. Inserts / updates the logger row in a DB transaction.
-//   3. If the config changed, POSTs the patch to the edge device.
-//   4. Commits the transaction regardless of the REST outcome
-//      (configApplyFailed is emitted as a non-blocking warning when REST fails).
-//
-// FakeEdgeServer provides a minimal QTcpServer that speaks just enough
-// HTTP/1.1 to satisfy QNetworkAccessManager — no third-party dep required.
-
+#include "../fixtures/ReadOnlyEdgeHttpServer.h"
 #include "core/DashboardController.h"
 #include "core/LoggerFormController.h"
 #include "data/db/Database.h"
 #include "data/repositories/LoggerRepository.h"
 #include "data/repositories/SensorCatalogRepository.h"
+#include "network/modbus/ModbusService.h"
 #include "network/rest/RestConfigService.h"
 
-#include <QTcpServer>
-#include <QTcpSocket>
+#include <QModbusTcpServer>
+#include <QSignalSpy>
 #include <QTest>
 
 using namespace CentralLogger::Core;
@@ -27,347 +17,346 @@ using namespace CentralLogger::Network;
 
 namespace {
 
-// ---------------------------------------------------------------------------
-// Minimal HTTP/1.1 edge stub
-// ---------------------------------------------------------------------------
+const QString kHost = QStringLiteral("127.0.0.1");
+const QString kToken = QStringLiteral("test-token");
+const QByteArray kGetConfig = "GET /api/v1/config HTTP/1.1";
 
-class FakeEdgeServer : public QObject
+struct Harness
 {
-    Q_OBJECT
-
-public:
-    enum class PostBehavior { Succeed, CloseImmediately };
-
-    explicit FakeEdgeServer(QObject *parent = nullptr) : QObject(parent)
-    {
-        m_server.listen(QHostAddress::LocalHost, 0 /* random free port */);
-        connect(&m_server, &QTcpServer::newConnection,
-                this,      &FakeEdgeServer::onNewConnection);
-    }
-
-    bool    isListening()  const { return m_server.isListening(); }
-    quint16 port()         const { return m_server.serverPort(); }
-    int     postCount()    const { return m_postCount; }
-
-    void setPostBehavior(PostBehavior b) { m_postBehavior = b; }
-    void setConfigResponse(const QByteArray &body) { m_configResponse = body; }
-
-private slots:
-    void onNewConnection()
-    {
-        QTcpSocket *sock = m_server.nextPendingConnection();
-        sock->setParent(this);
-        connect(sock, &QTcpSocket::readyRead, this, [this, sock]() {
-            const QByteArray req = sock->readAll();
-            if (req.startsWith("POST")) {
-                ++m_postCount;
-                if (m_postBehavior == PostBehavior::CloseImmediately) {
-                    sock->close();
-                    return;
-                }
-                static const QByteArray body =
-                    R"({"ok":true,"applied_revision":2})";
-                httpReply(sock, 200, body);
-            } else {
-                // GET /api/v1/config
-                if (!m_configResponse.isEmpty()) {
-                    httpReply(sock, 200, m_configResponse);
-                    return;
-                }
-                static const QByteArray body =
-                    R"({"revision":1,)"
-                    R"("config":{)"
-                    R"("station_code":"TST-01",)"
-                    R"("station_name":"EdgeName",)"
-                    R"("poll_interval":2,)"
-                    R"("modbus_tcp_unit_id":1},)"
-                    R"("sensors":[]})";
-                httpReply(sock, 200, body);
-            }
-        });
-    }
-
-private:
-    static void httpReply(QTcpSocket *sock, int code, const QByteArray &body)
-    {
-        const QByteArray status = (code == 200) ? "200 OK" : "500 Server Error";
-        QByteArray resp;
-        resp += "HTTP/1.1 " + status + "\r\n";
-        resp += "Content-Type: application/json\r\n";
-        resp += "Content-Length: " + QByteArray::number(body.size()) + "\r\n";
-        resp += "Connection: close\r\n\r\n";
-        resp += body;
-        sock->write(resp);
-        sock->flush();
-        sock->disconnectFromHost();
-    }
-
-    QTcpServer   m_server;
-    PostBehavior m_postBehavior = PostBehavior::Succeed;
-    int          m_postCount    = 0;
-    QByteArray   m_configResponse;
-};
-
-// ---------------------------------------------------------------------------
-// Test harness
-// ---------------------------------------------------------------------------
-
-QString uniqueConn(const char *tag)
-{
-    static int s = 0;
-    return QStringLiteral("save_%1_%2").arg(tag).arg(++s);
-}
-
-struct Harness {
-    Database            db;
-    DashboardController dash{nullptr};
-    RestConfigService   rest;
+    Database db;
+    DashboardController dashboard{nullptr};
+    RestConfigService rest;
     LoggerFormController form{nullptr};
-    FakeEdgeServer      edge;
+    ReadOnlyEdgeHttpServer edge;
 
-    explicit Harness(const char *tag)
+    Harness()
     {
-        const bool opened = db.open(uniqueConn(tag), QStringLiteral(":memory:"));
-        if (!opened)
-            qFatal("Harness: Database::open() failed (conn=%s)",
-                   qPrintable(uniqueConn(tag)));
-        dash.setDatabase(&db);
+        if (!db.open(QStringLiteral("logger_form_save"), QStringLiteral(":memory:")))
+            qFatal("Could not open test database");
+        dashboard.setDatabase(&db);
         rest.setDatabase(&db);
         form.setDatabase(&db);
         form.setRestConfigService(&rest);
-        form.setDashboardController(&dash);
-        dash.reloadLoggers();
+        form.setDashboardController(&dashboard);
     }
 
-    // Simulate the UI "Connect" button. Spins the event loop until
-    // probeConfigResult fires (or times out). Returns probe success.
-    bool probe(int timeoutMs = 5000)
+    void probe()
     {
-        bool ok = false;
-        bool got = false;
-        const QMetaObject::Connection c = QObject::connect(
-            &form, &LoggerFormController::probeConfigResult,
-            [&ok, &got](bool success, const QString &) {
-                ok  = success;
-                got = true;
-            });
+        form.probeConfig(kHost, edge.port(), kToken);
+    }
 
-        form.probeConfig(QStringLiteral("127.0.0.1"),
-                         edge.port(),
-                         QStringLiteral("test-token"));
+    void add(int modbusPort = 5020, int unitId = 1, const QString &token = kToken)
+    {
+        form.saveLoggerFromForm(true, -1, {}, QStringLiteral("Central alias"),
+                                kHost, modbusPort, edge.port(), token, unitId, 60,
+                                2, true, QStringLiteral("Local note"));
+    }
+};
 
-        // Give the event loop time to process the network round-trip.
-        const int step = 50;
-        for (int waited = 0; !got && waited < timeoutMs; waited += step)
-            QTest::qWait(step);
+class RecordingModbusServer : public QModbusTcpServer
+{
+public:
+    bool start(bool native, int unitId)
+    {
+        QTcpServer reservation;
+        if (!reservation.listen(QHostAddress::LocalHost))
+            return false;
+        port = reservation.serverPort();
+        reservation.close();
 
-        QObject::disconnect(c);
-        return ok;
+        setConnectionParameter(QModbusDevice::NetworkAddressParameter, kHost);
+        setConnectionParameter(QModbusDevice::NetworkPortParameter, port);
+        setServerAddress(unitId);
+
+        using Unit = QModbusDataUnit;
+        const quint16 digital = native ? 1 : 0;
+        const QList<quint16> registers{
+            2, 1, 0, 0, 1, digital, digital, 0, quint16(native ? 0 : 1), 0,
+            quint16(native ? 1 : 164), 1, 0x40e0, 0, 0, 0, 0, 0, // valid, value 7.0, status 00
+        };
+        QModbusDataUnitMap map{
+            {Unit::HoldingRegisters, Unit(Unit::HoldingRegisters, 0, registers)},
+        };
+        if (native) {
+            map.insert(Unit::DiscreteInputs, Unit(Unit::DiscreteInputs, 0, QList<quint16>{1}));
+            map.insert(Unit::Coils, Unit(Unit::Coils, 0, QList<quint16>{1}));
+        }
+        return setMap(map) && connectDevice();
+    }
+
+    quint16 port = 0;
+    QList<QModbusPdu::FunctionCode> requests;
+
+protected:
+    QModbusResponse processRequest(const QModbusPdu &request) override
+    {
+        requests.append(request.functionCode());
+        return QModbusTcpServer::processRequest(request);
     }
 };
 
 } // namespace
-
-// ---------------------------------------------------------------------------
-// Test class
-// ---------------------------------------------------------------------------
 
 class TestLoggerFormSave : public QObject
 {
     Q_OBJECT
 
 private slots:
-    void requiresProbeBeforeSave();
-    void successPath_dbCommitted();
-    void restFail_dbStillCommitted();
-    void noRestCall_whenConfigUnchanged();
-    void metadataOnlyCatalogPreservesThresholds();
+    void addEditReloadUseOnlyReadRequests_data();
+    void addEditReloadUseOnlyReadRequests();
+    void addRequiresSnapshotFromCurrentConnection();
+    void addValidationAndDuplicateStationCode();
+    void editOfflineKeepsCatalogAndRevision();
+    void reloadFailureKeepsMirrorAndDisabledState();
 };
 
-void TestLoggerFormSave::metadataOnlyCatalogPreservesThresholds()
+void TestLoggerFormSave::addEditReloadUseOnlyReadRequests_data()
 {
-    Harness h("catalog-thresholds");
-    h.edge.setConfigResponse(R"({"revision":1,"config":{"station_code":"TST-01","station_name":"EdgeName","poll_interval":2,"modbus_tcp_unit_id":1,"sensors":[{"sensor_id":164,"sensor_type":"ANALOG","name":"O2","unit":"%V","min_threshold":0,"max_threshold":15,"decimals":1}]}})");
-    QVERIFY(h.probe());
-    h.form.saveLoggerFromForm(true, -1, QStringLiteral(""), QStringLiteral("EdgeName"),
-                              QStringLiteral("127.0.0.1"), 5020, h.edge.port(),
-                              QStringLiteral("test-token"), 1, 2, 5);
-    const auto loggers = LoggerRepository(h.db.connection()).findAll();
-    QCOMPARE(loggers.size(), 1);
-    const auto id = loggers.first().id;
-    SensorCatalogRepository sensors(h.db.connection());
-    auto saved = sensors.findByLoggerAndEdgeId(id, 164, QStringLiteral("ANALOG"));
-    QVERIFY(saved.has_value());
-    QCOMPARE(saved->maxThreshold.value_or(-1), 15.0);
-
-    h.edge.setConfigResponse(R"({"revision":1,"config":{"station_code":"TST-01","station_name":"EdgeName","poll_interval":2,"modbus_tcp_unit_id":1,"sensors":[{"sensor_id":164,"sensor_type":"ANALOG","name":"O2 updated","unit":"%V","decimals":2}]}})");
-    QVERIFY(h.probe());
-    h.form.saveLoggerFromForm(false, int(id), QStringLiteral("TST-01"), QStringLiteral("EdgeName"),
-                              QStringLiteral("127.0.0.1"), 5020, h.edge.port(),
-                              QStringLiteral("test-token"), 1, 2, 5);
-    saved = sensors.findByLoggerAndEdgeId(id, 164, QStringLiteral("ANALOG"));
-    QVERIFY(saved.has_value());
-    QCOMPARE(saved->name, QStringLiteral("O2 updated"));
-    QCOMPARE(saved->decimals, 2);
-    QCOMPARE(saved->minThreshold.value_or(-1), 0.0);
-    QCOMPARE(saved->maxThreshold.value_or(-1), 15.0);
-
-    h.edge.setConfigResponse(R"({"revision":1,"config":{"station_code":"TST-01","station_name":"EdgeName","poll_interval":2,"modbus_tcp_unit_id":1,"sensors":[{"sensor_id":164,"sensor_type":"ANALOG","name":"O2","unit":"%V","max_threshold":null}]}})");
-    QVERIFY(h.probe());
-    h.form.saveLoggerFromForm(false, int(id), QStringLiteral("TST-01"), QStringLiteral("EdgeName"),
-                              QStringLiteral("127.0.0.1"), 5020, h.edge.port(),
-                              QStringLiteral("test-token"), 1, 2, 5);
-    saved = sensors.findByLoggerAndEdgeId(id, 164, QStringLiteral("ANALOG"));
-    QVERIFY(saved.has_value());
-    QCOMPARE(saved->minThreshold.value_or(-1), 0.0);
-    QVERIFY(!saved->maxThreshold.has_value());
+    QTest::addColumn<bool>("native");
+    QTest::newRow("native-advertises-write") << true;
+    QTest::newRow("osg-read-only-adapter") << false;
 }
 
-// ---- No probe → save must fail, DB empty ---------------------------------
-
-void TestLoggerFormSave::requiresProbeBeforeSave()
+void TestLoggerFormSave::addEditReloadUseOnlyReadRequests()
 {
-    Harness h("noprobe");
-    QVERIFY(h.edge.isListening());
+    QFETCH(bool, native);
+    RecordingModbusServer modbus;
+    ModbusService service;
+    Harness h;
+    QVERIFY(h.edge.port() != 0);
+    const int unitId = native ? 3 : 1;
+    const int sensorId = native ? 1 : 164;
+    QVERIFY(modbus.start(native, unitId));
+    h.dashboard.setModbusService(&service);
+    if (!native) {
+        // OSG's virtual station has no mapped thresholds or digital channels.
+        h.edge.respondWith(R"({"revision":5,
+            "config":{"station_code":"OSG-01","station_name":"OSG station",
+                      "poll_interval":10,"modbus_tcp_unit_id":1,
+                      "sensors":[{"sensor_id":164,"sensor_type":"ANALOG","name":"O2","unit":"%V"}]}})");
+    }
 
-    bool saveOk = true;
-    bool gotSignal = false;
-    QObject::connect(&h.form, &LoggerFormController::formSaveFinished,
-                     [&](bool ok, qint64, const QString &) {
-                         saveOk = ok;
-                         gotSignal = true;
-                     });
+    QSignalSpy probe(&h.form, &LoggerFormController::probeConfigResult);
+    h.probe();
+    QTRY_COMPARE(probe.size(), 1);
+    QVERIFY(probe.takeFirst().at(0).toBool());
+    QCOMPARE(h.form.probedModbusUnitId(), unitId);
 
-    // No probe → m_probedRevision == -1 → saveLoggerFromForm returns early.
-    h.form.saveLoggerFromForm(true, -1,
-                              QStringLiteral(""),
-                              QStringLiteral("My Logger"),
-                              QStringLiteral("127.0.0.1"),
-                              5020, h.edge.port(),
-                              QStringLiteral("tok"),
-                              1, 2, 5);
-
-    QVERIFY2(gotSignal, "formSaveFinished not emitted");
-    QVERIFY2(!saveOk, "save should fail without prior probe");
+    QSignalSpy polls(&service, &ModbusService::pollFinished);
+    QSignalSpy saved(&h.form, &LoggerFormController::formSaveFinished);
+    h.add(modbus.port, unitId); // Name and cadence deliberately differ from the edge.
+    QCOMPARE(saved.size(), 1);
+    const auto addResult = saved.takeFirst();
+    QVERIFY2(addResult.at(0).toBool(), qPrintable(addResult.at(2).toString()));
+    const qint64 id = addResult.at(1).toLongLong();
+    QVERIFY(id > 0);
+    QTRY_COMPARE(polls.size(), 1);
+    const auto snapshot = polls.first().first().value<PollSnapshot>();
+    QVERIFY2(snapshot.success, qPrintable(snapshot.errorMessage));
+    QCOMPARE(snapshot.analogs.size(), 1);
+    QCOMPARE(snapshot.analogs.first().edgeSensorId, sensorId);
+    QCOMPARE(snapshot.diBits.size(), native ? 1 : 0);
+    QCOMPARE(snapshot.doBits.size(), native ? 1 : 0);
+    QList<QModbusPdu::FunctionCode> cycle{QModbusPdu::ReadHoldingRegisters, QModbusPdu::ReadHoldingRegisters};
+    if (native) {
+        cycle.append(QModbusPdu::ReadDiscreteInputs);
+        cycle.append(QModbusPdu::ReadCoils);
+    }
+    QCOMPARE(modbus.requests, cycle);
+    QCOMPARE(h.edge.requests, QList<QByteArray>{kGetConfig});
 
     LoggerRepository repo(h.db.connection());
-    QVERIFY(repo.findAll().isEmpty());
+    SensorCatalogRepository catalog(h.db.connection());
+    const auto added = repo.findById(id);
+    QVERIFY(added);
+    QCOMPARE(added->name, QStringLiteral("Central alias"));
+    QCOMPARE(added->centralPollIntervalS, 60);
+    QCOMPARE(added->lastRevision, 5);
+    const auto first = catalog.findByLoggerAndEdgeId(id, sensorId, QStringLiteral("ANALOG"));
+    QVERIFY(first);
+    QCOMPARE(first->minThreshold, native ? std::optional<double>(6.0) : std::nullopt);
+    QCOMPARE(first->maxThreshold, native ? std::optional<double>(9.0) : std::nullopt);
+
+    h.form.saveLoggerFromForm(false, id, QStringLiteral("ignored"), QStringLiteral("Local rename"),
+                             kHost, modbus.port, h.edge.port(), kToken, unitId, 61, 3, true,
+                             QStringLiteral("Edited note"));
+    QCOMPARE(saved.size(), 1);
+    QVERIFY(saved.takeFirst().at(0).toBool());
+    const auto edited = repo.findById(id);
+    QVERIFY(edited);
+    QCOMPARE(edited->name, QStringLiteral("Local rename"));
+    QCOMPARE(edited->centralPollIntervalS, 61);
+    QCOMPARE(edited->stationCode, added->stationCode);
+    QCOMPARE(edited->lastRevision, added->lastRevision);
+
+    if (native) {
+        h.edge.respondWith(R"({"revision":6,
+            "config":{"thresholds_writable":true,"station_name":"Edge changed",
+                      "poll_interval":17,"modbus_tcp_unit_id":9},
+            "sensors":[{"sensor_id":1,"sensor_type":"ANALOG","name":"Updated","max_threshold":null}]})");
+    } else {
+        h.edge.respondWith(R"({"revision":6,
+            "config":{"station_name":"OSG changed","poll_interval":12,"modbus_tcp_unit_id":9,
+                      "sensors":[{"sensor_id":164,"sensor_type":"ANALOG","name":"Updated","unit":"%V"}]}})");
+    }
+
+    QSignalSpy reloaded(&h.form, &LoggerFormController::configReloadFinished);
+    h.form.reloadLoggerConfig(id);
+    QCOMPARE(h.form.reloadingLoggerId(), id);
+    h.form.reloadLoggerConfig(id);
+    QTRY_COMPARE(reloaded.size(), 1);
+    QCOMPARE(h.form.reloadingLoggerId(), 0);
+    const auto reloadResult = reloaded.takeFirst();
+    QCOMPARE(reloadResult.at(0).toLongLong(), id);
+    QVERIFY2(reloadResult.at(1).toBool(), qPrintable(reloadResult.at(2).toString()));
+    QTRY_COMPARE(polls.size(), 2);
+    QVERIFY(polls.last().first().value<PollSnapshot>().success);
+    QCOMPARE(modbus.requests, cycle + cycle);
+    const QList<QByteArray> expectedHttp{kGetConfig, kGetConfig};
+    QCOMPARE(h.edge.requests, expectedHttp);
+
+    const auto fresh = repo.findById(id);
+    QVERIFY(fresh);
+    QCOMPARE(fresh->lastRevision, 6);
+    QCOMPARE(fresh->name, edited->name);
+    QCOMPARE(fresh->centralPollIntervalS, edited->centralPollIntervalS);
+    QCOMPARE(fresh->modbusUnitId, edited->modbusUnitId);
+    QCOMPARE(fresh->note, edited->note);
+    const auto updated = catalog.findByLoggerAndEdgeId(id, sensorId, QStringLiteral("ANALOG"));
+    QVERIFY(updated);
+    QCOMPARE(updated->id, first->id);
+    QCOMPARE(updated->name, QStringLiteral("Updated"));
+    QCOMPARE(updated->minThreshold, first->minThreshold); // Omitted: preserve the existing mirror.
+    QVERIFY(!updated->maxThreshold.has_value()); // Native: explicit null, OSG: never supplied.
 }
 
-// ---- Happy path: probe ok + REST succeeds → DB committed -----------------
-
-void TestLoggerFormSave::successPath_dbCommitted()
+void TestLoggerFormSave::addRequiresSnapshotFromCurrentConnection()
 {
-    Harness h("success");
-    QVERIFY(h.edge.isListening());
-    h.edge.setPostBehavior(FakeEdgeServer::PostBehavior::Succeed);
-    QVERIFY2(h.probe(), "Probe failed — fake server may not have started");
-
-    bool saveOk  = false;
-    bool restFailed = false;
-    QString saveErr;
-    QObject::connect(&h.form, &LoggerFormController::formSaveFinished,
-                     [&](bool ok, qint64, const QString &msg) { saveOk = ok; saveErr = msg; });
-    QObject::connect(&h.form, &LoggerFormController::configApplyFailed,
-                     [&](qint64, const QString &) { restFailed = true; });
-
-    QVERIFY2(h.db.isOpen(), "Harness DB must be open before save");
-
-    // "New Name" ≠ "EdgeName" from probe → a POST patch is required.
-    h.form.saveLoggerFromForm(true, -1,
-                              QStringLiteral(""),
-                              QStringLiteral("New Name"),
-                              QStringLiteral("127.0.0.1"),
-                              5020, h.edge.port(),
-                              QStringLiteral("tok"),
-                              1, 2, 5);
-
-    // formSaveFinished is emitted synchronously when the DB row is committed
-    // (M-2 follow-up: the REST POST itself is now async, no QEventLoop).
-    QVERIFY2(saveOk, qPrintable(QStringLiteral("DB commit failed: %1").arg(saveErr)));
-    QVERIFY2(!restFailed, "configApplyFailed must NOT fire on REST success");
-
+    Harness h;
     LoggerRepository repo(h.db.connection());
-    const auto all = repo.findAll();
-    QCOMPARE(all.size(), 1);
-    QCOMPARE(all.first().name, QStringLiteral("New Name"));
+    QSignalSpy saved(&h.form, &LoggerFormController::formSaveFinished);
+    h.add();
+    QCOMPARE(saved.size(), 1);
+    QVERIFY(!saved.takeFirst().at(0).toBool());
+    QCOMPARE(repo.countTotal(), 0);
 
-    // The POST itself is async (fire-and-forget after the DB commit).
-    // Spin the event loop until the fake server sees the request.
-    QTRY_VERIFY_WITH_TIMEOUT(h.edge.postCount() == 1, 2000);
+    h.probe();
+    QTRY_VERIFY(h.form.hasProbedConfig());
+    h.add(5020, 1, QStringLiteral("changed-token"));
+    QCOMPARE(saved.size(), 1);
+    QVERIFY(!saved.takeFirst().at(0).toBool());
+    QCOMPARE(repo.countTotal(), 0);
+    QCOMPARE(h.edge.requests, QList<QByteArray>{kGetConfig});
 }
 
-// ---- Regression: REST POST fails → DB MUST still be committed -----------
-//
-// Previously the code did conn.rollback() on REST failure, so the logger
-// was silently lost from the DB. This test pins the corrected behaviour:
-// the local record is always committed; configApplyFailed warns the UI.
-
-void TestLoggerFormSave::restFail_dbStillCommitted()
+void TestLoggerFormSave::addValidationAndDuplicateStationCode()
 {
-    Harness h("restfail");
-    QVERIFY(h.edge.isListening());
-    h.edge.setPostBehavior(FakeEdgeServer::PostBehavior::CloseImmediately);
-    QVERIFY2(h.probe(), "Probe failed");
+    Harness h;
+    h.probe();
+    QTRY_VERIFY(h.form.hasProbedConfig());
+    QSignalSpy saved(&h.form, &LoggerFormController::formSaveFinished);
+    h.add(0); // Invalid Modbus port.
+    QCOMPARE(saved.size(), 1);
+    QVERIFY(saved.takeFirst().at(2).toString().contains(QStringLiteral("Modbus port")));
 
-    bool saveOk  = false;
-    bool restFailed = false;
-    QString restErr;
-    QObject::connect(&h.form, &LoggerFormController::formSaveFinished,
-                     [&](bool ok, qint64, const QString &) { saveOk = ok; });
-    QObject::connect(&h.form, &LoggerFormController::configApplyFailed,
-                     [&](qint64, const QString &msg) {
-                         restFailed = true;
-                         restErr = msg;
-                     });
+    h.add();
+    QCOMPARE(saved.size(), 1);
+    QVERIFY(saved.takeFirst().at(0).toBool());
+    QVERIFY(!h.form.hasProbedConfig());
+    h.probe();
+    QTRY_VERIFY(h.form.hasProbedConfig());
+    h.add(); // Same station code, without replacing the existing row.
+    QCOMPARE(saved.size(), 1);
+    const auto duplicate = saved.takeFirst();
+    QVERIFY(!duplicate.at(0).toBool());
+    QVERIFY(duplicate.at(2).toString().contains(h.form.probedStationCode()));
+    QCOMPARE(LoggerRepository(h.db.connection()).countTotal(), 1);
+}
 
-    h.form.saveLoggerFromForm(true, -1,
-                              QStringLiteral(""),
-                              QStringLiteral("New Name"),
-                              QStringLiteral("127.0.0.1"),
-                              5020, h.edge.port(),
-                              QStringLiteral("tok"),
-                              1, 2, 5);
+void TestLoggerFormSave::editOfflineKeepsCatalogAndRevision()
+{
+    Harness h;
+    h.probe();
+    QTRY_VERIFY(h.form.hasProbedConfig());
+    QSignalSpy saved(&h.form, &LoggerFormController::formSaveFinished);
+    h.add();
+    QCOMPARE(saved.size(), 1);
+    const qint64 id = saved.takeFirst().at(1).toLongLong();
+    QVERIFY(id > 0);
 
-    // formSaveFinished is emitted synchronously when the DB row is committed;
-    // the REST POST is async and configApplyFailed lands later.
-    QVERIFY2(saveOk,
-             "DB must be committed even when REST POST fails (regression test)");
+    h.form.setRestConfigService(nullptr);
+    h.form.saveLoggerFromForm(false, id, QStringLiteral("ignored"), QStringLiteral("Offline alias"),
+                             QStringLiteral("127.0.0.2"), 15020, 18080, QStringLiteral("new-token"),
+                             2, 8, 4, false, QStringLiteral("Offline note"));
+    QCOMPARE(saved.size(), 1);
+    QVERIFY(saved.takeFirst().at(0).toBool());
+    const auto stored = LoggerRepository(h.db.connection()).findById(id);
+    QVERIFY(stored);
+    QCOMPARE(stored->stationCode, QStringLiteral("ST-01"));
+    QCOMPARE(stored->name, QStringLiteral("Offline alias"));
+    QCOMPARE(stored->host, QStringLiteral("127.0.0.2"));
+    QCOMPARE(stored->modbusPort, 15020);
+    QCOMPARE(stored->modbusUnitId, 2);
+    QCOMPARE(stored->apiPort, 18080);
+    QCOMPARE(stored->apiToken, QStringLiteral("new-token"));
+    QCOMPARE(stored->centralPollIntervalS, 8);
+    QCOMPARE(stored->timeoutS, 4.0);
+    QCOMPARE(stored->enabled, false);
+    QCOMPARE(stored->note, QStringLiteral("Offline note"));
+    QCOMPARE(stored->lastRevision, 5);
+    const auto sensor = SensorCatalogRepository(h.db.connection()).listByLoggerId(id);
+    QCOMPARE(sensor.size(), 1);
+    QCOMPARE(sensor.first().maxThreshold, std::optional<double>(9.0));
+}
 
-    QTRY_VERIFY_WITH_TIMEOUT(restFailed, 2000);
-    QVERIFY2(!restErr.isEmpty(),
-             "configApplyFailed error message must not be empty");
-
+void TestLoggerFormSave::reloadFailureKeepsMirrorAndDisabledState()
+{
+    ModbusService service;
+    QSignalSpy polls(&service, &ModbusService::pollFinished);
+    Harness h;
+    h.dashboard.setModbusService(&service);
     LoggerRepository repo(h.db.connection());
-    QCOMPARE(repo.findAll().size(), 1);
+    LoggerInfo logger;
+    logger.stationCode = QStringLiteral("DISABLED");
+    logger.name = QStringLiteral("Central name");
+    logger.host = kHost;
+    logger.apiPort = h.edge.port();
+    logger.enabled = false;
+    logger.lastRevision = 4;
+    QVERIFY(repo.insert(logger));
+    SensorCatalogRepository catalog(h.db.connection());
+    LoggerSensor sensor;
+    sensor.loggerId = logger.id;
+    sensor.edgeSensorId = 1;
+    sensor.sensorType = QStringLiteral("ANALOG");
+    sensor.maxThreshold = 9.0;
+    QVERIFY(catalog.upsert(sensor));
+
+    QSignalSpy reloaded(&h.form, &LoggerFormController::configReloadFinished);
+    h.edge.respondWith(R"({"detail":"Adapter not ready"})", "503 Service Unavailable");
+    h.form.reloadLoggerConfig(logger.id);
+    QTRY_COMPARE(reloaded.size(), 1);
+    const auto failure = reloaded.takeFirst();
+    QVERIFY(!failure.at(1).toBool());
+    QVERIFY(failure.at(2).toString().contains(QStringLiteral("503")));
+
+    h.edge.respondWith(R"({"sensors":[]})"); // Missing revision: invalid snapshot.
+    h.form.reloadLoggerConfig(logger.id);
+    QTRY_COMPARE(reloaded.size(), 1);
+    QVERIFY(!reloaded.takeFirst().at(1).toBool());
+    QCOMPARE(repo.findById(logger.id)->lastRevision, 4);
+    QCOMPARE(catalog.listByLoggerId(logger.id).first().maxThreshold, std::optional<double>(9.0));
+
+    h.edge.respondWith(R"({"revision":5,"sensors":[
+        {"sensor_id":1,"sensor_type":"ANALOG","max_threshold":null}]})");
+    h.form.reloadLoggerConfig(logger.id);
+    QTRY_COMPARE(reloaded.size(), 1);
+    QVERIFY(reloaded.takeFirst().at(1).toBool());
+    QCOMPARE(repo.findById(logger.id)->lastRevision, 5);
+    QVERIFY(!repo.findById(logger.id)->enabled);
+    QVERIFY(!catalog.listByLoggerId(logger.id).first().maxThreshold.has_value());
+    QCOMPARE(polls.size(), 0);
 }
 
-// ---- No POST when name + poll_interval unchanged after probe -------------
-
-void TestLoggerFormSave::noRestCall_whenConfigUnchanged()
-{
-    Harness h("nopatch");
-    QVERIFY(h.edge.isListening());
-    h.edge.setPostBehavior(FakeEdgeServer::PostBehavior::Succeed);
-    QVERIFY2(h.probe(), "Probe failed");
-
-    bool saveOk = false;
-    QObject::connect(&h.form, &LoggerFormController::formSaveFinished,
-                     [&](bool ok, qint64, const QString &) { saveOk = ok; });
-
-    // "EdgeName" and poll=2 match what the fake server returned → empty patch
-    // → saveLoggerFromForm skips the REST call entirely.
-    h.form.saveLoggerFromForm(true, -1,
-                              QStringLiteral(""),
-                              QStringLiteral("EdgeName"),
-                              QStringLiteral("127.0.0.1"),
-                              5020, h.edge.port(),
-                              QStringLiteral("tok"),
-                              1, 2, 5);
-
-    QVERIFY2(saveOk, "Save should succeed with no REST call needed");
-    QCOMPARE(h.edge.postCount(), 0);
-}
-
-QTEST_MAIN(TestLoggerFormSave)
+QTEST_GUILESS_MAIN(TestLoggerFormSave)
 #include "test_logger_form_save.moc"

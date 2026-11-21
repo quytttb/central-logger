@@ -65,6 +65,17 @@ Write-Host " Directories ready." -ForegroundColor Green
 Write-Host "[3/6] Copying the main executable..." -ForegroundColor Yellow
 Copy-Item -Path "$BUILD_RELEASE_DIR\bin\central_logger.exe" -Destination "$TEMP_DEPLOY_DIR\"
 Write-Host " Copied central_logger.exe to the temp directory." -ForegroundColor Green
+$adapterCandidates = @(
+    "$BUILD_RELEASE_DIR\adapters\osg\osg_adapter.exe",
+    "$BUILD_RELEASE_DIR\adapters\osg\Release\osg_adapter.exe"
+)
+$adapter = $adapterCandidates | Where-Object { Test-Path $_ } | Select-Object -First 1
+if ($adapter) {
+    Copy-Item -Path $adapter -Destination "$TEMP_DEPLOY_DIR\osg_adapter.exe"
+    Write-Host " Copied osg_adapter.exe." -ForegroundColor Green
+} else {
+    Write-Warning "osg_adapter.exe was not built; managed OSG adapters will be unavailable in this installer."
+}
 
 Write-Host "[4/6] Running windeployqt to collect DLL dependencies..." -ForegroundColor Yellow
 & "$QT_DIR\bin\windeployqt.exe" --qmldir "$PROJECT_ROOT\src" --compiler-runtime "$TEMP_DEPLOY_DIR\central_logger.exe"

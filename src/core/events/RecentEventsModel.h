@@ -22,8 +22,6 @@ class RecentEventsModel : public QAbstractListModel
     Q_OBJECT
     QML_ANONYMOUS
 
-    Q_PROPERTY(int limit READ limit WRITE setLimit NOTIFY limitChanged)
-
 public:
     enum Roles {
         IdRole = Qt::UserRole + 1,
@@ -44,17 +42,10 @@ public:
     QVariant data(const QModelIndex &index, int role) const override;
     QHash<int, QByteArray> roleNames() const override;
 
-    int  limit() const { return m_limit; }
-    void setLimit(int limit);
-
-    Q_INVOKABLE void reload();
-
-signals:
-    void limitChanged();
+    void reload();
 
 private:
     Data::Database                       *m_db = nullptr;
-    int                                   m_limit = 20;
     QVector<Data::SystemEventListItem>    m_rows;
 };
 

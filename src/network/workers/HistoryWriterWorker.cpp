@@ -34,7 +34,6 @@ HistoryWriterWorker::~HistoryWriterWorker()
 
 void HistoryWriterWorker::releaseDatabase()
 {
-    m_bridge->setConnection(QSqlDatabase());
     if (m_db.isOpen()) {
         m_db.close();
     }
@@ -67,7 +66,6 @@ void HistoryWriterWorker::start()
         qWarning() << "HistoryWriterWorker: performance pragmas failed:" << pragmaErr;
     }
 
-    m_bridge->setConnection(m_db);
     processLoop();
     releaseDatabase();
 }
@@ -90,10 +88,9 @@ void HistoryWriterWorker::enqueue(PollSnapshot snapshot)
         m_condition.wakeOne();
     }
     if (dropped) {
-        // H-D: bounded queue — signal once per overflow event.
+        // H-D: bounded queue — log once per overflow event.
         qWarning() << "HistoryWriterWorker: queue full (" << kMaxQueueSize
                    << ") — dropping oldest snapshot for logger" << droppedLoggerId;
-        emit droppedSnapshot(droppedLoggerId);
     }
 }
 

@@ -78,7 +78,7 @@ public slots:
     void setLoggerId(qint64 id);
 
     /// Reload logger and sensor dropdowns from DB (call on view open).
-    Q_INVOKABLE void reloadFilters();
+    void reloadFilters();
 
     Q_INVOKABLE void search(const QString &fromDate, const QString &toDate,
                             qint64 sensorId = 0);
@@ -86,17 +86,15 @@ public slots:
     /// Flushes pending history writes, then re-runs @p search with the same filters.
     Q_INVOKABLE void refresh(const QString &fromDate, const QString &toDate,
                              qint64 sensorId = 0);
+    /// Periodic refresh of the applied criteria only, without forcing a writer flush.
+    Q_INVOKABLE void refreshCurrent();
 
     Q_INVOKABLE void exportCsv(const QUrl &fileUrl);
 
-    /// Builds and saves the sensor-average CSV (hourly/shift rows + final
-    /// overall average).
+    /// Builds and saves the sensor-average CSV (hourly rows + final average).
     /// Runs the SQL + CSV rendering on the thread pool with its own
     /// connection so a multi-day range never blocks the UI.
-    /// @p shiftMode true = 8h shifts, false = hourly rows + 24h average.
     Q_INVOKABLE void exportAverageCsv(const QUrl &fileUrl,
-                                      bool shiftMode,
-                                      int shiftStartHour,
                                       const QString &fromDate,
                                       const QString &toDate);
 
@@ -123,6 +121,8 @@ private:
     void abortWorker();
     void setLoading(bool v);
     void setError(const QString &msg);
+    void startSearch(qint64 loggerId, qint64 sensorId,
+                     const QDateTime &fromUtc, const QDateTime &toUtc);
     bool sameQueryAsLast(qint64 loggerId, qint64 sensorId,
                          const QDateTime &fromUtc, const QDateTime &toUtc) const;
     void rememberQuery(qint64 loggerId, qint64 sensorId,

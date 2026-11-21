@@ -8,24 +8,12 @@
 
 namespace CentralLogger::Core {
 
-/// Sensor-average CSV layout: header row per sensor (name + unit), one row per
-/// hour/shift, and a final overall-average row.
-///   row 1  : "Thời gian", "<sensor>\n<unit>", …
-///   rows   : one per hour (Hourly) or per 8h shift (Shift), avg per sensor
-///   last   : overall average row
-enum class AverageExportMode {
-    Hourly,
-    Shift,
-};
-
 struct AverageExportParams
 {
     qint64    loggerId = 0;
     QDateTime fromUtc;
     QDateTime toUtc;
     QTimeZone timeZone;
-    int       shiftStartHour = 0;   // 0..23, Shift mode only
-    AverageExportMode mode = AverageExportMode::Hourly;
 };
 
 struct AverageExportResult
@@ -36,7 +24,8 @@ struct AverageExportResult
     QString error;
 };
 
-/// Builds a sensor-average CSV for one logger. Pure SQL + string building so
+/// Builds an hourly sensor-average CSV with a final overall-average row.
+/// Pure SQL + string building so
 /// it can run on a worker thread with its own DB connection and be unit
 /// tested without a UI.
 class AverageExportService

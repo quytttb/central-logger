@@ -1,8 +1,8 @@
 #pragma once
 
 #include <QHash>
-#include <QJsonObject>
 #include <QObject>
+#include <QPointer>
 #include <QString>
 
 class QNetworkAccessManager;
@@ -14,11 +14,10 @@ class Database;
 
 namespace CentralLogger::Network {
 
-/// Talks to the per-logger REST API per docs/contracts/rest-config-contract-v1.md.
+/// Read-only client for the per-logger REST API.
 /// One instance lives on the main thread (single QNetworkAccessManager).
 /// Endpoints handled here:
 ///   GET  /api/v1/config           -> configFetched
-///   POST /api/v1/config           -> configApplied
 ///   GET  /api/v1/readings (debug) -> readingsDebugFetched (one-shot, never auto)
 class RestConfigService : public QObject
 {
@@ -36,49 +35,35 @@ public slots:
     /// coalesced — only the first wins until the reply lands.
     void fetchConfig(qint64 loggerId);
 
-    /// Issues `POST /config` with `{ "api_version", "request_id",
-    /// "expected_revision", "config" }` per edge OpenAPI ConfigRequest.
-    void applyConfig(qint64 loggerId, int expectedRevision, const QJsonObject &configPatch);
-
     /// Issues `GET /readings` for the debug dialog. NEVER call from polling
     /// loops, timers, or ModbusBridge — UI buttons only.
     void fetchReadingsDebug(qint64 loggerId);
 
     /// One-shot probe: GET /config using raw connection params (no DB lookup).
-    /// Used by LoggerFormDialog "Connect & Load Config" before saving.
-    /// Result is RAM-only until the user clicks Save.  Task 22 (FE-022).
+    /// Used by Add Logger "Connect & Load Config". Result is RAM-only
+    /// until the user saves the new logger locally.
     void probeConfig(const QString &host, int apiPort, const QString &token);
 
-    /// Task 20 (FE-021): GET /reports/latest — downloads the report file
-    /// (binary/text) from the edge and saves it to `savePath`.
-    /// Emits `reportDownloaded` when done. On-demand only (user button).
-    void downloadLatestReport(qint64 loggerId, const QString &savePath);
+    /// Aborts any in-flight probeConfig() request and clears its guard.
+    void cancelProbe();
 
 signals:
-    /// All three signals share the same shape:
+    /// All telemetry/config signals share the same shape:
     ///   ok            : transport + HTTP 2xx
     ///   httpStatus    : HTTP status code, or 0 for transport errors
     ///   rawJson       : pretty-printed response body (or the transport error text)
     ///   errorMessage  : human-friendly message when ok is false
     void configFetched(qint64 loggerId, bool ok, int httpStatus, QString rawJson, QString errorMessage);
-    void configApplied(qint64 loggerId, bool ok, int httpStatus, QString rawJson, QString errorMessage);
     void readingsDebugFetched(qint64 loggerId, bool ok, int httpStatus, QString rawJson, QString errorMessage);
 
     /// Task 22: probe result — not tied to a loggerId.
     void probeConfigFetched(bool ok, int httpStatus, QString rawJson, QString errorMessage);
 
-    /// Task 20: report download result.
-    ///   ok         : transport + HTTP 2xx + file written successfully
-    ///   savePath   : the path the file was saved to (empty on error)
-    ///   errorMessage : human-friendly message when ok is false
-    void reportDownloaded(qint64 loggerId, bool ok, QString savePath, QString errorMessage);
-
-public:
-    /// M-10: Fetch and Apply use separate guard bits so they can run
-    /// concurrently for the same logger without blocking each other.
-    enum class Endpoint { Config, Apply, Readings, Probe };
-
 private:
+    enum class Endpoint { Config, Readings };
+
+    static int bitFor(Endpoint endpoint);
+
     struct LoggerEndpoint
     {
         QString baseUrl;  // http://host:port/api/v1
@@ -96,9 +81,9 @@ private:
     Data::Database        *m_db  = nullptr;
 
     // (loggerId, endpoint) -> in-flight; prevents double-clicks stacking.
-    QHash<qint64, int> m_inflight;
-    bool        m_probeInFlight = false;
-    QSet<qint64> m_reportInFlight; // per-logger; allows concurrent downloads to different loggers
+    QHash<qint64, int>                       m_inflight;
+    bool                                     m_probeInFlight = false;
+    QPointer<QNetworkReply>                  m_probeReply;
 };
 
 } // namespace CentralLogger::Network

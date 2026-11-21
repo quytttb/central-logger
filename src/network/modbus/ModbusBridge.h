@@ -10,9 +10,7 @@
 #include <QSqlDatabase>
 
 namespace CentralLogger::Data {
-class Database;
 class SensorReading;
-class SensorCatalogRepository;
 } // namespace CentralLogger::Data
 
 namespace CentralLogger::Network {
@@ -28,12 +26,8 @@ class ModbusBridge : public QObject
 public:
     explicit ModbusBridge(QObject *parent = nullptr);
 
-    void setDatabase(Data::Database *db) { m_db = db; m_standaloneConn = {}; }
-    void setConnection(QSqlDatabase db);
-
-    /// Path for the dedicated connection used by applyLiveSnapshot when the
-    /// bridge runs on its own thread (audit H-A). Ignored when
-    /// setDatabase()/setConnection() supplied a connection.
+    /// Path for the dedicated connection opened in start() for applyLiveSnapshot()
+    /// when the bridge runs on its own thread (audit H-A).
     void setDatabasePath(const QString &path) { m_databasePath = path; }
 
 public slots:
@@ -69,7 +63,6 @@ signals:
                          const QVector<Data::LoggerSensor> &catalogRows);
 
 private:
-    QSqlDatabase sqlConnection() const;
     QVector<Data::SensorReading> buildReadings(const PollSnapshot &snapshot,
                                                 QSqlDatabase db);
 
@@ -85,9 +78,6 @@ private:
         QHash<int, qint64> doIds;       // edgeSensorId (bit) -> id
     };
     CatalogCacheEntry &catalogCacheFor(qint64 loggerId, QSqlDatabase &db);
-
-    Data::Database *m_db = nullptr;
-    QSqlDatabase      m_standaloneConn;
 
     /// Dedicated live-pipeline connection opened in start(); used when the
     /// bridge runs on its own thread (audit H-A).

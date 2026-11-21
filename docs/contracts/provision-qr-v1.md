@@ -37,7 +37,7 @@ Generate QR in **Settings → HTTP REST Server** (separate repo). Same JSON sche
 **Add / Edit Logger → Scan QR…** → select PNG/JPG → fields filled.
 
 - **Linux:** `sudo apt install libzbar0` + Python deps `pyzbar`, `Pillow`.
-- **Windows deploy:** run `scripts/stage_zbar_windows.ps1` (auto-downloads pinned DLLs) before `pyside6-deploy`; bundle ends up under `native/windows/` next to the `.exe` (see [`resources/native/windows/README.md`](../resources/native/windows/README.md)).
+- **Windows deploy:** run `scripts/stage_zbar_windows.ps1` (auto-downloads pinned DLLs) before `pyside6-deploy`; bundle ends up under `native/windows/` next to the `.exe` (see `resources/native/windows/README.md`).
 
 ## Security
 

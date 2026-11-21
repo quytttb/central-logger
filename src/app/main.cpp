@@ -1,7 +1,7 @@
 #include "core/AppState.h"
+#include "core/adapters/AdapterProcessManager.h"
 #include "core/DashboardController.h"
 #include "core/LoggerFormController.h"
-#include "core/LoggerDetailViewModel.h"
 #include "core/SettingsController.h"
 #include "core/history/HistoryViewModel.h"
 #include "core/threshold/ThresholdController.h"
@@ -13,11 +13,14 @@
 #include "network/workers/HistoryWriterWorker.h"
 #include "network/rest/RestConfigService.h"
 #include "utils/AppConstants.h"
+#include "utils/AdapterConstants.h"
+#include "utils/UiConstants.h"
 
 #include <QCoreApplication>
 #include <QDateTime>
 #include <QDir>
 #include <QFile>
+#include <QFileInfo>
 #include <QFontDatabase>
 #include <QGuiApplication>
 #include <QIcon>
@@ -34,7 +37,6 @@
 using CentralLogger::Core::AppState;
 using CentralLogger::Core::DashboardController;
 using CentralLogger::Core::LoggerFormController;
-using CentralLogger::Core::LoggerDetailViewModel;
 using CentralLogger::Core::SettingsController;
 using CentralLogger::Core::ThresholdController;
 using CentralLogger::Data::Database;
@@ -57,6 +59,16 @@ QMutex  g_logMutex;
 QString g_logPath;                // full path for rotation
 // kLogMaxBytes / kLogKeepBackups live in CentralLogger::Defaults.
 
+void rotateLogFiles(const QString &logPath)
+{
+    QFile::remove(logPath + QStringLiteral(".%1").arg(CentralLogger::Defaults::kLogKeepBackups));
+    for (int i = CentralLogger::Defaults::kLogKeepBackups - 1; i >= 1; --i) {
+        QFile::rename(logPath + QStringLiteral(".%1").arg(i),
+                      logPath + QStringLiteral(".%1").arg(i + 1));
+    }
+    QFile::rename(logPath, logPath + QStringLiteral(".1"));
+}
+
 void fileMessageHandler(QtMsgType type, const QMessageLogContext &, const QString &msg)
 {
     const char *level = "DEBUG";
@@ -78,12 +90,7 @@ void fileMessageHandler(QtMsgType type, const QMessageLogContext &, const QStrin
         // so a 24/7 session cannot grow the log file without bound.
         if (g_logFile->size() + line.size() > CentralLogger::Defaults::kLogMaxBytes) {
             g_logFile->close();
-            QFile::remove(g_logPath + QStringLiteral(".%1").arg(CentralLogger::Defaults::kLogKeepBackups));
-            for (int i = CentralLogger::Defaults::kLogKeepBackups - 1; i >= 1; --i) {
-                QFile::rename(g_logPath + QStringLiteral(".%1").arg(i),
-                              g_logPath + QStringLiteral(".%1").arg(i + 1));
-            }
-            QFile::rename(g_logPath, g_logPath + QStringLiteral(".1"));
+            rotateLogFiles(g_logPath);
             if (g_logFile->open(QIODevice::Append | QIODevice::Text)) {
                 g_logFile->write(line);
                 g_logFile->flush();
@@ -108,16 +115,9 @@ QString initFileLogging()
     g_logPath = logPath;
 
     // Startup rotation (startup fallback kept for oversized leftovers).
-    {
-        QFileInfo fi(logPath);
-        if (fi.exists() && fi.size() > CentralLogger::Defaults::kLogMaxBytes) {
-            QFile::remove(logPath + QStringLiteral(".%1").arg(CentralLogger::Defaults::kLogKeepBackups));
-            for (int i = CentralLogger::Defaults::kLogKeepBackups - 1; i >= 1; --i) {
-                QFile::rename(logPath + QStringLiteral(".%1").arg(i),
-                              logPath + QStringLiteral(".%1").arg(i + 1));
-            }
-            QFile::rename(logPath, logPath + QStringLiteral(".1"));
-        }
+    const QFileInfo fi(logPath);
+    if (fi.exists() && fi.size() > CentralLogger::Defaults::kLogMaxBytes) {
+        rotateLogFiles(logPath);
     }
 
     g_logFile = new QFile(logPath);
@@ -188,7 +188,7 @@ int main(int argc, char *argv[])
         qCritical() << "Failed to open database:" << dbError;
 
         SettingsController fatalSettings(nullptr);
-        fatalSettings.setTheme(QStringLiteral("dark"));
+        fatalSettings.setTheme(QLatin1String(CentralLogger::Ui::kThemeDark));
         SettingsController::setInstance(&fatalSettings);
 
         const QString errorKind = dbError.contains(QStringLiteral("Incompatible"),
@@ -218,6 +218,22 @@ int main(int argc, char *argv[])
     settings.load();
     settings.setLogFilePath(logFilePath);
     SettingsController::setInstance(&settings);
+
+    CentralLogger::Core::AdapterProcessManager adapterProcesses;
+    const QString adapterConfig = QDir(QStandardPaths::writableLocation(QStandardPaths::AppDataLocation))
+        .filePath(QLatin1String(CentralLogger::AdapterDefaults::kManagedAdapterConfigFile));
+#ifdef Q_OS_WIN
+    const QString adapterName = QStringLiteral("osg_adapter.exe");
+#else
+    const QString adapterName = QStringLiteral("osg_adapter");
+#endif
+    const QDir binaryDir(QCoreApplication::applicationDirPath());
+    QString adapterExecutable = binaryDir.filePath(adapterName);
+    if (!QFileInfo::exists(adapterExecutable))
+        adapterExecutable = binaryDir.filePath(QStringLiteral("../adapters/osg/") + adapterName);
+    QString adapterError;
+    if (!adapterProcesses.startFromFile(adapterConfig, QFileInfo(adapterExecutable).absoluteFilePath(), &adapterError))
+        qWarning() << "OSG adapters not started:" << adapterError;
 
     AppState appState(nullptr);
     appState.setDatabase(&database);
@@ -275,6 +291,7 @@ int main(int argc, char *argv[])
     dashboard.setSettingsController(&settings);
     dashboard.setModbusBridge(&bridge);
     dashboard.setModbusService(&modbusService);
+    dashboard.setGraphActive(false); // start chart work only when its tab opens
 
     QObject::connect(&bridge,    &ModbusBridge::snapshotApplied,
                      &dashboard, &DashboardController::onSnapshotApplied,
@@ -285,7 +302,7 @@ int main(int argc, char *argv[])
     dashboard.purgeOldData();           // Task 16: retention purge on startup
     DashboardController::setInstance(&dashboard);
 
-    // REST service for Logger Detail view-models (per-view instance).
+    // Read-only REST service for Add and Reload config.
     RestConfigService restConfig;
     restConfig.setDatabase(&database);
 
@@ -296,13 +313,17 @@ int main(int argc, char *argv[])
     loggerForm.setDashboardController(&dashboard);
     LoggerFormController::setInstance(&loggerForm);
 
-    // Thresholds screen (Set Threshold on the Loggers page).
+    // Display the local threshold mirror (Settings > Loggers).
     ThresholdController thresholdController(nullptr);
     thresholdController.setDatabase(&database);
-    thresholdController.setDashboardController(&dashboard);
     ThresholdController::setInstance(&thresholdController);
+    QObject::connect(&loggerForm, &LoggerFormController::configReloadFinished,
+                     &thresholdController, [&thresholdController](qint64 loggerId, bool ok) {
+        if (ok && loggerId == thresholdController.selectedLoggerId()) {
+            thresholdController.refresh();
+        }
+    });
 
-    LoggerDetailViewModel::registerServices(&database, &restConfig, &appState, &dashboard);
     CentralLogger::Core::HistoryViewModel::registerDatabase(&database);
     CentralLogger::Core::HistoryViewModel::registerHistoryWriter(&historyWorker);
 
@@ -320,6 +341,7 @@ int main(int argc, char *argv[])
                                   Qt::QueuedConnection);
         bridgeThread.quit();
         bridgeThread.wait();
+        adapterProcesses.stop();
     });
 
     QQmlApplicationEngine engine;

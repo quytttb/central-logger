@@ -3,14 +3,16 @@
 **Ứng dụng:** Central Logger (Qt 6, C++/QML)  
 **Lưu trữ:** SQLite trên máy người dùng  
 **Stack C++:** `QSqlDatabase` + driver `QSQLITE` (`Qt6::Sql`) — xem [`adr/0001-db.md`](adr/0001-db.md)  
-**Cập nhật:** 2026-05-24
+**Cập nhật:** 2026-11-21
 
-> Cập nhật thử nghiệm TT10 2026-11-14: schema hiện hành v7 lưu
-> `sensor_reading.status_code` thay cho ba cột cờ cũ. Modbus map v2 mang
-> status và quality độc lập; vì v7 chưa lưu quality riêng, các mẫu v2
-> invalid/stale không được ghi thành giá trị số giả. Trạng thái lỗi vẫn có
-> thể hiển thị live nhưng chưa có lịch sử riêng khi giá trị không hợp lệ.
-> Xem [`contracts/modbus-map-v2.md`](contracts/modbus-map-v2.md).
+> Cập nhật schema v8 (2026-11-18): thêm cột `app_settings.loggers_view_mode`
+> (`'cards'` mặc định | `'list'`) lưu chế độ hiển thị của `Loggers > Data`;
+> ngưỡng `logger_sensor.min_threshold/max_threshold` là bản mirror từ thiết bị
+> (`GET /api/v1/config`), chỉ xem trong Central. Central không ghi cấu hình
+> lên thiết bị; schema không đổi. Cờ cảnh báo lấy từ bit alarm của thiết bị (`qualityAlarm` / Modbus),
+> độc lập với mã trạng thái TT10 (`sensor_reading.status_code`).
+> Xem [`contracts/modbus-map-v2.md`](contracts/modbus-map-v2.md) và
+> [`contracts/rest-config-contract-v1.md`](contracts/rest-config-contract-v1.md).
 
 ---
 
@@ -39,7 +41,7 @@ Central Logger quản lý nhiều **Data Logger** (Modbus TCP + REST). Dữ li�
 | Auto-create sensor | Modbus poll gặp `edge_sensor_id` mới → INSERT `logger_sensor` với `sensor_type=UNKNOWN`; `GET /config` cập nhật metadata (`sensor_type`, tên, ngưỡng) |
 | Live values | **Chỉ Modbus** — FC03 + FC02 + FC01; `GET /readings` chỉ **debug** (JSON gốc, không cập nhật bảng) |
 | Trạng thái trạm trên đĩa | `logger_info.status`, `last_seen` — hiển thị/filter khi mở app, chart khi offline |
-| Cấu hình edge đầy đủ | Chỉ RAM (`rawConfig`) khi mở form — không bảng riêng trên đĩa |
+| Cấu hình edge | Chỉ tạm giữ thông tin Add trước Save; chỉ lưu catalog và revision, không có bảng riêng chứa toàn bộ cấu hình thiết bị |
 | Retention | Chỉ xóa `sensor_reading` theo `data_retention_days`; **giữ** `logger_sensor` |
 
 ---
@@ -111,6 +113,7 @@ erDiagram
         int data_retention_days "default 30"
         int history_flush_interval_s "default 5"
         int primary_logger_id "default 0 = unset"
+        string loggers_view_mode "default cards"
     }
 ```
 
@@ -145,7 +148,7 @@ Cấu hình trạm và kết nối từ Central tới edge.
 | `enabled` | BOOL | 1 | Bật/tắt poll |
 | `api_port` | INTEGER | 8080 | Cổng REST API |
 | `api_token` | TEXT | NULL | Bearer token |
-| `last_revision` | INTEGER | -1 | Revision cho `POST /config` |
+| `last_revision` | INTEGER | -1 | Revision của bản sao gần nhất đọc từ `GET /config` |
 | `status` | TEXT | `offline` | `online` \| `offline` \| `error` |
 | `last_seen` | DATETIME | NULL | Lần giao tiếp thành công gần nhất (UTC) |
 | `note` | TEXT | NULL | Ghi chú |
@@ -167,8 +170,8 @@ Catalog cảm biến trên đĩa: biểu đồ và ngưỡng vẫn dùng đượ
 | `sensor_type` | TEXT | `UNKNOWN` | `ANALOG` \| `DI` \| `DO` \| `UNKNOWN` |
 | `name` | TEXT | — | Tên hiển thị |
 | `unit` | TEXT | — | Đơn vị đo |
-| `min_threshold` | REAL | NULL | Ngưỡng alarm min |
-| `max_threshold` | REAL | NULL | Ngưỡng alarm max |
+| `min_threshold` | REAL | NULL | Bản sao ngưỡng min từ thiết bị (`GET /config`; không đặt cục bộ) |
+| `max_threshold` | REAL | NULL | Bản sao ngưỡng max từ thiết bị (`GET /config`; không đặt cục bộ) |
 | `active` | BOOL | 1 | Bật/tắt trên trạm |
 | `parent_edge_sensor_id` | INTEGER | NULL | Edge `id` analog cha (từ REST `parent_id`); NULL = top-level |
 | `di_type` | TEXT | NULL | Mã attach-DI / báo cáo (`00`–`03`, custom); chủ yếu cho `sensor_type=DI` |
@@ -183,7 +186,10 @@ ON modbus_snapshot(logger_id, edge_sensor_id, value, ...):
   UPDATE logger_info SET status='online', last_seen=now() WHERE id=logger_id
 ```
 
-**Cập nhật metadata từ REST:** sau `GET /config` — cập nhật `name`, `sensor_type`, `unit`, ngưỡng, `active`, `parent_edge_sensor_id`, `di_type` (không dùng `/readings` cho live).
+**Cập nhật metadata từ REST:** Add hoặc Reload dùng `GET /config` — cập nhật
+`name`, `sensor_type`, `unit`, ngưỡng, `active`, `parent_edge_sensor_id`, `di_type`.
+Nếu nguồn bỏ khóa ngưỡng, giữ giá trị đã biết; nếu gửi `null`, xóa giới hạn trong
+bản sao. Không dùng `/readings` cho live.
 
 ---
 
@@ -239,13 +245,14 @@ Cấu hình toàn cục — luôn một dòng `id = 1`.
 | `system_timezone` | `Asia/Ho_Chi_Minh` |
 | `data_retention_days` | `30` |
 | `history_flush_interval_s` | `5` |
-| `primary_logger_id` | `0` (chưa chọn — Dashboard summary fallback logger online đầu tiên) |
+| `primary_logger_id` | `0` (chưa chọn — biểu đồ Graph fallback logger online đầu tiên) |
+| `loggers_view_mode` | `cards` (`cards` \| `list` — chế độ hiển thị tab `Loggers > Data`) |
 
 ---
 
 ## 3. Dữ liệu trên RAM
 
-Không ghi SQLite. Quản lý qua ViewModel C++ (`LoggerListModel`, `LoggerDetailViewModel`, `SensorMonitoringTableModel`).
+Không ghi SQLite. Quản lý qua ViewModel C++ (`LoggerListModel`, `LoggerLiveCardsModel`, `LoggerLiveListModel`, `LoggerOverviewTableModel`, `LoggerFormController`, `ThresholdController`).
 
 ### 3.1 Runtime trạm (Modbus)
 
@@ -262,49 +269,36 @@ Không ghi SQLite. Quản lý qua ViewModel C++ (`LoggerListModel`, `LoggerDetai
 
 `ModbusBridge` đồng bộ `logger_info.status` và `last_seen` khi poll thành công hoặc thất bại; các cờ bit ưu tiên trên RAM cho UI mượt.
 
-### 3.2 Cấu hình trạm (REST — form tạm)
+### 3.2 Kết nối Central và bản sao cấu hình thiết bị
 
-Chỉ tải khi mở **Cấu hình trạm** / **Connect & Load Config**; giải phóng khi đóng form.
+- **Add:** `Connect & Load Config` đọc `GET /api/v1/config`. Giữ station code,
+  tên trạm, Modbus unit ID, catalog và revision trong RAM. Có thể dùng tên trạm
+  làm gợi ý tên hiển thị; `poll_interval` của edge không đặt `central_poll_interval_s`.
+  Save lưu bản ghi Central và catalog/revision đã đọc trong một transaction.
+- **Edit:** form tải từ `logger_info` và lưu cài đặt Central, không cần REST.
+- **Reload config:** dùng kết nối đã lưu để GET; commit catalog và `last_revision`
+  cùng nhau, không đổi cài đặt Central. Lỗi không làm mất bản sao hiện có.
 
-| Thuộc tính | Nguồn | Xử lý |
-|------------|--------|--------|
-| `rawConfig` | `GET /api/v1/config` | JSON đầy đủ edge — map form |
-| `currentRevision` | REST | So với `last_revision` trong DB |
-| `configForm` | Subset UI | `station_name`, `poll_interval`, `modbus_tcp_*` — persist khi POST apply |
-| `cloudForm` | Form Central | `apiToken`, `apiPort` → lưu `logger_info` |
-| Lỗi form | Validation | IP, port, token |
-
-Trường REST `config` thường dùng trên form (không lưu DB trừ khi apply):
-
-| REST key | Ghi chú |
-|----------|---------|
-| `station_code` | Đã trên `logger_info` khi Add/Save |
-| `station_name` | Chỉ form |
-| `poll_interval` | Device — có thể đồng bộ `central_poll_interval_s` |
-| `modbus_tcp_bind`, `modbus_tcp_enabled`, `modbus_tcp_unit_id` | Chỉ form |
-
-Hợp đồng API: [`docs/contracts/rest-config-contract-v1.md`](docs/contracts/rest-config-contract-v1.md)
+Hợp đồng API: [`docs/contracts/rest-config-contract-v1.md`](../docs/contracts/rest-config-contract-v1.md)
 
 ### 3.3 Sensor realtime (merge)
 
 Merge `logger_sensor` (DB catalog) + snapshot Modbus hiện tại (RAM): FC03 analog + FC02 DI + FC01 DO — cùng nhịp poll.
-Nếu poll thất bại, Central giữ metadata nhưng ẩn giá trị cache và đánh dấu
-`STALE`; poll thành công tiếp theo cập nhật lại bảng.
+Nếu poll thất bại hoặc cảm biến mất tín hiệu hợp lệ, Central giữ metadata nhưng ẩn giá trị cũ (`—`, `valid = false`); poll thành công tiếp theo cập nhật lại card/bảng.
 
 | Thuộc tính | Nguồn | UI |
 |------------|--------|-----|
-| `current_value` | Modbus FC03 / FC02 / FC01 | Giá trị trên bảng (DI/DO: bit → ON/OFF) |
-| `display_status` | Modbus flags + HR1 + attach-DI (FC02) + ngưỡng | Chip: `WAIT`, `OK`, `ALARM`, `ERR`, `STALE` hoặc nhãn DI (`Monitoring`, `Error`, …) |
-| `di_status_code` | Catalog child DI + FC02 | Mã gốc `00`–`03`/custom (debug / màu chip) |
-| `alarm_type` | Ngưỡng / bit alarm | `min`, `max`, `min+max` — badge phụ ▼/▲ |
-| `catalogError` | REST lỗi catalog | Cảnh báo trên header bảng |
-| `timestamp` | Modbus | HH:MM:SS |
+| `current_value` | Modbus FC03 / FC02 / FC01 | Giá trị trên card/bảng (DI/DO: bit → ON/OFF; mất kết nối → `—`) |
+| `display_status` | Mã trạng thái TT10 từ Modbus (`00`/`01`/`02`/`03`/`UNKNOWN`) | Chip trạng thái vận hành (độc lập với cảnh báo ngưỡng) |
+| `attach_di_codes` | Catalog child DI + FC02 | Nhãn DI phụ đính kèm (`Error`, `Maintenance`, custom…) |
+| `alarm_type` | Bit alarm của thiết bị (`qualityAlarm`) + ngưỡng mirror giải thích hướng | `min`, `max`, `min+max`, `device` — badge cảnh báo phụ (không tự kích hoạt nếu bit alarm của edge tắt) |
+| `timestamp` | Modbus (`measuredAt`) | HH:MM:SS |
 
-### 3.4 Dashboard summary + export CSV trung bình
+### 3.4 Loggers > Graph và export CSV trung bình
 
-- **Primary logger** (`app_settings.primary_logger_id`, `0` = chưa chọn → fallback logger online đầu tiên): chart realtime lấy từ ring buffer `PollHistoryStore` (RAM, chỉ analog), không query DB.
-- **Other loggers** (`LoggerOverviewTableModel`): một hàng / logger phụ, cột sensor analog động theo bộ `(edge_sensor_id, tên, đơn vị)` từ `SensorSnapshotCache`. ID giống nhau nhưng tên hoặc đơn vị khác được tách cột để tránh gán sai nhãn; primary logger không nằm trong bảng.
-- **History export** (`AverageExportService`): CSV theo giờ + dòng trung bình 24h, hoặc theo ca 8h (giờ bắt đầu ca chỉnh trên HistoryView). Chỉ tính `status_code = '00'`; chạy nền bằng connection SQLite riêng. Mẫu v2 invalid/stale bị bỏ qua khi ghi vì schema v7 chưa lưu chất lượng riêng.
+- **Graph:** mặc định theo primary logger (`app_settings.primary_logger_id`, `0` = tự chọn logger online đầu tiên). Chỉ vẽ analog. Cửa sổ mặc định 5 phút, zoom 1 phút–7 ngày. Dùng `PollHistoryStore` (tối đa 6 giờ và 4.000 mẫu/sensor); khi RAM không phủ toàn khoảng, ghép với truy vấn SQLite nền đã giảm mẫu theo min/max.
+- **Other loggers** (`LoggerOverviewTableModel`): một hàng mỗi logger ngoài logger đang xem; cột analog theo bộ `(edge_sensor_id, tên, đơn vị)` từ `SensorSnapshotCache`. ID giống nhau nhưng tên hoặc đơn vị khác được tách cột để tránh gán sai nhãn.
+- **History export** (`AverageExportService`): CSV theo giờ + dòng trung bình 24h, chỉ tính `status_code = '00'`; chạy nền bằng connection SQLite riêng. Schema không lưu bit alarm theo mẫu; graph không suy diễn alarm lịch sử từ ngưỡng hiện tại.
 
 ---
 
@@ -321,7 +315,7 @@ flowchart TB
 
   subgraph ram [RAM ViewModels]
     RT[Runtime flags]
-    RC[rawConfig / currentRevision]
+    RC[Add config snapshot]
     SM[Sensor merge row]
   end
 
@@ -333,6 +327,7 @@ flowchart TB
 
   REST[REST GET config] --> RC
   REST --> LS
+  REST --> LI
 
   LS --> SM
   SR --> Chart[Chart queries]
@@ -349,12 +344,12 @@ flowchart TB
 Lần chạy app đầu tiên (file DB chưa tồn tại):
 
 1. Tạo file SQLite tại đường dẫn cấu hình (`~/.central-logger/central-logger.db`)
-2. Thực thi [`src/data/db/schema/001_initial.sql`](src/data/db/schema/001_initial.sql) — `CREATE TABLE`, index, seed `app_settings` (`id=1`)
+2. Thực thi [`src/data/db/schema/001_initial.sql`](../src/data/db/schema/001_initial.sql) — `CREATE TABLE`, index, seed `app_settings` (`id=1`)
 3. Gán `PRAGMA user_version = <kSchemaVersion>` (version hiện tại — xem `Database.cpp`)
 
 ### DB đã tồn tại
 
-[`Database::open()`](src/data/db/Database.cpp) đọc `PRAGMA user_version`:
+[`Database::open()`](../src/data/db/Database.cpp) đọc `PRAGMA user_version`:
 
 | user_version | Hành xử |
 |--------------|---------|
@@ -364,13 +359,13 @@ Lần chạy app đầu tiên (file DB chưa tồn tại):
 
 **Chính sách pre-production:** repo chưa đưa lên production nên **không** có migration script tại chỗ. DB cũ hơn version app được `wal_checkpoint` + **move** thành `{path}.bak` (ghi đè bản cũ) rồi tạo lại **trống** từ `001_initial.sql` — dữ liệu cũ **không** được giữ lại (chỉ nằm trong `.bak` cho tham khảo). Điều này thay thế hoàn toàn cơ chế migration v2–v5 cũ (các file `00N_*.sql` đã xóa).
 
-**DB mới hơn app:** app hiện [`FatalStartup.qml`](src/app/qml/FatalStartup.qml) + [`AlertDialog`](src/components/layout/AlertDialog.qml), thoát khi user đóng dialog.
+**DB mới hơn app:** app hiện [`FatalStartup.qml`](../src/app/qml/FatalStartup.qml) + [`AlertDialog`](../src/components/layout/AlertDialog.qml), thoát khi user đóng dialog.
 
 ### Đổi schema
 
 1. Cập nhật `001_initial.sql` (schema đích cho DB mới).
 2. Tăng `kSchemaVersion` trong `Database.cpp`.
-3. Thêm test trong [`tests/data/test_database_migrations.cpp`](tests/data/test_database_migrations.cpp) (fresh / older-backed-up / current-kept / newer-fails).
+3. Thêm test trong [`tests/data/test_database_migrations.cpp`](../tests/data/test_database_migrations.cpp) (fresh / older-backed-up / current-kept / newer-fails).
 4. Cập nhật doc này.
 
 > Khi lên production (có dữ liệu cần giữ), hãy đưa lại cơ chế migration có kiểm soát (schema_version + script `00N_*.sql`) thay vì recreate.
@@ -389,8 +384,8 @@ Lần chạy app đầu tiên (file DB chưa tồn tại):
 | `SensorReadingRepository` | Batch insert readings, purge retention |
 | `EventRepository` | `system_event` |
 | `ModbusBridge` | Poll → catalog + readings + cập nhật `logger_info` |
-| `SensorMerger` / `SensorStateService` | Catalog DB + Modbus snapshot → table model (không REST live) |
-| `LoggerDetailViewModel` | `rawConfig`, `currentRevision` — chỉ RAM |
+| `SensorMerger` / `SensorSnapshotCache` | Catalog DB + Modbus snapshot → `LoggerLiveCardsModel` / `LoggerLiveListModel` (không REST live) |
+| `LoggerFormController` / `ThresholdController` | Probe Add và Reload bằng GET, lưu cài đặt Central, và hiển thị ngưỡng đã lưu mà không gọi REST |
 
 Cấu trúc mã đề xuất: `src/data/`, `src/core/`, `src/viewmodels/` (chi tiết khi scaffold CMake).
 

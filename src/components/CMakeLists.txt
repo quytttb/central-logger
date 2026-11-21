@@ -18,7 +18,6 @@ qt_add_qml_module(central_logger_components
         shell/NavItem.qml
         shell/AppNavigationRail.qml
         shell/AppTopBar.qml
-        shell/RailCircleButton.qml
         shell/ThemeToggle.qml
         shell/WindowControls.qml
         # layout
@@ -35,8 +34,13 @@ qt_add_qml_module(central_logger_components
         chart/ChartHoverTooltip.qml
         chart/SensorMiniChart.qml
         # logger
-        logger/LoggerFormDialog.qml
+        logger/LoggerLiveSection.qml
+        logger/LiveSensorListTable.qml
         logger/RecentEventListItem.qml
+        # settings
+        settings/SettingsGeneralPane.qml
+        settings/SensorThresholdsPane.qml
+        settings/LoggersSettingsPane.qml
     DEPENDENCIES
         LoggerKit.Theme
         LoggerKit.Components

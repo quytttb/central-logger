@@ -18,8 +18,6 @@ AppState::AppState(QObject *parent)
 {
 }
 
-AppState *AppState::instance() { return g_instance; }
-
 void AppState::setInstance(AppState *state) { g_instance = state; }
 
 AppState *AppState::create(QQmlEngine *, QJSEngine *)

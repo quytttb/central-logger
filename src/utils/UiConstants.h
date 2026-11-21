@@ -11,6 +11,11 @@
 
 namespace CentralLogger::Ui {
 
+// --- Responsive cutoffs (logical pixels of available view width) ----------
+inline constexpr int kWidePaneWidth       = 1200;
+inline constexpr int kWideToolbarWidth    = 1100;
+inline constexpr int kWideLiveHeaderWidth = 900;
+
 // --- QML role names (must stay in lockstep with roleNames() in *.cpp) -------
 inline constexpr char kRoleDisplay[]           = "display";
 inline constexpr char kRoleId[]                = "id";
@@ -21,13 +26,23 @@ inline constexpr char kRoleHost[]              = "host";
 inline constexpr char kRoleModbusPort[]        = "modbusPort";
 inline constexpr char kRoleModbusUnitId[]      = "modbusUnitId";
 inline constexpr char kRoleApiPort[]           = "apiPort";
-inline constexpr char kRoleApiToken[]          = "apiToken";
 inline constexpr char kRoleStatus[]            = "status";
 inline constexpr char kRoleSensorCount[]       = "sensorCount";
 inline constexpr char kRoleOnline[]            = "online";
 inline constexpr char kRolePolling[]           = "polling";
 inline constexpr char kRoleAnyAlarm[]          = "anyAlarm";
 inline constexpr char kRoleRtuConnected[]      = "rtuConnected";
+inline constexpr char kRoleEnabled[]           = "enabled";
+inline constexpr char kRoleLoggerEnabled[]     = "loggerEnabled";
+inline constexpr char kRoleNote[]              = "note";
+inline constexpr char kRoleLastUpdate[]        = "lastUpdate";
+inline constexpr char kRoleEdgeSensorId[]      = "edgeSensorId";
+inline constexpr char kRoleMinThreshold[]      = "minThreshold";
+inline constexpr char kRoleMaxThreshold[]      = "maxThreshold";
+inline constexpr char kRoleHasLimit[]          = "hasLimit";
+inline constexpr char kRoleLimitText[]         = "limitText";
+inline constexpr char kRoleValid[]             = "valid";
+inline constexpr char kRoleDigitalOn[]         = "digitalOn";
 inline constexpr char kRoleLoggerName[]        = "loggerName";
 inline constexpr char kRoleEventType[]         = "eventType";
 inline constexpr char kRoleMessage[]           = "message";
@@ -47,20 +62,14 @@ inline constexpr char kRoleStatus03Auto[]      = "status03Auto";
 inline constexpr char kRoleAttachDiCodes[]     = "attachDiTypeCodes";
 inline constexpr char kRoleAttachDiLabels[]    = "attachDiTypeLabels";
 inline constexpr char kRoleAlarmType[]         = "alarmType";
-inline constexpr char kRoleTimestamp[]         = "timestamp";
+inline constexpr char kRoleChart[]             = "chart";
 inline constexpr char kRoleIsLoggerColumn[]    = "isLoggerColumn";
-// Threshold table (ThresholdTableModel).
-inline constexpr char kRoleMinText[]           = "minText";
-inline constexpr char kRoleMaxText[]           = "maxText";
-inline constexpr char kRoleIsNameColumn[]      = "isNameColumn";
-inline constexpr char kRoleRowDirty[]          = "rowDirty";
 
 // --- Chart payload keys (QVariantMap keys consumed by QML/ChartGraphsView) -
 inline constexpr char kChartLabel[]            = "label";
 inline constexpr char kChartBucketMs[]         = "bucketMs";
 inline constexpr char kChartCount[]            = "count";
 inline constexpr char kChartPoints[]           = "points";
-inline constexpr char kChartCurrentValid[]     = "currentValid";
 inline constexpr char kChartX[]                = "x";
 inline constexpr char kChartY[]                = "y";
 inline constexpr char kChartTime[]             = "time";
@@ -88,14 +97,11 @@ inline constexpr char kChartOutOfRange[]       = "outOfRange";
 inline constexpr char kChartAxisYMin[]         = "axisYMin";
 inline constexpr char kChartAxisYMax[]         = "axisYMax";
 
-// --- Form / settings QML keys (QVariantMap from LoggerFormController) -------
-inline constexpr char kFormKeyCentralPollIntervalS[] = "centralPollIntervalS";
-inline constexpr char kFormKeyTimeoutS[]             = "timeoutS";
-inline constexpr char kFormKeyStatus[]               = "status";
-
-// --- Theme values ------------------------------------------------------------
-inline constexpr char kThemeLight[] = "light";
-inline constexpr char kThemeDark[]  = "dark";
+// --- Theme values & view modes -----------------------------------------------
+inline constexpr char kThemeLight[]       = "light";
+inline constexpr char kThemeDark[]        = "dark";
+inline constexpr char kLoggersViewCards[] = "cards";
+inline constexpr char kLoggersViewList[]  = "list";
 
 // --- Fallback logger/sensor display strings ----------------------------------
 inline constexpr char kDefaultTimezone[] = "Asia/Ho_Chi_Minh";

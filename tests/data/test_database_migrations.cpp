@@ -111,6 +111,7 @@ class TestDatabaseMigrations : public QObject
 private slots:
     void freshDbGetsCanonicalSchema();
     void olderDbBackedUpAndRecreated();
+    void v7DbBackedUpAndRecreatedAtV8();
     void olderDbDataNotCarriedOver();
     void alreadyCurrentVersionKept();
     void newerThanAppFails();
@@ -127,8 +128,35 @@ void TestDatabaseMigrations::freshDbGetsCanonicalSchema()
     QString err;
     QVERIFY2(db.open(uniqueConnectionName("fresh"), dbPath, &err), qPrintable(err));
 
+    QCOMPARE(Database::schemaVersion(), 8);
     QCOMPARE(userVersion(db.connection()), Database::schemaVersion());
     QVERIFY(tableHasRows(db.connection(), QStringLiteral("app_settings")));
+
+    QSqlQuery q(db.connection());
+    QVERIFY(q.exec(QStringLiteral("SELECT loggers_view_mode FROM app_settings WHERE id = 1")));
+    QVERIFY(q.next());
+    QCOMPARE(q.value(0).toString(), QStringLiteral("cards"));
+}
+
+// Schema v7 DB (before loggers_view_mode) is backed up to `.bak` and recreated at v8.
+void TestDatabaseMigrations::v7DbBackedUpAndRecreatedAtV8()
+{
+    QTemporaryDir tempDir;
+    QVERIFY(tempDir.isValid());
+    const QString dbPath = tempDir.filePath(QStringLiteral("schema_v7.db"));
+    QVERIFY(seedLegacyDb(dbPath, 7));
+
+    Database db;
+    QString err;
+    QVERIFY2(db.open(uniqueConnectionName("v7_to_v8"), dbPath, &err), qPrintable(err));
+
+    QCOMPARE(userVersion(db.connection()), 8);
+    QVERIFY(QFile::exists(dbPath + QStringLiteral(".bak")));
+
+    QSqlQuery q(db.connection());
+    QVERIFY(q.exec(QStringLiteral("SELECT loggers_view_mode FROM app_settings WHERE id = 1")));
+    QVERIFY(q.next());
+    QCOMPARE(q.value(0).toString(), QStringLiteral("cards"));
 }
 
 // A DB stamped with an older user_version is moved to `.bak` and a fresh

@@ -17,17 +17,15 @@ private slots:
     void parsesModbusTcpUnitIdFromConfig();
     void skipsSensorsMissingId();
     void invalidJsonReturnsValidFalse();
-    void parsesApplyResponse();
     void formatRestErrorMaps401TokenEmpty();
     void formatRestErrorMaps401TokenMismatch();
-    void formatRestErrorMaps409Revision();
-    void formatRestErrorMaps422Revision();
-    void formatRestErrorMaps422MissingFieldsNotRevision();
-    void formatRestErrorMaps422MissingApiVersion();
     void formatRestErrorMaps404();
-    void formatReportDownloadErrorMaps404NoReport();
+    void formatRestErrorPreservesServerStatus();
     void formatRestErrorTransportFallback();
     void prettyJsonRoundTrip();
+    void parsesNullVsOmittedWithoutUsingWriteCapability();
+    void parsesGetRevisionFallback();
+    void formatRestErrorIncludesServerDetail();
 };
 
 void TestRestConfigParser::parsesRevisionAndSensorsAtRoot()
@@ -46,7 +44,8 @@ void TestRestConfigParser::parsesRevisionAndSensorsAtRoot()
     const auto parsed = RestConfigParser::parseConfigResponse(42, body);
     QVERIFY(parsed.valid);
     QCOMPARE(parsed.revision, 7);
-    QCOMPARE(parsed.configObject.value("station_code").toString(), QStringLiteral("STN01"));
+    QCOMPARE(parsed.stationCode, QStringLiteral("STN01"));
+    QCOMPARE(parsed.stationName, QStringLiteral("Hanoi"));
     QCOMPARE(parsed.sensors.size(), 2);
     QCOMPARE(parsed.sensors[0].loggerId,     qint64(42));
     QCOMPARE(parsed.sensors[0].edgeSensorId, 1);
@@ -147,14 +146,6 @@ void TestRestConfigParser::invalidJsonReturnsValidFalse()
     QCOMPARE(parsed.sensors.size(), 0);
 }
 
-void TestRestConfigParser::parsesApplyResponse()
-{
-    const QByteArray body = R"({"ok": true, "applied_revision": 8})";
-    const auto result = RestConfigParser::parseApplyResponse(body);
-    QVERIFY(result.ok);
-    QCOMPARE(result.appliedRevision, 8);
-}
-
 void TestRestConfigParser::formatRestErrorMaps401TokenEmpty()
 {
     const QString msg = RestConfigParser::formatRestError(
@@ -169,55 +160,16 @@ void TestRestConfigParser::formatRestErrorMaps401TokenMismatch()
     QCOMPARE(msg, QStringLiteral("Token mismatch \u2014 Scan QR again on device"));
 }
 
-void TestRestConfigParser::formatRestErrorMaps409Revision()
-{
-    const QString msg = RestConfigParser::formatRestError(409, "{}");
-    QCOMPARE(msg, QStringLiteral("Configuration changed on device. Connect again, then save."));
-}
-
-void TestRestConfigParser::formatRestErrorMaps422Revision()
-{
-    const QString msg = RestConfigParser::formatRestError(
-        422, R"({"detail":"revision mismatch"})");
-    QCOMPARE(msg, QStringLiteral("Configuration changed on device. Connect again, then save."));
-}
-
-void TestRestConfigParser::formatRestErrorMaps422MissingFieldsNotRevision()
-{
-    const QByteArray body = R"({
-        "detail": [
-            {"type": "missing", "loc": ["body", "api_version"], "msg": "Field required",
-             "input": {"config": {"station_code": "TRAM-1"}, "expected_revision": 1}},
-            {"type": "missing", "loc": ["body", "request_id"], "msg": "Field required",
-             "input": {"config": {"station_code": "TRAM-1"}, "expected_revision": 1}}
-        ]
-    })";
-    const QString msg = RestConfigParser::formatRestError(422, body);
-    QVERIFY(!msg.contains(QStringLiteral("Configuration changed on device")));
-    QCOMPARE(msg, QStringLiteral(
-        "Device rejected config request (missing fields). Update Central Logger."));
-}
-
-void TestRestConfigParser::formatRestErrorMaps422MissingApiVersion()
-{
-    const QByteArray body = R"({
-        "detail": [{"type": "missing", "loc": ["body", "api_version"], "msg": "Field required"}]
-    })";
-    const QString msg = RestConfigParser::formatRestError(422, body);
-    QVERIFY(msg.contains(QStringLiteral("missing fields")));
-}
-
 void TestRestConfigParser::formatRestErrorMaps404()
 {
     const QString msg = RestConfigParser::formatRestError(404, "");
     QVERIFY(msg.contains(QStringLiteral("firmware")));
 }
 
-void TestRestConfigParser::formatReportDownloadErrorMaps404NoReport()
+void TestRestConfigParser::formatRestErrorPreservesServerStatus()
 {
-    const QString msg = RestConfigParser::formatReportDownloadError(
-        404, R"({"detail":"Not Found"})");
-    QVERIFY(msg.contains(QStringLiteral("No latest report")));
+    const QString msg = RestConfigParser::formatRestError(500, QByteArray{});
+    QVERIFY(msg.contains(QStringLiteral("500")));
 }
 
 void TestRestConfigParser::formatRestErrorTransportFallback()
@@ -234,6 +186,57 @@ void TestRestConfigParser::prettyJsonRoundTrip()
     QVERIFY(pretty.contains("\n"));
     // Non-JSON body falls back to UTF-8 text.
     QCOMPARE(RestConfigParser::prettyJson("plain text"), QStringLiteral("plain text"));
+}
+
+void TestRestConfigParser::parsesNullVsOmittedWithoutUsingWriteCapability()
+{
+    // New data-logger firmware: thresholds_writable=true, explicit null vs number, flat config keys
+    const QByteArray writableBody = R"({
+        "revision": 11,
+        "thresholds_writable": true,
+        "station_code": "DL-01",
+        "poll_interval": 5,
+        "sensors": [
+            {"sensor_id": 1, "sensor_type": "ANALOG", "name": "Temp", "min_threshold": -10.5, "max_threshold": null},
+            {"sensor_id": 2, "sensor_type": "ANALOG", "name": "OmittedLimits"}
+        ]
+    })";
+    const auto parsed = RestConfigParser::parseConfigResponse(1, writableBody);
+    QVERIFY(parsed.valid);
+    QCOMPARE(parsed.revision, 11);
+    QCOMPARE(parsed.stationCode, QStringLiteral("DL-01"));
+    QCOMPARE(parsed.sensors.size(), 2);
+
+    QVERIFY(parsed.sensors[0].minThresholdSpecified);
+    QVERIFY(parsed.sensors[0].maxThresholdSpecified);
+    QCOMPARE(parsed.sensors[0].minThreshold, std::optional<double>(-10.5));
+    QVERIFY(!parsed.sensors[0].maxThreshold.has_value());
+
+    QVERIFY(!parsed.sensors[1].minThresholdSpecified);
+    QVERIFY(!parsed.sensors[1].maxThresholdSpecified);
+    QVERIFY(!parsed.sensors[1].minThreshold.has_value());
+    QVERIFY(!parsed.sensors[1].maxThreshold.has_value());
+
+    // Legacy firmware / read-only adapter: no capability or thresholds.
+    const QByteArray legacyBody = R"({"revision": 2, "sensors": [{"sensor_id": 1, "sensor_type": "ANALOG"}]})";
+    const auto legacy = RestConfigParser::parseConfigResponse(1, legacyBody);
+    QVERIFY(legacy.valid);
+    QCOMPARE(legacy.sensors.size(), 1);
+    QVERIFY(!legacy.sensors[0].minThresholdSpecified);
+}
+
+void TestRestConfigParser::parsesGetRevisionFallback()
+{
+    const auto fallback = RestConfigParser::parseConfigResponse(1, R"({"applied_revision":9,"sensors":[]})");
+    QVERIFY(fallback.valid);
+    QCOMPARE(fallback.revision, 9);
+    QCOMPARE(RestConfigParser::parseConfigResponse(1, R"({"revision":1.2})").revision, -1);
+}
+
+void TestRestConfigParser::formatRestErrorIncludesServerDetail()
+{
+    QCOMPARE(RestConfigParser::formatRestError(503, R"({"detail":"Adapter not ready"})"),
+             QStringLiteral("HTTP 503: Adapter not ready"));
 }
 
 QTEST_MAIN(TestRestConfigParser)

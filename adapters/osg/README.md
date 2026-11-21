@@ -27,9 +27,9 @@ before completing the hardware checklist below.
 
 ## Safety and permissions
 
-- The only write request sent upstream is `POST /api/auth/login`. All data
-  requests are `GET /api/sensors` and `GET /api/data/realtime`; the adapter
-  never forwards Central's configuration requests to OSG.
+- `POST /api/auth/login` authenticates the adapter to OSG; it does not change
+  logger settings. The adapter reads `GET /api/sensors` and
+  `GET /api/data/realtime`. It never sends configuration or control writes to OSG.
 - The adapter does **not** enable Modbus RTU or TCP on OSG. OSG's RTU output
   and its possible sensor-side RTU connection are different things.
   RTU-output state on the logger is irrelevant to this adapter, which reads
@@ -61,7 +61,44 @@ ctest --test-dir build -R 'test_osg_adapter|test_sensor_merger|test_poll_history
 ```
 
 Use `-DCENTRAL_LOGGER_BUILD_ADAPTERS=OFF` to build Central without adapters.
-Nothing starts automatically.
+Adapters start with Central only when the optional local configuration below
+exists. Without that file, nothing starts automatically.
+
+### Start adapters with Central
+
+Place an `osg-adapters.json` in Central's application data directory
+(`~/.local/share/4M Technologies/Central Logger/` on this Linux machine).
+Do not put passwords or tokens in this JSON. Each instance uses separate
+listener ports and references private credential, token and quality files:
+
+```json
+{
+  "instances": [
+    {
+      "enabled": true,
+      "station_code": "OSG-EXAMPLE",
+      "station_name": "OSG example",
+      "osg_url": "http://LOGGER_HOST:8000",
+      "credentials_file": "/private/osg-credentials.json",
+      "adapter_token_file": "/private/osg-token",
+      "quality_policy": "/private/osg-policy.json",
+      "modbus_port": 15020,
+      "rest_port": 18080,
+      "analog_ids": "159,160,161,162,164,165"
+    }
+  ]
+}
+```
+
+The installed `osg_adapter` is found next to `central_logger`; a development
+build also looks in `../adapters/osg/`. An optional top-level `executable`
+can select an absolute path for testing. All paths in the example are
+placeholders. Central stops only the children it started when it closes.
+If an adapter fails to start or exits, the failure is logged and Central
+continues; there is currently no process restart supervisor. An existing
+adapter on the same ports is not killed or taken over. Stop it explicitly
+before enabling this configuration. The adapter itself retries ordinary OSG
+network outages.
 
 ## Prepare and run
 
@@ -102,14 +139,18 @@ In Central, Add Logger with host `127.0.0.1`, Modbus port `15020`, Unit ID `1`,
 REST port `18080`, and the value from the adapter-token file in API Token.
 Wait for the adapter to load the OSG catalog, then use **Connect & Load
 Config**. Before the first successful catalog load, config returns 503 rather
-than an empty, misleading catalog. Use the station name and poll interval
-returned by Connect if a read-only save is desired.
+than an empty, misleading catalog. Set any **Display name** and **Central poll
+(s)** you want and click **Save**. These settings apply only to Central;
+`poll_interval` in the adapter response is the adapter's own read cadence.
+After adapter or catalog changes, use **Settings > Loggers > Reload config**
+to refresh the local copy.
 
-`POST /api/v1/config` is rejected with a clear read-only response; a stale
-revision gets 409. Central currently saves its local row before an asynchronous
-POST and may show a non-blocking warning if the form changes `station_name` or
-`poll_interval`. No part of that POST is sent to OSG. Revisions change when the
-virtual config/catalog changes; reload the form before saving.
+Central never sends `POST /api/v1/config` to either the OSG adapter or native
+Data Logger. For other clients, the adapter still rejects config POST with
+422 `"Adapter is read-only; no changes were applied."` when the revision
+matches (409 for a stale revision). Thresholds are always read-only in Central.
+`OsgSource` omits `min_threshold`/`max_threshold` because those fields are not
+mapped; an empty limit in Central is not evidence of an unconfigured OSG threshold.
 `GET /api/v1/readings` is authenticated cached diagnostics only, and
 `GET /api/v1/reports/latest` returns 404.
 
@@ -179,8 +220,8 @@ differs. Keep per-device quality policies and units separate.
   fill these arrays by guessing. A numeric value also requires `enabled: true`,
   a catalog unit matching its explicitly approved `expected_units` entry, and a
   parseable source timestamp. If a unit changes, its reading stays invalid until
-  an operator verifies the change, updates the policy, and reloads/saves the
-  catalog in Central. Before accepting data after a restart, verify Central's
+   an operator verifies the change, updates the policy, and uses **Reload config**
+   in Central. Before accepting data after a restart, verify Central's
   stored units: v1 has no acknowledgment proving the catalog was saved.
   The following empty policy is safe but trusts no readings:
 
@@ -240,8 +281,9 @@ quality semantics and the averaging method are independently validated.
    timestamps, and behavior for expired tokens.
 3. Ask OSG for the exact meanings of **every** observed `status`, `syncing`
    and `alert` value, and for source timestamps/clock synchronization.
-4. With permission, run the adapter briefly. Verify Central Connect/Save,
-   sensor catalog, raw debug and Modbus registers, then stop it. Confirm no
+4. With permission, run the adapter briefly. Verify Central Connect, local
+   Save/Edit and Reload config, sensor catalog and Modbus registers, then stop
+   it. Confirm Central uses only REST GET and Modbus reads, and no
    configuration/control writes reach OSG.
 5. Verify stale, disconnect and recovery without disrupting the plant; compare
    against the source and assess history/averaging before any operational use.

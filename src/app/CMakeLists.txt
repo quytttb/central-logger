@@ -14,8 +14,6 @@ qt_add_qml_module(app
         qml/FatalStartup.qml
         qml/views/DashboardView.qml
         qml/views/LoggersView.qml
-        qml/views/LoggerDetailView.qml
-        qml/views/ThresholdsView.qml
         qml/views/HistoryView.qml
         qml/views/SettingsView.qml
     DEPENDENCIES
@@ -24,11 +22,6 @@ qt_add_qml_module(app
         central_logger_core
         central_logger_theme
         central_logger_components
-)
-
-# ThemeSetup.h now ships with the shared kit (LoggerKit.Theme).
-target_include_directories(app PRIVATE
-    ${CMAKE_SOURCE_DIR}/shared/logger-ui-kit/src/theme
 )
 
 set_target_properties(app PROPERTIES
@@ -44,8 +37,6 @@ target_link_libraries(app
     PRIVATE
         Qt6::Quick
         Qt6::QuickControls2
-        Qt6::Network
-        Qt6::SerialBus
         Qt6::Graphs
         Qt6::Svg
         central_logger_coreplugin
@@ -77,7 +68,7 @@ install(TARGETS app
 )
 
 # Deploy Qt runtime (libs, plugins, QML modules) into the private prefix.
-# qt_generate_deploy_app_script also writes a qt.conf beside the binary with
+# qt_generate_deploy_qml_app_script also writes a qt.conf beside the binary with
 # "Prefix = .." so Qt resolves its own plugins without QT_PLUGIN_PATH and
 # without touching /usr/plugins (which would collide with the system Qt).
 install(SCRIPT ${deploy_script})
@@ -86,15 +77,17 @@ install(SCRIPT ${deploy_script})
 # /usr/share and /usr/bin regardless of CPACK_PACKAGING_INSTALL_PREFIX.
 # This keeps the Qt bundle fully isolated in /opt/central-logger while still
 # giving the desktop environment and PATH the hooks they need.
-install(PROGRAMS ${CMAKE_SOURCE_DIR}/packaging/linux/central-logger
-    DESTINATION /usr/bin
-)
+if(UNIX AND NOT APPLE)
+    install(PROGRAMS ${CMAKE_SOURCE_DIR}/packaging/linux/central-logger
+        DESTINATION /usr/bin
+    )
 
-install(FILES ${CMAKE_SOURCE_DIR}/packaging/linux/central-logger.desktop
-    DESTINATION /usr/share/applications
-)
+    install(FILES ${CMAKE_SOURCE_DIR}/packaging/linux/central-logger.desktop
+        DESTINATION /usr/share/applications
+    )
 
-install(FILES ${CMAKE_SOURCE_DIR}/resources/icons/brand_4m_technologies_blue.svg
-    DESTINATION /usr/share/icons/hicolor/scalable/apps
-    RENAME central-logger.svg
-)
+    install(FILES ${CMAKE_SOURCE_DIR}/shared/logger-ui-kit/resources/icons/brand_4m_technologies_blue.svg
+        DESTINATION /usr/share/icons/hicolor/scalable/apps
+        RENAME central-logger.svg
+    )
+endif()

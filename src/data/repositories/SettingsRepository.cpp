@@ -1,9 +1,10 @@
 #include "SettingsRepository.h"
 
+#include "SqlHelper.h"
 #include "utils/AppConstants.h"
 #include "utils/DbConstants.h"
+#include "utils/UiConstants.h"
 
-#include <QSqlError>
 #include <QSqlQuery>
 
 namespace CentralLogger::Data {
@@ -11,13 +12,6 @@ namespace CentralLogger::Data {
 namespace {
 
 using CentralLogger::Defaults::kHistoryFlushIntervalS;
-
-void setErr(QString *out, const QSqlQuery &q)
-{
-    if (out) {
-        *out = q.lastError().text();
-    }
-}
 
 } // namespace
 
@@ -27,10 +21,10 @@ AppSettings SettingsRepository::get(QString *errorOut) const
     QSqlQuery q(m_db);
     if (!q.exec(QStringLiteral(
             "SELECT theme, system_timezone, data_retention_days, history_flush_interval_s, "
-            "       primary_logger_id "
+            "       primary_logger_id, loggers_view_mode "
             "FROM %1 WHERE id = 1")
             .arg(QString::fromLatin1(CentralLogger::Data::Db::kTableAppSettings)))) {
-        setErr(errorOut, q);
+        setSqlError(errorOut, q);
         return result;
     }
     if (!q.next()) {
@@ -41,6 +35,10 @@ AppSettings SettingsRepository::get(QString *errorOut) const
     result.dataRetentionDays = q.value(2).toInt();
     result.historyFlushIntervalS = q.value(3).toInt();
     result.primaryLoggerId   = q.value(4).toLongLong();
+    const QString viewMode   = q.value(5).toString().trimmed().toLower();
+    result.loggersViewMode   = (viewMode == QLatin1String(CentralLogger::Ui::kLoggersViewList))
+        ? QLatin1String(CentralLogger::Ui::kLoggersViewList)
+        : QLatin1String(CentralLogger::Ui::kLoggersViewCards);
     if (result.historyFlushIntervalS <= 0) {
         result.historyFlushIntervalS = kHistoryFlushIntervalS;
     }
@@ -49,6 +47,11 @@ AppSettings SettingsRepository::get(QString *errorOut) const
 
 bool SettingsRepository::update(const AppSettings &settings, QString *errorOut)
 {
+    const QString normalizedViewMode =
+        (settings.loggersViewMode.trimmed().toLower() == QLatin1String(CentralLogger::Ui::kLoggersViewList))
+            ? QLatin1String(CentralLogger::Ui::kLoggersViewList)
+            : QLatin1String(CentralLogger::Ui::kLoggersViewCards);
+
     QSqlQuery q(m_db);
     q.prepare(QStringLiteral(
         "UPDATE %1 SET "
@@ -56,16 +59,18 @@ bool SettingsRepository::update(const AppSettings &settings, QString *errorOut)
         "  system_timezone = :tz,"
         "  data_retention_days = :retention,"
         "  history_flush_interval_s = :history_flush,"
-        "  primary_logger_id = :primary_logger "
+        "  primary_logger_id = :primary_logger,"
+        "  loggers_view_mode = :loggers_view_mode "
         "WHERE id = 1")
         .arg(QString::fromLatin1(CentralLogger::Data::Db::kTableAppSettings)));
-    q.bindValue(QLatin1String(CentralLogger::Data::Db::kBindTheme),       settings.theme);
-    q.bindValue(QLatin1String(CentralLogger::Data::Db::kBindTz),          settings.systemTimezone);
-    q.bindValue(QLatin1String(CentralLogger::Data::Db::kBindRetention),   settings.dataRetentionDays);
-    q.bindValue(QLatin1String(CentralLogger::Data::Db::kBindHistoryFlush), settings.historyFlushIntervalS);
-    q.bindValue(QLatin1String(CentralLogger::Data::Db::kBindPrimaryLogger), settings.primaryLoggerId);
+    q.bindValue(QLatin1String(CentralLogger::Data::Db::kBindTheme),           settings.theme);
+    q.bindValue(QLatin1String(CentralLogger::Data::Db::kBindTz),              settings.systemTimezone);
+    q.bindValue(QLatin1String(CentralLogger::Data::Db::kBindRetention),       settings.dataRetentionDays);
+    q.bindValue(QLatin1String(CentralLogger::Data::Db::kBindHistoryFlush),    settings.historyFlushIntervalS);
+    q.bindValue(QLatin1String(CentralLogger::Data::Db::kBindPrimaryLogger),   settings.primaryLoggerId);
+    q.bindValue(QLatin1String(CentralLogger::Data::Db::kBindLoggersViewMode), normalizedViewMode);
     if (!q.exec()) {
-        setErr(errorOut, q);
+        setSqlError(errorOut, q);
         return false;
     }
     return q.numRowsAffected() > 0;

@@ -46,9 +46,6 @@ signals:
     /// (audit H-D) — or immediately if the worker is already stopped.
     void flushFinished();
 
-    /// Emitted when the queue overflowed and a snapshot was dropped.
-    void droppedSnapshot(qint64 loggerId);
-
 public slots:
     void start();
     void enqueue(CentralLogger::Network::PollSnapshot snapshot);

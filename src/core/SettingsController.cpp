@@ -81,6 +81,17 @@ void SettingsController::setPrimaryLoggerId(qint64 value)
     emit primaryLoggerIdChanged();
 }
 
+void SettingsController::setLoggersViewMode(const QString &value)
+{
+    const QString normalized =
+        (value.trimmed().toLower() == QLatin1String(Ui::kLoggersViewList))
+            ? QLatin1String(Ui::kLoggersViewList)
+            : QLatin1String(Ui::kLoggersViewCards);
+    if (m_settings.loggersViewMode == normalized) return;
+    m_settings.loggersViewMode = normalized;
+    emit loggersViewModeChanged();
+}
+
 void SettingsController::reloadLoggerChoices()
 {
     m_loggerChoices.clear();
@@ -115,16 +126,16 @@ void SettingsController::load()
     }
     const auto previous = m_settings;
     m_settings = loaded;
-    setError(QString{});
     reloadLoggerChoices();
     if (previous.theme              != loaded.theme)              emit themeChanged();
     if (previous.systemTimezone     != loaded.systemTimezone)     emit systemTimezoneChanged();
     if (previous.dataRetentionDays      != loaded.dataRetentionDays)      emit dataRetentionDaysChanged();
     if (previous.historyFlushIntervalS  != loaded.historyFlushIntervalS)  emit historyFlushIntervalSChanged();
     if (previous.primaryLoggerId        != loaded.primaryLoggerId)        emit primaryLoggerIdChanged();
+    if (previous.loggersViewMode        != loaded.loggersViewMode)        emit loggersViewModeChanged();
 }
 
-bool SettingsController::save()
+bool SettingsController::persistSettings(bool emitSavedSignal)
 {
     if (!m_db || !m_db->isOpen()) {
         setError(QLatin1String(CentralLogger::Format::kErrDatabaseNotOpen));
@@ -137,22 +148,72 @@ bool SettingsController::save()
         return false;
     }
     setError(QString{});
-    emit saved();
+    if (emitSavedSignal) {
+        emit saved();
+    }
     return true;
+}
+
+bool SettingsController::save()
+{
+    return persistSettings(true);
 }
 
 bool SettingsController::saveTheme(const QString &value)
 {
     setTheme(value);
-    return save();
+    return persistSettings(false);
+}
+
+bool SettingsController::saveLoggersViewMode(const QString &value)
+{
+    setLoggersViewMode(value);
+    return persistSettings(false);
+}
+
+void SettingsController::clearDeletedPrimaryLogger(qint64 deletedId)
+{
+    if (deletedId <= 0 || m_settings.primaryLoggerId != deletedId) {
+        return;
+    }
+    setPrimaryLoggerId(Defaults::kNoPrimaryLoggerId);
+    persistSettings(false);
+}
+
+QTimeZone SettingsController::effectiveTimeZone() const
+{
+    if (!m_settings.systemTimezone.isEmpty()) {
+        const QTimeZone tz(m_settings.systemTimezone.toUtf8());
+        if (tz.isValid()) {
+            return tz;
+        }
+    }
+    return QTimeZone::systemTimeZone();
+}
+
+QTimeZone SettingsController::resolveTimeZone()
+{
+    if (const auto *settings = instance()) {
+        return settings->effectiveTimeZone();
+    }
+    return QTimeZone::systemTimeZone();
 }
 
 QString SettingsController::formatTimestamp(const QDateTime &dt) const
 {
     if (!dt.isValid()) return QString();
-    QTimeZone tz(m_settings.systemTimezone.toUtf8());
-    const QDateTime local = tz.isValid() ? dt.toTimeZone(tz) : dt.toLocalTime();
-    return local.toString(QLatin1String(CentralLogger::Format::kDateYyyyMmDdHms));
+    return dt.toTimeZone(effectiveTimeZone())
+        .toString(QLatin1String(CentralLogger::Format::kDateYyyyMmDdHms));
+}
+
+QString SettingsController::formatGraphTime(double epochMs, double windowMs) const
+{
+    using namespace CentralLogger::Format;
+    constexpr qint64 hourMs = qint64(Defaults::kSecondsPerHour) * Defaults::kMsPerSecond;
+    const auto format = windowMs <= hourMs ? kTimeHhMmSs
+        : windowMs <= hourMs * Defaults::kHoursPerDay ? kTimeHhMm : kDateDdMmHm;
+    return QDateTime::fromMSecsSinceEpoch(qint64(epochMs), effectiveTimeZone())
+        .toString(QLatin1String(format));
 }
 
 void SettingsController::setError(const QString &message)

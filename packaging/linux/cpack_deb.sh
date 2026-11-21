@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Build Release + CPack .deb (Qt deploy via qt_generate_deploy_app_script).
+# Build Release + CPack .deb (Qt deploy via qt_generate_deploy_qml_app_script).
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 # Qt deploy RPATH patching fails on very long build paths; keep BUILD short on CI/local.
@@ -25,7 +25,7 @@ fi
 if [[ -f "${ROOT}/packaging/linux/ci_configure.sh" ]] \
     && [[ -n "${QT_ROOT_DIR:-}" ]] \
     && [[ -f "${QT_ROOT_DIR}/lib/cmake/Qt6/Qt6Config.cmake" ]]; then
-  CMAKE_BUILD_TYPE=Release bash "${ROOT}/packaging/linux/ci_configure.sh" "$BUILD"
+  CMAKE_BUILD_TYPE=Release bash "${ROOT}/packaging/linux/ci_configure.sh" "$BUILD" "${cmake_args[@]}"
 else
   if [[ -n "${QT_ROOT_DIR:-}" ]]; then
     cmake_args+=(-DCMAKE_PREFIX_PATH="${QT_ROOT_DIR}" -DQt6_DIR="${QT_ROOT_DIR}/lib/cmake/Qt6")

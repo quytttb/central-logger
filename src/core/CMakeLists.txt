@@ -1,5 +1,4 @@
 # Core layer — C++ singletons/controllers exposed to QML as CentralLogger.Core
-# AppState + SettingsController only; no Modbus/REST yet (Task 4/5).
 #
 # qt_add_qml_module creates the backing target itself (STATIC) so we must
 # NOT pre-declare it with qt_add_library.
@@ -21,27 +20,33 @@ qt_add_qml_module(central_logger_core
         DashboardController.cpp
         LoggerFormController.h
         LoggerFormController.cpp
-        LoggerDetailViewModel.h
-        LoggerDetailViewModel.cpp
         LoggerSearchProxyModel.h
         LoggerSearchProxyModel.cpp
+        adapters/AdapterProcessManager.h
+        adapters/AdapterProcessManager.cpp
         sensors/SensorLiveRow.h
         sensors/SensorMerger.h
         sensors/SensorMerger.cpp
         sensors/SensorSnapshotCache.h
         sensors/SensorSnapshotCache.cpp
-        sensors/SensorMonitoringTableModel.h
-        sensors/SensorMonitoringTableModel.cpp
+        sensors/LoggerLiveCardsModel.h
+        sensors/LoggerLiveCardsModel.cpp
+        sensors/LoggerLiveListModel.h
+        sensors/LoggerLiveListModel.cpp
         sensors/LoggerOverviewTableModel.h
         sensors/LoggerOverviewTableModel.cpp
         events/RecentEventsModel.h
         events/RecentEventsModel.cpp
-        DesktopService.h
-        DesktopService.cpp
         charts/ChartQueryService.h
         charts/ChartQueryService.cpp
         charts/ChartPresentation.h
         charts/ChartPresentation.cpp
+        charts/Downsampler.h
+        charts/Downsampler.cpp
+        charts/GraphChartsModel.h
+        charts/GraphChartsModel.cpp
+        charts/GraphHistoryQueryService.h
+        charts/GraphHistoryQueryService.cpp
         charts/PollHistoryStore.h
         charts/PollHistoryStore.cpp
         history/HistoryTableModel.h

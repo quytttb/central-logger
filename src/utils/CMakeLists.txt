@@ -5,11 +5,11 @@ qt_add_library(utils STATIC
     AppConstants.h
     AdapterConstants.h
     Version.h
-    Version.h.in
     DbConstants.h
     UiConstants.h
     FormatConstants.h
     SensorConstants.h
+    CsvUtils.h
     time/DateTimeUtils.h
     time/DateTimeUtils.cpp
     network/HostValidator.h
@@ -17,7 +17,6 @@ qt_add_library(utils STATIC
     os/WindowsFramelessHelper.h
     os/WindowsFramelessHelper.cpp
     events/EventLevels.h
-    charts/ChartDisplayLimits.h
     sensors/AttachDiTypeHelper.h
     sensors/AttachDiTypeHelper.cpp
 )
@@ -25,12 +24,12 @@ qt_add_library(utils STATIC
 target_include_directories(utils
     PUBLIC
         ${CMAKE_CURRENT_SOURCE_DIR}/..
-        ${CMAKE_BINARY_DIR}/generated       # for Version_generated.h (configure_file output)
 )
 
 target_link_libraries(utils
     PUBLIC
         Qt6::Core
+    PRIVATE
         Qt6::Network
 )
 

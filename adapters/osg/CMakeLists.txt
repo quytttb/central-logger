@@ -4,6 +4,7 @@ target_link_libraries(osg_source PUBLIC adapter_v1 Qt6::Network)
 
 qt_add_executable(osg_adapter main.cpp)
 target_link_libraries(osg_adapter PRIVATE osg_source adapter_v1)
+install(TARGETS osg_adapter RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
 
 add_central_logger_test(
     NAME test_osg_adapter

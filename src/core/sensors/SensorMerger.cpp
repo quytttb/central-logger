@@ -15,72 +15,43 @@ using CentralLogger::Utils::AttachDiTypeHelper;
 
 namespace {
 
-using CentralLogger::Defaults::kDecimalsMax;
-using CentralLogger::Defaults::kDecimalsMin;
+using CentralLogger::Sensor::fallbackSensorName;
+using CentralLogger::Sensor::formatAnalogValue;
 using CentralLogger::Sensor::kTypeAnalog;
 using CentralLogger::Sensor::kTypeDi;
 using CentralLogger::Sensor::kTypeDo;
-using CentralLogger::Sensor::kTypeUnknown;
 
-QString formatAnalog(float value, int decimals) {
-  // Per-sensor precision (synced from edge `decimals`, default 4). Keeps the
-  // Detail live table and the persisted History value in agreement for the
-  // same reading and sensor.
-  return QString::number(static_cast<double>(value), 'f',
-                         std::clamp(decimals, kDecimalsMin, kDecimalsMax));
+void sortLiveRows(QVector<SensorLiveRow> &rows) {
+  auto typeRank = [](const QString &t) -> int {
+    if (t == kTypeAnalog) return 0;
+    if (t == kTypeDi)     return 1;
+    if (t == kTypeDo)     return 2;
+    return 3;
+  };
+  std::stable_sort(rows.begin(), rows.end(),
+                   [&typeRank](const SensorLiveRow &a, const SensorLiveRow &b) {
+                     const int ra = typeRank(a.sensorType);
+                     const int rb = typeRank(b.sensorType);
+                     return ra != rb ? ra < rb : a.edgeSensorId < b.edgeSensorId;
+                   });
 }
 
-QString fallbackName(const QString &sensorType, int edgeSensorId) {
-  if (!sensorType.isEmpty() && sensorType != kTypeUnknown) {
-    return QString(QLatin1String(CentralLogger::Sensor::kFallbackTypeFmt))
-        .arg(sensorType).arg(edgeSensorId);
-  }
-  return QString(QLatin1String(CentralLogger::Sensor::kFallbackNameFmt)).arg(edgeSensorId);
-}
-
-struct ThresholdBreach {
-  bool min = false;
-  bool max = false;
-
-  [[nodiscard]] bool any() const { return min || max; }
-};
-
-ThresholdBreach
-checkThresholdBreach(double value, const std::optional<double> &minThreshold,
-                     const std::optional<double> &maxThreshold) {
-  ThresholdBreach breach;
-  if (minThreshold.has_value() && value <= *minThreshold) {
-    breach.min = true;
-  }
-  if (maxThreshold.has_value() && value >= *maxThreshold) {
-    breach.max = true;
-  }
-  return breach;
-}
-
-bool isOutOfRange(double value, const std::optional<double> &minThreshold,
-                  const std::optional<double> &maxThreshold) {
-  return checkThresholdBreach(value, minThreshold, maxThreshold).any();
-}
-
-QString computeAlarmType(double value, bool alarmBit,
+/// Ngưỡng mirror chỉ dùng để giải thích hướng vi phạm khi bit alarm từ edge đã bật.
+QString explainEdgeAlarm(double value,
                          const std::optional<double> &minThreshold,
                          const std::optional<double> &maxThreshold) {
-  const ThresholdBreach breach =
-      checkThresholdBreach(value, minThreshold, maxThreshold);
-  if (breach.min && breach.max) {
+  const bool minBreached = minThreshold.has_value() && value <= *minThreshold;
+  const bool maxBreached = maxThreshold.has_value() && value >= *maxThreshold;
+  if (minBreached && maxBreached) {
     return QLatin1String(CentralLogger::Sensor::kAlarmMinMax);
   }
-  if (breach.min) {
+  if (minBreached) {
     return QLatin1String(CentralLogger::Sensor::kAlarmMin);
   }
-  if (breach.max) {
+  if (maxBreached) {
     return QLatin1String(CentralLogger::Sensor::kAlarmMax);
   }
-  if (alarmBit) {
-    return QLatin1String(CentralLogger::Sensor::kAlarmDevice);
-  }
-  return {};
+  return QLatin1String(CentralLogger::Sensor::kAlarmDevice);
 }
 
 bool diLinksToAnalog(const Data::LoggerSensor &child, int parentEdgeSensorId) {
@@ -164,61 +135,33 @@ QStringList resolveAttachDiCodes(const QVector<Data::LoggerSensor> &catalog,
   return codes;
 }
 
-QString applyAnalogStatus(SensorLiveRow &row, bool active, const QString &statusCode,
-                          bool hasValidValue,
-                          double value,
-                          const std::optional<double> &minThreshold,
-                          const std::optional<double> &maxThreshold,
-                          const QStringList &attachDiCodes,
-                          const QStringList &attachDiLabels) {
+void applyAnalogStatus(SensorLiveRow &row, bool active, const QString &statusCode,
+                       bool hasValidValue, bool edgeAlarmBit, double value,
+                       const std::optional<double> &minThreshold,
+                       const std::optional<double> &maxThreshold,
+                       const QStringList &attachDiCodes,
+                       const QStringList &attachDiLabels) {
   row.attachDiTypeCodes = attachDiCodes;
   row.attachDiTypeLabels = attachDiLabels;
   row.alarmType.clear();
 
-  // Không có dữ liệu từ thiết bị → không hiển thị chip (chuỗi rỗng)
   if (!active) {
     row.displayStatus = QString();
-    return row.displayStatus;
+    return;
   }
-  // RTU reachability is a station-level signal, not the status of an
-  // individual analog sensor (an HTTP adapter may not have an RTU at all).
-  // Unknown quality/connectivity is not evidence of device error.
+
+  // TT10 status độc lập hoàn toàn với cờ chất lượng / cảnh báo ngưỡng.
   if (statusCode.isEmpty() || statusCode == QLatin1String("STALE")) {
     row.displayStatus = QLatin1String(CentralLogger::Sensor::kStatusUnknown);
-    return row.displayStatus;
-  }
-
-  // Mã TT10 02 là lỗi thiết bị, không thay bằng cảnh báo ngưỡng.
-  const bool deviceError = (statusCode == QLatin1String(CentralLogger::Sensor::kStatusErr));
-  if (deviceError) {
-    row.alarmType = QLatin1String(CentralLogger::Sensor::kAlarmDevice);
+  } else {
     row.displayStatus = statusCode;
-    return row.displayStatus;
-  }
-  // 01 = hiệu chuẩn, 03 = maintenance nội bộ → hiển thị mã, không coi là alarm
-  if (statusCode == QLatin1String(CentralLogger::Sensor::kStatusCalib) ||
-      statusCode == QLatin1String(CentralLogger::Sensor::kStatusMaint)) {
-    row.displayStatus = statusCode;
-    return row.displayStatus;
-  }
-  // 00 = đang đo → hiển thị "00"
-  row.displayStatus = statusCode;
-  if (!hasValidValue)
-    return row.displayStatus;
-
-  // Kiểm tra ngưỡng cảnh báo — alarmType ghi nhận loại vi phạm, displayStatus giữ mã TT10
-  const ThresholdBreach breach = checkThresholdBreach(value, minThreshold, maxThreshold);
-  if (breach.any()) {
-    if (breach.min && breach.max) {
-      row.alarmType = QLatin1String(CentralLogger::Sensor::kAlarmMinMax);
-    } else if (breach.min) {
-      row.alarmType = QLatin1String(CentralLogger::Sensor::kAlarmMin);
-    } else {
-      row.alarmType = QLatin1String(CentralLogger::Sensor::kAlarmMax);
-    }
   }
 
-  return row.displayStatus;
+  // Tín hiệu cảnh báo vượt ngưỡng chỉ lấy từ bit alarm của thiết bị (edge).
+  // Ngưỡng mirror tại Central chỉ giải thích hướng (min/max) chứ không tự phát sinh alarm.
+  if (hasValidValue && edgeAlarmBit) {
+    row.alarmType = explainEdgeAlarm(value, minThreshold, maxThreshold);
+  }
 }
 
 } // namespace
@@ -242,11 +185,6 @@ SensorMerger::buildRows(qint64 loggerId, const Network::PollSnapshot &snapshot,
     }
   }
 
-  const QString timestamp =
-      snapshot.measuredAt.isValid()
-          ? snapshot.measuredAt.toUTC().toString(QLatin1String(CentralLogger::Format::kTimeHhMmSs))
-          : QString();
-
   QVector<SensorLiveRow> rows;
   rows.reserve(snapshot.analogs.size() + snapshot.diBits.size() +
                snapshot.doBits.size());
@@ -259,21 +197,19 @@ SensorMerger::buildRows(qint64 loggerId, const Network::PollSnapshot &snapshot,
     const Data::LoggerSensor *cat =
         (it != analogByEdgeId.constEnd()) ? *it : nullptr;
 
+    const bool hasValidValue = sample.isValid() && !sample.isStale();
     SensorLiveRow row;
     row.edgeSensorId = sample.edgeSensorId;
     row.sensorType = cat ? cat->sensorType : QLatin1String(CentralLogger::Sensor::kTypeUnknown);
     row.unit = cat ? cat->unit : QString();
     row.name = (cat && !cat->name.isEmpty())
                    ? cat->name
-                   : fallbackName(row.sensorType, row.edgeSensorId);
-    // Status and value quality are independent in v2. Never show the
-    // transport placeholder as a current measurement.
-    row.value = (!sample.isValid() || sample.isStale())
+                   : fallbackSensorName(row.edgeSensorId, row.sensorType);
+    row.valid = hasValidValue;
+    row.value = !hasValidValue
                     ? QString::fromUtf8(CentralLogger::Sensor::kValuePlaceholder)
-                    : formatAnalog(sample.value, cat ? cat->decimals
-                                                     : CentralLogger::Defaults::kDecimalsDefault);
-    row.timestamp = timestamp;
-    row.statusCode = sample.statusCode;
+                    : formatAnalogValue(sample.value, cat ? cat->decimals
+                                                          : CentralLogger::Defaults::kDecimalsDefault);
     row.status03Auto =
         snapshot.header.mapVersion == CentralLogger::Version::kModbusMapVersion2
         && snapshot.header.status03Label == CentralLogger::Version::kModbusStatus03Auto;
@@ -282,7 +218,7 @@ SensorMerger::buildRows(qint64 loggerId, const Network::PollSnapshot &snapshot,
     const QStringList attachCodes =
         resolveAttachDiCodes(catalog, sample.edgeSensorId, snapshot.diBits);
     applyAnalogStatus(
-        row, active, sample.statusCode, sample.isValid() && !sample.isStale(),
+        row, active, sample.statusCode, hasValidValue, sample.qualityAlarm,
         static_cast<double>(sample.value),
         cat ? cat->minThreshold : std::nullopt,
         cat ? cat->maxThreshold : std::nullopt, attachCodes,
@@ -307,12 +243,11 @@ SensorMerger::buildRows(qint64 loggerId, const Network::PollSnapshot &snapshot,
     row.sensorType = sensor.sensorType;
     row.unit = sensor.unit;
     row.name = sensor.name.isEmpty()
-                   ? fallbackName(sensor.sensorType, sensor.edgeSensorId)
+                   ? fallbackSensorName(sensor.edgeSensorId, sensor.sensorType)
                    : sensor.name;
+    row.valid = false;
     row.value = QString::fromUtf8(CentralLogger::Sensor::kValuePlaceholder);
     row.displayStatus = QLatin1String(CentralLogger::Sensor::kStatusUnknown);
-    row.timestamp = QString();
-    row.statusCode = QString();
     rows.append(row);
   }
 
@@ -322,24 +257,23 @@ SensorMerger::buildRows(qint64 loggerId, const Network::PollSnapshot &snapshot,
       return;
     }
     const bool on = bits[cat.edgeSensorId];
+    const bool bitValid = cat.active && !(!rtuConnected && pollingActive);
 
     SensorLiveRow row;
     row.edgeSensorId = cat.edgeSensorId;
     row.sensorType = cat.sensorType;
     row.unit = QString();
     row.name = cat.name.isEmpty()
-                   ? fallbackName(cat.sensorType, cat.edgeSensorId)
+                   ? fallbackSensorName(cat.edgeSensorId, cat.sensorType)
                    : cat.name;
-    row.statusCode = QLatin1String("00");
-    row.value = on ? QLatin1String(CentralLogger::Sensor::kBitOn)
-                   : QLatin1String(CentralLogger::Sensor::kBitOff);
-    row.timestamp = timestamp;
-    if (!cat.active) {
-      row.displayStatus = QString();
-    } else if (!rtuConnected && pollingActive) {
-      row.displayStatus = QString();
-    } else {
+    row.valid = bitValid;
+    if (bitValid) {
+      row.value = on ? QLatin1String(CentralLogger::Sensor::kBitOn)
+                     : QLatin1String(CentralLogger::Sensor::kBitOff);
       row.displayStatus = QLatin1String(CentralLogger::Sensor::kStatusOk);
+    } else {
+      row.value = QString::fromUtf8(CentralLogger::Sensor::kValuePlaceholder);
+      row.displayStatus = QString();
     }
     rows.append(row);
   };
@@ -365,28 +299,7 @@ SensorMerger::buildRows(qint64 loggerId, const Network::PollSnapshot &snapshot,
     }
   }
 
-  auto typeRank = [](const QString &t) -> int {
-    if (t == kTypeAnalog) {
-      return 0;
-    }
-    if (t == kTypeDi) {
-      return 1;
-    }
-    if (t == kTypeDo) {
-      return 2;
-    }
-    return 3;
-  };
-  std::stable_sort(rows.begin(), rows.end(),
-                   [&typeRank](const SensorLiveRow &a, const SensorLiveRow &b) {
-                     const int ra = typeRank(a.sensorType);
-                     const int rb = typeRank(b.sensorType);
-                     if (ra != rb) {
-                       return ra < rb;
-                     }
-                     return a.edgeSensorId < b.edgeSensorId;
-                   });
-
+  sortLiveRows(rows);
   return rows;
 }
 
@@ -421,37 +334,16 @@ QVector<SensorLiveRow> SensorMerger::buildCatalogPlaceholders(
     row.sensorType = cat.sensorType;
     row.unit = cat.unit;
     row.name = cat.name.isEmpty()
-                   ? fallbackName(cat.sensorType, cat.edgeSensorId)
+                   ? fallbackSensorName(cat.edgeSensorId, cat.sensorType)
                    : cat.name;
+    row.valid = false;
     row.value = QString::fromUtf8(CentralLogger::Sensor::kValuePlaceholder);
     row.displayStatus = cat.active
         ? QLatin1String(CentralLogger::Sensor::kStatusUnknown) : QString();
-    row.timestamp = QString();
-    row.statusCode = QString();
     rows.append(row);
   }
 
-  auto typeRank = [](const QString &t) -> int {
-    if (t == kTypeAnalog) {
-      return 0;
-    }
-    if (t == kTypeDi) {
-      return 1;
-    }
-    if (t == kTypeDo) {
-      return 2;
-    }
-    return 3;
-  };
-  std::stable_sort(rows.begin(), rows.end(),
-                   [&typeRank](const SensorLiveRow &a, const SensorLiveRow &b) {
-                     const int ra = typeRank(a.sensorType);
-                     const int rb = typeRank(b.sensorType);
-                     if (ra != rb) {
-                       return ra < rb;
-                     }
-                     return a.edgeSensorId < b.edgeSensorId;
-                   });
+  sortLiveRows(rows);
   return rows;
 }
 

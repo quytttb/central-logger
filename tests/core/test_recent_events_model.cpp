@@ -1,4 +1,5 @@
 #include "core/DashboardController.h"
+#include "LoggerTestFixtures.h"
 #include "core/LoggerFormController.h"
 #include "core/events/RecentEventsModel.h"
 #include "data/db/Database.h"
@@ -23,17 +24,14 @@ using CentralLogger::Network::PollSnapshot;
 
 namespace {
 
-/// CRUD moved to LoggerFormController; seed loggers through it while keeping
-/// the dashboard models (recentEvents / snapshots) under test in sync.
+/// Seed catalog data independently of the asynchronous Connect & Save flow.
 qint64 addSeedLogger(DashboardController &dash, Database &db,
                      const QString &code, const QString &name,
                      const QString &host, int modbusPort, int apiPort,
                      const QString &token)
 {
-    LoggerFormController form(nullptr);
-    form.setDatabase(&db);
-    form.setDashboardController(&dash);
-    return form.addLogger(code, name, host, modbusPort, apiPort, token);
+    return LoggerTestFixtures::seedLogger(db, dash, code, name, host,
+                                          modbusPort, apiPort, token);
 }
 
 QString uniqueConnection(const char *suffix)
@@ -79,7 +77,7 @@ private slots:
     void reloadReturnsRecentEventsNewestFirst();
     void rolesExposeLoggerNameViaJoin();
     void appWideEventsHaveNullLoggerId();
-    void limitOverrideRestrictsRows();
+    void defaultLimitRestrictsRows();
     void dashboardCrudReloadsModel();
     void dashboardOnlineTransitionLogsEvent();
     void dashboardOfflineTransitionLogsWarningEvent();
@@ -98,7 +96,6 @@ void TestRecentEventsModel::emptyByDefault()
     model.reload();
 
     QCOMPARE(model.rowCount(), 0);
-    QCOMPARE(model.limit(), 20);
 }
 
 void TestRecentEventsModel::reloadReturnsRecentEventsNewestFirst()
@@ -189,7 +186,7 @@ void TestRecentEventsModel::appWideEventsHaveNullLoggerId()
              QString{});
 }
 
-void TestRecentEventsModel::limitOverrideRestrictsRows()
+void TestRecentEventsModel::defaultLimitRestrictsRows()
 {
     Database db;
     QVERIFY(db.open(uniqueConnection("limit"), QStringLiteral(":memory:")));
@@ -205,10 +202,10 @@ void TestRecentEventsModel::limitOverrideRestrictsRows()
     model.reload();
     QCOMPARE(model.rowCount(), 20);
 
-    QSignalSpy limitSpy(&model, &RecentEventsModel::limitChanged);
-    model.setLimit(5);
-    QCOMPARE(limitSpy.count(), 1);
-    QCOMPARE(model.rowCount(), 5);
+    QCOMPARE(model.data(model.index(0), RecentEventsModel::MessageRole).toString(),
+             QStringLiteral("evt-24"));
+    QCOMPARE(model.data(model.index(19), RecentEventsModel::MessageRole).toString(),
+             QStringLiteral("evt-5"));
 }
 
 void TestRecentEventsModel::dashboardCrudReloadsModel()
@@ -229,6 +226,10 @@ void TestRecentEventsModel::dashboardCrudReloadsModel()
                                      QStringLiteral("h"),
                                      5020, 8080, {});
     QVERIFY(id > 0);
+    LoggerFormController form(nullptr);
+    form.setDatabase(&db);
+    form.setDashboardController(&ctrl);
+    QVERIFY(form.removeLogger(id));
     QCOMPARE(model->rowCount(), 1);
     QCOMPARE(model->data(model->index(0), RecentEventsModel::EventTypeRole)
                  .toString(),

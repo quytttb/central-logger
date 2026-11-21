@@ -1,308 +1,94 @@
 pragma ComponentBehavior: Bound
 
 import QtQuick
+import QtQuick.Controls
 import QtQuick.Controls.Material
 import QtQuick.Layouts
 
-import CentralLogger.Core
 import CentralLogger.Components
-import CentralLogger.Theme
 import LoggerKit.Theme
 import LoggerKit.Components
 
-// Vertical-slice form for app_settings (row 1): timezone, retention.
-// Theme is controlled exclusively from the rail (ThemeToggle).
-// Form state mirrors SettingsController so cancel = re-load.
+// Settings screen with 2 tabs:
+//   - General: app_settings preferences + Diagnostics
+//   - Loggers: 3-column logger CRUD + device sensor thresholds
 Item {
     id: root
 
+    property int tabIndex: 0
     property Component topBarToolbar: SettingsTopBar {}
 
-    readonly property var timezones: [
-        "Asia/Ho_Chi_Minh",
-        "Asia/Bangkok",
-        "Asia/Singapore",
-        "Asia/Tokyo",
-        "UTC"
-    ]
+    readonly property bool isGeneralTab: root.tabIndex === 0
 
-    property string draftTimezone: SettingsController.systemTimezone
-    property int    draftRetention: SettingsController.dataRetentionDays
-    property int    draftHistoryFlush: SettingsController.historyFlushIntervalS
-    property var    draftPrimaryLoggerId: SettingsController.primaryLoggerId
-
-    readonly property bool dirty:
-           draftTimezone !== SettingsController.systemTimezone
-        || retentionSpin.value !== SettingsController.dataRetentionDays
-        || historyFlushSpin.value !== SettingsController.historyFlushIntervalS
-        || Number(draftPrimaryLoggerId) !== SettingsController.primaryLoggerId
-
-    function syncFromController() {
-        draftTimezone    = SettingsController.systemTimezone;
-        draftRetention   = SettingsController.dataRetentionDays;
-        draftHistoryFlush = SettingsController.historyFlushIntervalS;
-        draftPrimaryLoggerId = SettingsController.primaryLoggerId;
-        retentionSpin.value = draftRetention;
-        historyFlushSpin.value = draftHistoryFlush;
-        primaryLoggerCombo.selectLoggerId(SettingsController.primaryLoggerId);
-        const tzIdx = root.timezones.indexOf(draftTimezone);
-        if (tzIdx >= 0)
-            timezoneCombo.currentIndex = tzIdx;
-        else
-            timezoneCombo.editText = draftTimezone;
-    }
-
-    Component.onCompleted: {
-        SettingsController.reloadLoggerChoices()
-        syncFromController()
-    }
-
-    Connections {
-        target: SettingsController
-        function onLoggerChoicesChanged() {
-            primaryLoggerCombo.selectLoggerId(root.draftPrimaryLoggerId)
-        }
-        function onSaved() {
-            root.syncFromController()
-            AppNotifier.show(qsTr("Settings saved successfully."), "success")
-        }
-        function onError(message) {
-            AppNotifier.show(
-                qsTr("Failed to save settings"),
-                "error",
-                { detailText: message, detailTitle: qsTr("Settings save error") }
-            )
-        }
-    }
-
-    ColumnLayout {
+    StackLayout {
         anchors.fill: parent
-        spacing: 0
+        currentIndex: root.tabIndex
 
-        Item {
-            Layout.fillWidth: true
-            Layout.leftMargin: AppTheme.pagePadding
-            Layout.rightMargin: AppTheme.pagePadding
-            Layout.topMargin: AppTheme.pageTopSpacing
-
-            ElevatedPane {
-                anchors.fill: parent
-                padding: AppTheme.dialogPadding
-
-                Label {
-                    text: qsTr("Application-wide preferences (persisted in app_settings)")
-                    color: AppColors.textMuted
-                    font: AppTypography.bodyMedium
-                    wrapMode: Text.WordWrap
-                    Layout.fillWidth: true
-                }
-
-                GridLayout {
-                    Layout.fillWidth: true
-                    columns: 2
-                    columnSpacing: AppTheme.pagePadding
-                    rowSpacing: AppTheme.formRowSpacing
-
-                    Label { text: qsTr("System timezone") }
-                    ComboBox {
-                        Layout.fillWidth: true
-                        Material.containerStyle: Material.Outlined
-                        id: timezoneCombo
-                        editable: true
-                        model: root.timezones
-                        Component.onCompleted: {
-                            const idx = root.timezones.indexOf(root.draftTimezone);
-                            if (idx >= 0) currentIndex = idx;
-                            else editText = root.draftTimezone;
-                        }
-                        onActivated: root.draftTimezone = root.timezones[currentIndex]
-                        onAccepted: root.draftTimezone = editText
-                        onEditTextChanged: root.draftTimezone = editText
-                    }
-
-                    Label { text: qsTr("Data retention (days)") }
-                    SpinBox {
-                        id: retentionSpin
-                        Layout.fillWidth: true
-                        Material.containerStyle: Material.Outlined
-                        from: 1
-                        to: 3650
-                        editable: true
-                        live: true
-                        onValueModified: root.draftRetention = value
-                    }
-
-                    ColumnLayout {
-                        Layout.fillWidth: true
-                        spacing: 4
-
-                        Label {
-                            text: qsTr("Primary logger")
-                            wrapMode: Text.WordWrap
-                            Layout.fillWidth: true
-                        }
-
-                        Label {
-                            Layout.fillWidth: true
-                            text: qsTr(
-                                "Logger shown by default on the Dashboard summary graph; use the Show graph dropdown to pick another one. The other loggers appear as table rows.")
-                            color: AppColors.textMuted
-                            font: AppTypography.labelSmall
-                            wrapMode: Text.WordWrap
-                        }
-                    }
-                    ComboBox {
-                        id: primaryLoggerCombo
-                        Layout.fillWidth: true
-                        Layout.alignment: Qt.AlignTop
-                        Layout.topMargin: 2
-                        Material.containerStyle: Material.Outlined
-                        textRole: "name"
-                        valueRole: "id"
-                        model: [{ "id": 0, "name": qsTr("(None)") }].concat(SettingsController.loggerChoices)
-
-                        function selectLoggerId(loggerId) {
-                            const items = model
-                            const target = Number(loggerId)
-                            for (let i = 0; i < items.length; ++i) {
-                                if (Number(items[i].id) === target) {
-                                    currentIndex = i
-                                    return
-                                }
-                            }
-                            currentIndex = 0
-                        }
-
-                        onActivated: root.draftPrimaryLoggerId = Number(currentValue)
-                    }
-
-                    ColumnLayout {
-                        Layout.fillWidth: true
-                        spacing: 4
-
-                        Label {
-                            text: qsTr("History update interval (seconds)")
-                            wrapMode: Text.WordWrap
-                            Layout.fillWidth: true
-                        }
-
-                        Label {
-                            Layout.fillWidth: true
-                            text: qsTr(
-                                "How often new readings are flushed to the database and the History table auto-refreshes.")
-                            color: AppColors.textMuted
-                            font: AppTypography.labelSmall
-                            wrapMode: Text.WordWrap
-                        }
-                    }
-                    SpinBox {
-                        id: historyFlushSpin
-                        Layout.fillWidth: true
-                        Layout.alignment: Qt.AlignTop
-                        Layout.topMargin: 2
-                        Material.containerStyle: Material.Outlined
-                        from: 1
-                        to: 3600
-                        editable: true
-                        live: true
-                        onValueModified: root.draftHistoryFlush = value
-                    }
-                }
-
-                Label {
-                    text: SettingsController.lastError
-                    color: AppColors.error
-                    visible: SettingsController.lastError.length > 0
-                    Layout.fillWidth: true
-                    wrapMode: Text.WordWrap
-                }
-
-                // Diagnostics row — log file path for support / bug reports.
-                Rectangle {
-                    Layout.fillWidth: true
-                    Layout.columnSpan: 2
-                    Layout.topMargin: AppTheme.formRowSpacing
-                    height: 1
-                    color: AppColors.dividerLine
-                }
-
-                ColumnLayout {
-                    Layout.fillWidth: true
-                    Layout.columnSpan: 2
-                    spacing: 4
-
-                    Label {
-                        text: qsTr("Diagnostics")
-                        font: AppTypography.labelSmall
-                        color: AppColors.textMuted
-                    }
-
-                    RowLayout {
-                        Layout.fillWidth: true
-                        spacing: 8
-
-                        Label {
-                            text: qsTr("Log file:")
-                            color: AppColors.textMuted
-                            font: AppTypography.bodySmall
-                        }
-
-                        Label {
-                            id: logPathLabel
-                            Layout.fillWidth: true
-                            text: SettingsController.logFilePath.length > 0
-                                  ? SettingsController.logFilePath
-                                  : qsTr("(logging not available)")
-                            font: AppTypography.bodySmall
-                            color: AppColors.textMuted
-                            wrapMode: Text.WrapAnywhere
-                            elide: Text.ElideNone
-                        }
-
-                        AppButton {
-                            kind: AppButton.Text
-                            text: qsTr("Copy")
-                            visible: SettingsController.logFilePath.length > 0
-                            onClicked: {
-                                DesktopService.copyToClipboard(SettingsController.logFilePath)
-                                AppNotifier.show(qsTr("Log path copied to clipboard."), "info")
-                            }
-                        }
-                    }
-                }
-            }
+        SettingsGeneralPane {
+            id: generalPane
         }
 
-        Item { Layout.fillHeight: true }
+        LoggersSettingsPane {
+            id: loggersPane
+        }
     }
 
     component SettingsTopBar: RowLayout {
         spacing: AppTheme.toolbarGap
 
+        TabBar {
+            id: settingsTabs
+            Layout.preferredWidth: 236
+            Layout.alignment: Qt.AlignVCenter
+            currentIndex: root.tabIndex
+            onCurrentIndexChanged: root.tabIndex = currentIndex
+            spacing: AppTheme.spacingXS
+            padding: 3
+
+            background: Rectangle {
+                color: AppColors.surfaceContainer
+                radius: AppTheme.listItemRadius
+                border.color: AppColors.elevatedBorder
+                border.width: 1
+            }
+
+            contentItem: ListView {
+                model: settingsTabs.contentModel
+                currentIndex: settingsTabs.currentIndex
+                spacing: settingsTabs.spacing
+                orientation: ListView.Horizontal
+                boundsBehavior: Flickable.StopAtBounds
+                flickableDirection: Flickable.AutoFlickIfNeeded
+                snapMode: ListView.SnapToItem
+            }
+
+            ThemedTabButton {
+                text: qsTr("General")
+                iconName: "cog"
+            }
+
+            ThemedTabButton {
+                text: qsTr("Loggers")
+                iconName: "server"
+            }
+        }
+
         Item { Layout.fillWidth: true }
 
         AppButton {
+            visible: root.isGeneralTab
             kind: AppButton.Secondary
             text: qsTr("Reset")
-            enabled: root.dirty
-            onClicked: root.syncFromController()
+            enabled: generalPane.dirty
+            onClicked: generalPane.syncFromController()
         }
 
         AppButton {
+            visible: root.isGeneralTab
             kind: AppButton.Primary
             text: qsTr("Save")
-            enabled: root.dirty
-            onClicked: {
-                root.forceActiveFocus();
-                SettingsController.systemTimezone        = root.draftTimezone;
-                SettingsController.dataRetentionDays     = retentionSpin.value;
-                SettingsController.historyFlushIntervalS = historyFlushSpin.value;
-                SettingsController.primaryLoggerId       = Number(root.draftPrimaryLoggerId);
-                if (!SettingsController.save()) {
-                    SettingsController.load();
-                    root.syncFromController();
-                }
-            }
+            enabled: generalPane.dirty
+            onClicked: generalPane.applyAndSave()
         }
     }
 }

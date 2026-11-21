@@ -35,9 +35,8 @@ public:
         SensorRole,
         UnitRole,
         ValueRole,
-        StatusRole,     ///< TT10 status: "00"|"01"|"02"|"03" or "STALE"
+        StatusRole,     ///< TT10 status: "00"|"01"|"02"|"03" or "UNKNOWN"
         StatusCodeRole,
-        SensorIdRole,
     };
     Q_ENUM(Role)
 
@@ -55,6 +54,12 @@ public:
     /// Replaces all rows and emits a full reset.
     void setRows(const QVector<Data::HistoryRow> &rows);
 
+    /// Patch a refreshed result without resetting retained rows. Both the
+    /// previous and new data are ordered by (recordedAt, readingId) descending.
+    void mergeLatest(const QVector<Data::HistoryRow> &rows);
+    Q_INVOKABLE qint64 readingIdAt(int row) const;
+    Q_INVOKABLE int rowForReadingId(qint64 readingId) const;
+
     /// Clears all rows.
     void clear();
 
@@ -65,6 +70,8 @@ public:
 
 signals:
     void rowsSizeChanged();
+    void aboutToMergeRows();
+    void rowsMerged();
 
 private:
 

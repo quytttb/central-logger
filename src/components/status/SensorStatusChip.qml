@@ -42,7 +42,8 @@ StatusChip {
 
     readonly property string colorStatus: normalizedStatus === "00"
         && (normalizedAlarmType === "min" || normalizedAlarmType === "max"
-            || normalizedAlarmType === "min+max") ? "02" : normalizedStatus
+            || normalizedAlarmType === "min+max" || normalizedAlarmType === "device")
+        ? "02" : normalizedStatus
 
     chipFill: attachDiTypeMode ? AttachDiType.chipFill(attachDiTypeCode)
                                : OperationalStatus.chipFill(colorStatus)

@@ -4,6 +4,7 @@
 #include "data/models/LoggerSensor.h"
 #include "network/modbus/ModbusTypes.h"
 
+#include <QDateTime>
 #include <QHash>
 #include <QVector>
 
@@ -28,18 +29,37 @@ public:
     /// The next successful apply replaces these rows with the new snapshot.
     void markOffline(qint64 loggerId);
 
+    /// Re-merges the last successful snapshot for @p loggerId against an
+    /// updated catalog (e.g. right after GET /config finishes) without
+    /// waiting for the next Modbus poll cycle.
+    void rebuildWithCatalog(qint64 loggerId,
+                            const QVector<Data::LoggerSensor> &catalog);
+
     /// Empty vector when there is no cached entry for @p loggerId.
     QVector<SensorLiveRow> rowsFor(qint64 loggerId) const;
 
+    /// Timestamp of the last successful snapshot for @p loggerId (invalid when offline/unset).
+    QDateTime measuredAtFor(qint64 loggerId) const;
+
     bool has(qint64 loggerId) const { return m_rows.contains(loggerId); }
 
-    void remove(qint64 loggerId) { m_rows.remove(loggerId); }
-    void clear() { m_rows.clear(); }
-
-    int size() const { return m_rows.size(); }
+    void remove(qint64 loggerId)
+    {
+        m_rows.remove(loggerId);
+        m_measuredAt.remove(loggerId);
+        m_lastSnapshots.remove(loggerId);
+    }
+    void clear()
+    {
+        m_rows.clear();
+        m_measuredAt.clear();
+        m_lastSnapshots.clear();
+    }
 
 private:
     QHash<qint64, QVector<SensorLiveRow>> m_rows;
+    QHash<qint64, QDateTime>              m_measuredAt;
+    QHash<qint64, Network::PollSnapshot>  m_lastSnapshots;
 };
 
 } // namespace CentralLogger::Core

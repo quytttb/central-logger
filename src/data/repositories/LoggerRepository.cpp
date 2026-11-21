@@ -1,9 +1,9 @@
 #include "LoggerRepository.h"
 
+#include "SqlHelper.h"
 #include "utils/DbConstants.h"
 #include "utils/time/DateTimeUtils.h"
 
-#include <QSqlError>
 #include <QSqlQuery>
 #include <QStringLiteral>
 #include <QVariant>
@@ -37,7 +37,6 @@ enum Col {
     ColCreatedAt,
 };
 
-using CentralLogger::Utils::isoUtc;
 using CentralLogger::Utils::isoUtcOrNull;
 using CentralLogger::Utils::parseUtc;
 
@@ -61,13 +60,6 @@ LoggerInfo rowToModel(const QSqlQuery &q)
     info.note                 = q.value(ColNote).toString();
     info.createdAt            = parseUtc(q.value(ColCreatedAt).toString());
     return info;
-}
-
-void setErr(QString *out, const QSqlQuery &q)
-{
-    if (out) {
-        *out = q.lastError().text();
-    }
 }
 
 } // namespace
@@ -105,7 +97,7 @@ bool LoggerRepository::insert(LoggerInfo &info, QString *errorOut)
                                    : QVariant(info.note));
 
     if (!q.exec()) {
-        setErr(errorOut, q);
+        setSqlError(errorOut, q);
         return false;
     }
     info.id = q.lastInsertId().toLongLong();
@@ -126,25 +118,7 @@ std::optional<LoggerInfo> LoggerRepository::findById(qint64 id, QString *errorOu
                        QString::fromLatin1(CentralLogger::Data::Db::kTableLoggerInfo)));
     q.bindValue(QLatin1String(CentralLogger::Data::Db::kBindId), id);
     if (!q.exec()) {
-        setErr(errorOut, q);
-        return std::nullopt;
-    }
-    if (!q.next()) {
-        return std::nullopt;
-    }
-    return rowToModel(q);
-}
-
-std::optional<LoggerInfo> LoggerRepository::findByStationCode(const QString &stationCode,
-                                                              QString *errorOut) const
-{
-    QSqlQuery q(m_db);
-    q.prepare(QStringLiteral("SELECT %1 FROM %2 WHERE station_code = :code")
-                  .arg(QString::fromLatin1(kColumns),
-                       QString::fromLatin1(CentralLogger::Data::Db::kTableLoggerInfo)));
-    q.bindValue(QStringLiteral(":code"), stationCode);
-    if (!q.exec()) {
-        setErr(errorOut, q);
+        setSqlError(errorOut, q);
         return std::nullopt;
     }
     if (!q.next()) {
@@ -160,7 +134,7 @@ QVector<LoggerInfo> LoggerRepository::findAll(QString *errorOut) const
     if (!q.exec(QStringLiteral("SELECT %1 FROM %2 ORDER BY id")
                     .arg(QString::fromLatin1(kColumns),
                          QString::fromLatin1(CentralLogger::Data::Db::kTableLoggerInfo)))) {
-        setErr(errorOut, q);
+        setSqlError(errorOut, q);
         return result;
     }
     while (q.next()) {
@@ -175,7 +149,7 @@ int LoggerRepository::countTotal(QString *errorOut) const
     if (!q.exec(QStringLiteral("SELECT COUNT(*) FROM %1")
                     .arg(QString::fromLatin1(CentralLogger::Data::Db::kTableLoggerInfo)))
         || !q.next()) {
-        setErr(errorOut, q);
+        setSqlError(errorOut, q);
         return -1;
     }
     return q.value(0).toInt();
@@ -184,11 +158,11 @@ int LoggerRepository::countTotal(QString *errorOut) const
 int LoggerRepository::countOnline(QString *errorOut) const
 {
     QSqlQuery q(m_db);
-    if (!q.exec(QStringLiteral("SELECT COUNT(*) FROM %1 WHERE status = '%2'")
+    if (!q.exec(QStringLiteral("SELECT COUNT(*) FROM %1 WHERE status = '%2' AND enabled != 0")
                     .arg(QString::fromLatin1(CentralLogger::Data::Db::kTableLoggerInfo),
                          CentralLogger::Sensor::kLoggerOnline))
         || !q.next()) {
-        setErr(errorOut, q);
+        setSqlError(errorOut, q);
         return -1;
     }
     return q.value(0).toInt();
@@ -214,7 +188,7 @@ QVector<LoggerListRow> LoggerRepository::findAllWithSensorCounts(QString *errorO
         .arg(QString::fromLatin1(CentralLogger::Data::Db::kTableLoggerSensor),
              QString::fromLatin1(CentralLogger::Data::Db::kTableLoggerInfo));
     if (!q.exec(sql)) {
-        setErr(errorOut, q);
+        setSqlError(errorOut, q);
         return result;
     }
     while (q.next()) {
@@ -268,7 +242,21 @@ bool LoggerRepository::update(const LoggerInfo &info, QString *errorOut)
     q.bindValue(QLatin1String(CentralLogger::Data::Db::kBindId),                     info.id);
 
     if (!q.exec()) {
-        setErr(errorOut, q);
+        setSqlError(errorOut, q);
+        return false;
+    }
+    return q.numRowsAffected() > 0;
+}
+
+bool LoggerRepository::updateLastRevision(qint64 id, int revision, QString *errorOut)
+{
+    QSqlQuery q(m_db);
+    q.prepare(QStringLiteral("UPDATE %1 SET last_revision = :last_revision WHERE id = :id")
+                  .arg(QString::fromLatin1(Db::kTableLoggerInfo)));
+    q.bindValue(QLatin1String(Db::kBindLastRevision), revision);
+    q.bindValue(QLatin1String(Db::kBindId), id);
+    if (!q.exec()) {
+        setSqlError(errorOut, q);
         return false;
     }
     return q.numRowsAffected() > 0;
@@ -287,7 +275,7 @@ bool LoggerRepository::updateStatusAndLastSeen(qint64 id,
     q.bindValue(QLatin1String(CentralLogger::Data::Db::kBindLastSeen), isoUtcOrNull(lastSeenUtc));
     q.bindValue(QLatin1String(CentralLogger::Data::Db::kBindId),        id);
     if (!q.exec()) {
-        setErr(errorOut, q);
+        setSqlError(errorOut, q);
         return false;
     }
     return q.numRowsAffected() > 0;
@@ -302,7 +290,7 @@ bool LoggerRepository::updateStatus(qint64 id, const QString &status, QString *e
     q.bindValue(QLatin1String(CentralLogger::Data::Db::kBindStatus), status);
     q.bindValue(QLatin1String(CentralLogger::Data::Db::kBindId),     id);
     if (!q.exec()) {
-        setErr(errorOut, q);
+        setSqlError(errorOut, q);
         return false;
     }
     return q.numRowsAffected() > 0;
@@ -315,7 +303,7 @@ bool LoggerRepository::remove(qint64 id, QString *errorOut)
                    .arg(QString::fromLatin1(CentralLogger::Data::Db::kTableLoggerInfo)));
     q.bindValue(QLatin1String(CentralLogger::Data::Db::kBindId), id);
     if (!q.exec()) {
-        setErr(errorOut, q);
+        setSqlError(errorOut, q);
         return false;
     }
     return q.numRowsAffected() > 0;

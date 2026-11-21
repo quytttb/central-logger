@@ -126,13 +126,10 @@ QHash<int, QByteArray> LoggerOverviewTableModel::roleNames() const
 void LoggerOverviewTableModel::setData(const QVector<OverviewRow> &rows,
                                        const QVector<OverviewColumn> &columns)
 {
-    const bool layoutChanged = !sameColumns(m_columns, columns)
-                               || m_rows.size() != rows.size();
+    const bool columnsActuallyChanged = !sameColumns(m_columns, columns);
+    const bool rowsActuallyChanged    = (m_rows.size() != rows.size());
 
-    if (layoutChanged) {
-        const bool columnsActuallyChanged = !sameColumns(m_columns, columns)
-                                            || m_columns.size() != columns.size();
-        const bool rowsActuallyChanged = m_rows.size() != rows.size();
+    if (columnsActuallyChanged || rowsActuallyChanged) {
         beginResetModel();
         m_rows = rows;
         m_columns = columns;

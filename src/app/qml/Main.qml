@@ -7,16 +7,12 @@ import QtQuick.Window
 
 import CentralLogger.Components
 import CentralLogger.Core
-import CentralLogger.Theme
 import LoggerKit.Theme
 import LoggerKit.Components
 
 ApplicationWindow {
     id: root
 
-    // Per-screen geometry. ApplicationWindow exposes its current `screen`
-    // attached property; fall back to Screen attached (set on any Item)
-    // for cases where the window hasn't been associated with a screen yet.
     readonly property Screen targetScreen: root.screen || Screen
     readonly property real windowScreenFraction: 0.8
 
@@ -40,10 +36,11 @@ ApplicationWindow {
     }
 
     Component.onCompleted: {
-        // Bind the shared kit's theme mode to this app's settings controller.
         ThemeMode.mode = Qt.binding(() => SettingsController.theme)
         centerOnTargetScreen()
-    }    title: qsTr("Central Logger")
+    }
+
+    title: qsTr("Central Logger")
     flags: Qt.Window | (Qt.platform.os === "windows" ? 0 : Qt.FramelessWindowHint) | Qt.WindowSystemMenuHint
 
     Material.theme:   AppTheme.materialTheme
@@ -51,25 +48,27 @@ ApplicationWindow {
     Material.primary: AppTheme.primary
     color: AppColors.surface
 
-    property string currentView:      "dashboard"
-    property int    selectedLoggerId: -1
+    property string currentView:        "dashboard"
+    property string pendingLoggersTab:  "data"
     property Component activeTopBarToolbar: null
 
     readonly property int navigationRailWidth: AppTheme.railWidth
 
     function navigate(view) {
-        if (view === "logger-detail") {
-            return;
+        if (view === "loggers" && currentView !== "loggers") {
+            pendingLoggersTab = "data"
         }
-        if (view === "loggers" && currentView === "logger-detail") {
-            selectedLoggerId = -1;
-        }
-        currentView = view;
+        currentView = view
     }
 
-    function selectLogger(id) {
-        selectedLoggerId = id;
-        currentView = "logger-detail";
+    function openLoggerGraph(loggerId) {
+        if (loggerId > 0)
+            DashboardController.graphLoggerId = loggerId
+        pendingLoggersTab = "graph"
+        currentView = "loggers"
+        const loaded = viewLoader.item as LoggersView
+        if (loaded)
+            loaded.openGraphForLogger(loggerId)
     }
 
     // --- Notification overlay -----------------------------------------
@@ -79,13 +78,12 @@ ApplicationWindow {
         parent: Overlay.overlay
         anchors.centerIn: parent
         contextActionText: qsTr("Open logger")
-        onContextActionRequested: loggerId => root.selectLogger(loggerId)
+        onContextActionRequested: loggerId => root.openLoggerGraph(loggerId)
     }
 
     AppToastHost {
         id: appToastHost
         parent: root.contentItem
-        // Bottom-center of the content area, above the navigation rail.
         x: root.navigationRailWidth + (root.contentItem.width - root.navigationRailWidth - width) / 2
         y: root.contentItem.height - height - 24
         z: 999
@@ -94,10 +92,13 @@ ApplicationWindow {
     Connections {
         target: AppNotifier
         function onDetailRequested(title, body, loggerId) {
-            const alreadyOnThisLogger = root.currentView === "logger-detail"
-                                        && loggerId >= 0
-                                        && loggerId === root.selectedLoggerId
-            msgDetailDialog.showMessage(title, body, loggerId, alreadyOnThisLogger)
+            const loadedLoggers = viewLoader.item as LoggersView
+            const alreadyOnThisGraph = root.currentView === "loggers"
+                                       && loadedLoggers !== null
+                                       && loadedLoggers.isGraphTab
+                                       && loggerId > 0
+                                       && loggerId === DashboardController.graphLoggerId
+            msgDetailDialog.showMessage(title, body, loggerId, alreadyOnThisGraph)
         }
     }
 
@@ -140,17 +141,7 @@ ApplicationWindow {
                     z: -1
                 }
 
-                // Frameless resize handles — X11 has no implicit grips on
-                // borderless windows, so on Linux / Windows users can't
-                // resize a restored window without these. Mouse areas are
-                // transparent and forward startSystemResize() with the edge
-                // they sit on; they only stay interactive when the window
-                // is in a non-maximized state.
                 component ResizeHandle: MouseArea {
-                    // `edge` is a QFlags value passed straight through to
-                    // Window::startSystemResize(Qt::Edges) on the C++ side;
-                    // declare as int to keep qmllint happy with the QML type
-                    // system (Qt.Edges isn't exposed as a QML basic type).
                     property int edge: Qt.RightEdge
                     hoverEnabled: true
                     cursorShape: {
@@ -191,13 +182,11 @@ ApplicationWindow {
                     }
                     sourceComponent: {
                         switch (root.currentView) {
-                        case "dashboard":     return dashboardComp
-                        case "loggers":       return loggersComp
-                        case "logger-detail": return loggerDetailComp
-                        case "thresholds":    return thresholdsComp
-                        case "history":       return historyComp
-                        case "settings":      return settingsComp
-                        default:              return dashboardComp
+                        case "dashboard": return dashboardComp
+                        case "loggers":   return loggersComp
+                        case "history":   return historyComp
+                        case "settings":  return settingsComp
+                        default:          return dashboardComp
                         }
                     }
                 }
@@ -207,7 +196,7 @@ ApplicationWindow {
                     DashboardView {
                         anchors.fill: parent
                         Component.onCompleted: root.activeTopBarToolbar = topBarToolbar
-                        onSelectLogger: loggerId => root.selectLogger(loggerId)
+                        onOpenLoggerGraph: loggerId => root.openLoggerGraph(loggerId)
                     }
                 }
 
@@ -215,28 +204,8 @@ ApplicationWindow {
                     id: loggersComp
                     LoggersView {
                         anchors.fill: parent
+                        initialTab: root.pendingLoggersTab
                         Component.onCompleted: root.activeTopBarToolbar = topBarToolbar
-                        onSelectLogger: loggerId => root.selectLogger(loggerId)
-                        onOpenThresholds: root.navigate("thresholds")
-                    }
-                }
-
-                Component {
-                    id: thresholdsComp
-                    ThresholdsView {
-                        anchors.fill: parent
-                        Component.onCompleted: root.activeTopBarToolbar = topBarToolbar
-                        onGoBack: root.navigate("loggers")
-                    }
-                }
-
-                Component {
-                    id: loggerDetailComp
-                    LoggerDetailView {
-                        anchors.fill: parent
-                        loggerId: root.selectedLoggerId
-                        Component.onCompleted: root.activeTopBarToolbar = topBarToolbar
-                        onGoBack: root.navigate("loggers")
                     }
                 }
 

@@ -10,6 +10,7 @@
 #include <QRandomGenerator>
 #include <QTcpSocket>
 #include <QTimer>
+#include <cmath>
 #include <limits>
 #include <memory>
 
@@ -149,6 +150,10 @@ QJsonObject RestV1Server::configResponse()
         };
         if (point.decimals.has_value())
             sensor.insert(QStringLiteral("decimals"), *point.decimals);
+        if (point.minThreshold.has_value() && std::isfinite(*point.minThreshold))
+            sensor.insert(QStringLiteral("min_threshold"), *point.minThreshold);
+        if (point.maxThreshold.has_value() && std::isfinite(*point.maxThreshold))
+            sensor.insert(QStringLiteral("max_threshold"), *point.maxThreshold);
         sensors.append(sensor);
     }
     QJsonObject config{
@@ -222,6 +227,11 @@ void RestV1Server::acceptConnections()
                 respond(socket, *state, 200, "OK",
                         QJsonDocument(configResponse()).toJson(QJsonDocument::Compact));
             } else if (method == "POST" && path == "/api/v1/config") {
+                if (!m_source.snapshot().catalogAvailable) {
+                    respond(socket, *state, 503, "Service Unavailable",
+                            jsonBody(QStringLiteral("Upstream catalog is not ready for this adapter.")));
+                    return;
+                }
                 const auto body = state->buffer.sliced(state->bodyStart, state->bodySize);
                 const auto document = QJsonDocument::fromJson(body);
                 const auto request = document.object();
@@ -229,15 +239,22 @@ void RestV1Server::acceptConnections()
                 const auto revision = request.value(QStringLiteral("expected_revision"));
                 const auto requestId = request.value(QStringLiteral("request_id"));
                 const auto apiVersion = request.value(QStringLiteral("api_version"));
-                if (!document.isObject() || !revision.isDouble()
-                    || !requestId.isString() || requestId.toString().isEmpty()
-                    || requestId.toString().size() > 128
+                const double revD = revision.toDouble(-1.0);
+                const bool validRevision = revision.isDouble()
+                    && std::isfinite(revD)
+                    && revD >= 0.0
+                    && std::floor(revD) == revD
+                    && revD <= static_cast<double>(std::numeric_limits<int>::max());
+                const QString reqIdStr = requestId.toString();
+                if (!document.isObject() || !validRevision
+                    || !requestId.isString() || reqIdStr.trimmed().isEmpty()
+                    || reqIdStr.size() > 128
                     || !apiVersion.isDouble()
                     || apiVersion.toInt(-1) != CentralLogger::Version::kApiVersion
                     || !request.value(QStringLiteral("config")).isObject()) {
                     respond(socket, *state, 422, "Unprocessable Content",
                             jsonBody(QStringLiteral("Invalid v1 config envelope.")));
-                } else if (revision.toInt(-1) != current.value(QStringLiteral("revision")).toInt()) {
+                } else if (static_cast<int>(revD) != current.value(QStringLiteral("revision")).toInt()) {
                     respond(socket, *state, 409, "Conflict",
                             jsonBody(QStringLiteral("Revision mismatch; reconnect and reload config.")));
                 } else {

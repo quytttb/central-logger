@@ -29,8 +29,6 @@ public:
     bool insert(LoggerInfo &info, QString *errorOut = nullptr);
 
     std::optional<LoggerInfo> findById(qint64 id, QString *errorOut = nullptr) const;
-    std::optional<LoggerInfo> findByStationCode(const QString &stationCode,
-                                                QString *errorOut = nullptr) const;
 
     QVector<LoggerInfo> findAll(QString *errorOut = nullptr) const;
 
@@ -43,6 +41,9 @@ public:
     QVector<LoggerListRow> findAllWithSensorCounts(QString *errorOut = nullptr) const;
 
     bool update(const LoggerInfo &info, QString *errorOut = nullptr);
+
+    /// Mirror a fetched config revision without overwriting worker-owned live state.
+    bool updateLastRevision(qint64 id, int revision, QString *errorOut = nullptr);
 
     /// Updates only the live-state columns. Used by ModbusBridge on success.
     bool updateStatusAndLastSeen(qint64 id,

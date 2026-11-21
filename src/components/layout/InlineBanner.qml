@@ -22,13 +22,12 @@ Pane {
 
     background: Rectangle {
         radius: AppTheme.cardRadius
-        color: root.semantic === "warning"
-               ? AppColors.warningContainer
-               : AppColors.errorContainer
+        color: root.semantic === "warning" ? AppColors.warningContainer
+             : root.semantic === "info"    ? AppColors.surfaceContainerHigh
+             : AppColors.errorContainer
         border.width: 1
-        border.color: root.semantic === "warning"
-                        ? AppColors.warning
-                        : AppColors.outlineVariant
+        border.color: root.semantic === "warning" ? AppColors.warning
+                                                  : AppColors.outlineVariant
     }
 
     contentItem: RowLayout {
@@ -38,10 +37,12 @@ Pane {
             Layout.fillWidth: true
             text: root.message
             wrapMode: Text.WordWrap
-            color: root.semantic === "warning"
+            color: (root.semantic === "warning" || root.semantic === "info")
                    ? AppColors.primaryText
                    : AppColors.errorContainerFg
-            font: root.semantic === "warning" ? AppTypography.bodyMedium : AppTypography.labelMedium
+            font: root.semantic === "info"    ? AppTypography.bodySmall
+                : root.semantic === "warning" ? AppTypography.bodyMedium
+                : AppTypography.labelMedium
         }
 
         AppButton {

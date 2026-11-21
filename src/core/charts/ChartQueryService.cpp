@@ -23,7 +23,8 @@ QVector<ReadingBucketPoint> ChartQueryService::readingCountsLast24h(int bucketMi
     // "YYYY-MM-DD HH:MM:SS" and breaks lexicographic filtering.
     const QString cutoffUtc =
         QDateTime::currentDateTimeUtc()
-            .addSecs(-24 * CentralLogger::Defaults::kSecondsPerHour)
+            .addSecs(-CentralLogger::Defaults::kHoursPerDay
+                     * CentralLogger::Defaults::kSecondsPerHour)
             .toString(Qt::ISODateWithMs);
     const int bucketSec = bucketMinutes * 60;
 

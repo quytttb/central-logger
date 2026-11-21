@@ -13,7 +13,7 @@ private slots:
     void buildReadingsChartPresentation_fixedWindowOfTwenty();
     void buildReadingsChartPresentation_fillsMissingBucketsWithZero();
     void snapReadingsChart_returnsNearestBucket();
-    void snapTrendingChart_multiSeries();
+    void computeTrendingAxisRange_emptySeries();
     void computeTrendingAxisRange_padding();
 };
 
@@ -81,38 +81,11 @@ void TestChartPresentation::snapReadingsChart_returnsNearestBucket()
     QCOMPARE(hit.value(QStringLiteral("position")).toMap().value(QStringLiteral("y")).toInt(), 42);
 }
 
-void TestChartPresentation::snapTrendingChart_multiSeries()
+void TestChartPresentation::computeTrendingAxisRange_emptySeries()
 {
-    QVariantList series;
-    {
-        QVariantList pts;
-        QVariantMap p;
-        p.insert(QStringLiteral("x"), 1000.0);
-        p.insert(QStringLiteral("y"), 1.5);
-        p.insert(QStringLiteral("time"), QStringLiteral("10:00:00"));
-        pts.append(p);
-        QVariantMap s;
-        s.insert(QStringLiteral("label"), QStringLiteral("A"));
-        s.insert(QStringLiteral("points"), pts);
-        series.append(s);
-    }
-    {
-        QVariantList pts;
-        QVariantMap p;
-        p.insert(QStringLiteral("x"), 1000.0);
-        p.insert(QStringLiteral("y"), 2.5);
-        p.insert(QStringLiteral("time"), QStringLiteral("10:00:00"));
-        pts.append(p);
-        QVariantMap s;
-        s.insert(QStringLiteral("label"), QStringLiteral("B"));
-        s.insert(QStringLiteral("points"), pts);
-        series.append(s);
-    }
-
-    const auto hit = snapTrendingChart(series, 900.0, 1100.0, 0.0, 0.0, 200.0, 100.0, 100.0, 50.0);
-    QVERIFY(!hit.isEmpty());
-    const auto rows = hit.value(QStringLiteral("valueRows")).toList();
-    QCOMPARE(rows.size(), 2);
+    const auto range = computeTrendingAxisRange({});
+    QVERIFY(range.value(QStringLiteral("xMax")).toDouble()
+            > range.value(QStringLiteral("xMin")).toDouble());
 }
 
 void TestChartPresentation::computeTrendingAxisRange_padding()
@@ -134,8 +107,6 @@ void TestChartPresentation::computeTrendingAxisRange_padding()
     }
 
     const auto range = computeTrendingAxisRange(series);
-    QVERIFY(range.value(QStringLiteral("yMin")).toDouble() < 10.0);
-    QVERIFY(range.value(QStringLiteral("yMax")).toDouble() > 20.0);
     QVERIFY(range.value(QStringLiteral("xMin")).toDouble() < 1000.0);
     QVERIFY(range.value(QStringLiteral("xMax")).toDouble() > 2000.0);
 }

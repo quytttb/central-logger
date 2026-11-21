@@ -1,4 +1,4 @@
--- Central Logger — SQLite schema (user_version = 7)
+-- Central Logger — SQLite schema (user_version = 8)
 -- Reference: docs/thiet_ke_db.md
 -- Engine: SQLite (QSQLITE) — see docs/adr/0001-db.md
 
@@ -78,9 +78,11 @@ CREATE TABLE IF NOT EXISTS app_settings (
     system_timezone     TEXT    NOT NULL DEFAULT 'Asia/Ho_Chi_Minh',
     data_retention_days INTEGER NOT NULL DEFAULT 30,
     history_flush_interval_s INTEGER NOT NULL DEFAULT 5,
-    -- Logger shown as the large real-time chart on the Dashboard summary view.
+    -- Logger shown as the large real-time chart on the Loggers > Graph view.
     -- 0 = not configured (falls back to the first online logger).
-    primary_logger_id   INTEGER NOT NULL DEFAULT 0
+    primary_logger_id   INTEGER NOT NULL DEFAULT 0,
+    -- Persisted Loggers > Data presentation mode: 'cards' (default) or 'list'.
+    loggers_view_mode   TEXT    NOT NULL DEFAULT 'cards' CHECK (loggers_view_mode IN ('cards', 'list'))
 );
 
 INSERT OR IGNORE INTO app_settings (id) VALUES (1);

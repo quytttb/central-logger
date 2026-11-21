@@ -4,7 +4,6 @@ import QtQuick
 import QtGraphs
 
 import CentralLogger.Core
-import CentralLogger.Theme
 import LoggerKit.Theme
 import LoggerKit.Components
 
@@ -35,86 +34,96 @@ Item {
         ? AppColors.graphSeriesColors[0]
         : singleSeries.color
 
-    property var _multiSeriesObjects: []
+    property var _multiSeriesObjects: ({})
+    property var _deadSeries: []
+    property bool _ready: false
 
-    function rebuild() {
-        if (multiSeries)
-            rebuildMultiSeries()
-        else
-            rebuildSingleSeries()
-    }
-
-    function clearMultiSeries() {
-        chartTooltip.hide()
-        while (_multiSeriesObjects.length > 0) {
-            const extra = _multiSeriesObjects.pop()
-            chartHost.chart.removeSeries(extra)
-            extra.destroy()
-        }
-    }
-
-    function rebuildSingleSeries() {
-        clearMultiSeries()
-        singleSeries.visible = true
-
-        singleSeries.clear()
-        for (let i = 0; i < plotPoints.length; ++i) {
-            const row = plotPoints[i]
-            singleSeries.append(new Date(row.bucketMs), row.count)
-        }
-
-        if (axis.xMin !== undefined && axis.xMax !== undefined) {
+    function updateAxis() {
+        if (!_ready)
+            return
+        if (axis.xMax > axis.xMin) {
             axisX.min = new Date(axis.xMin)
             axisX.max = new Date(axis.xMax)
-            axisY.min = 0
-            axisY.max = axis.yMax > 0 ? axis.yMax : 1
         }
+        const yMin = multiSeries ? axis.yMin ?? 0 : 0
+        axisY.min = yMin
+        axisY.max = axis.yMax > yMin ? axis.yMax : yMin + 1
     }
 
-    function rebuildMultiSeries() {
-        singleSeries.visible = false
-        singleSeries.clear()
-
-        const data = series
-        if (!data || data.length === 0) {
-            clearMultiSeries()
+    function updatePoints(line, next) {
+        if (next.length === 0) {
+            if (line.count > 0)
+                line.clear()
             return
         }
+        let trim = 0
+        while (trim < line.count && line.at(trim).x < next[0].x)
+            ++trim
+        const overlap = line.count - trim
+        if (overlap > 0 && overlap <= next.length) {
+            let unchanged = true
+            for (let i = 0; i < overlap && unchanged; ++i) {
+                const point = line.at(trim + i)
+                unchanged = point.x === next[i].x && point.y === next[i].y
+            }
+            if (unchanged) {
+                if (trim > 0)
+                    line.removeMultiple(0, trim)
+                if (overlap < next.length)
+                    line.append(next.slice(overlap))
+                return
+            }
+        }
+        // Changed bucket values / filters: replace in bulk, don't clear then
+        // reappend one by one (which briefly empties the chart).
+        line.replace(next)
+    }
 
-        if (axis.yMin !== undefined && axis.yMax !== undefined) {
-            axisY.min = axis.yMin
-            axisY.max = axis.yMax
-        }
-        if (axis.xMin !== undefined && axis.xMax !== undefined) {
-            axisX.min = new Date(axis.xMin)
-            axisX.max = new Date(axis.xMax)
+    function updateSeries() {
+        if (!_ready)
+            return
+        // Qt Graphs can still reference a detached series during polish.
+        // Only destroy series left detached by a previous update.
+        for (const retired of _deadSeries)
+            retired.destroy()
+        _deadSeries = []
+
+        const next = ({})
+        if (multiSeries) {
+            const colors = AppColors.graphSeriesColors
+            for (let i = 0; i < series.length; ++i) {
+                const row = series[i]
+                const key = String(row.edgeSensorId ?? row.id ?? i)
+                let line = _multiSeriesObjects[key]
+                if (!line) {
+                    line = lineSeriesComponent.createObject(chartHost.chart)
+                    if (!line)
+                        continue
+                    chartHost.chart.addSeries(line)
+                }
+                line.name = row.label
+                line.color = colors[i % colors.length]
+                updatePoints(line, row.points.map(point => Qt.point(point.x, point.y)))
+                next[key] = line
+            }
+        } else {
+            updatePoints(singleSeries, plotPoints.map(row => Qt.point(row.bucketMs, row.count)))
         }
 
-        const colors = AppColors.graphSeriesColors
+        for (const key in _multiSeriesObjects) {
+            if (!next[key]) {
+                const extra = _multiSeriesObjects[key]
+                chartTooltip.hide()
+                chartHost.chart.removeSeries(extra)
+                _deadSeries.push(extra)
+            }
+        }
+        _multiSeriesObjects = next
+    }
 
-        while (_multiSeriesObjects.length < data.length) {
-            const lineSeries = lineSeriesComponent.createObject(chartHost.chart)
-            if (!lineSeries)
-                break
-            chartHost.chart.addSeries(lineSeries)
-            _multiSeriesObjects.push(lineSeries)
-        }
-        while (_multiSeriesObjects.length > data.length) {
-            const extra = _multiSeriesObjects.pop()
-            chartHost.chart.removeSeries(extra)
-            extra.destroy()
-        }
-
-        for (let s = 0; s < data.length; ++s) {
-            const seriesData = data[s]
-            const pts = seriesData.points
-            const lineSeries = _multiSeriesObjects[s]
-            lineSeries.name = seriesData.label
-            lineSeries.color = colors[s % colors.length]
-            lineSeries.clear()
-            for (let p = 0; p < pts.length; ++p)
-                lineSeries.append(new Date(pts[p].x), pts[p].y)
-        }
+    function scheduleSeriesUpdate() {
+        if (_ready)
+            Qt.callLater(root.updateSeries)
     }
 
     Component {
@@ -151,7 +160,6 @@ Item {
             pointDelegate: ChartLinePointMarker {}
         }
 
-        Component.onCompleted: root.rebuild()
     }
 
     ChartHoverTooltip {
@@ -162,17 +170,20 @@ Item {
         }
     }
 
-    Connections {
-        target: SettingsController
-        function onThemeChanged() {
-            root.rebuild()
-        }
+    Component.onCompleted: {
+        _ready = true
+        updateAxis()
+        scheduleSeriesUpdate()
     }
-
+    onPrimarySeriesColorChanged: if (multiSeries)
+        scheduleSeriesUpdate()
     onPlotPointsChanged: if (!multiSeries)
-        rebuild()
+        scheduleSeriesUpdate()
     onSeriesChanged: if (multiSeries)
-        rebuild()
-    onAxisChanged: rebuild()
-    onMultiSeriesChanged: rebuild()
+        scheduleSeriesUpdate()
+    onAxisChanged: updateAxis()
+    onMultiSeriesChanged: {
+        updateAxis()
+        scheduleSeriesUpdate()
+    }
 }

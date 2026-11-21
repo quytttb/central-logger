@@ -1,7 +1,11 @@
 #pragma once
 
+#include "utils/DbConstants.h"
+
 #include <QSqlDatabase>
+#include <QSqlError>
 #include <QString>
+#include <QThread>
 
 namespace CentralLogger::Data {
 
@@ -34,7 +38,8 @@ public:
 
     QString connectionName() const { return m_connectionName; }
 
-    /// `~/.central-logger/central-logger.db`
+    /// Database path inside QStandardPaths::AppDataLocation
+    /// (fallback: `~/.central-logger/central-logger.db`).
     static QString defaultPath();
 
     /// SQLite in-memory path for unit tests (`:memory:`).
@@ -48,6 +53,37 @@ public:
     /// WAL + related pragmas for concurrent read (UI) / write (history worker).
     static bool applyPerformancePragmas(QSqlDatabase db, QString *errorOut = nullptr);
 
+    /// Opens a thread-scoped SQLite connection, runs @p fn(db), closes it, and
+    /// removes the connection cleanly on every exit path.
+    template <typename Fn>
+    static bool withScopedConnection(const QString &prefix,
+                                     const QString &dbPath,
+                                     Fn &&fn,
+                                     QString *errorOut = nullptr)
+    {
+        const QString connName = QStringLiteral("%1_%2").arg(
+            prefix,
+            QString::number(reinterpret_cast<quintptr>(QThread::currentThreadId())));
+        bool ok = false;
+        {
+            QSqlDatabase db = QSqlDatabase::addDatabase(
+                QLatin1String(Db::kSqliteDriver), connName);
+            db.setDatabaseName(dbPath);
+            if (!db.open()) {
+                if (errorOut) {
+                    *errorOut = db.lastError().text();
+                }
+            } else {
+                applyPerformancePragmas(db, nullptr);
+                fn(db);
+                db.close();
+                ok = true;
+            }
+        }
+        QSqlDatabase::removeDatabase(connName);
+        return ok;
+    }
+
 private:
     bool ensureParentDirectory(const QString &databasePath, QString *errorOut);
     bool applyInitialSchema(QString *errorOut);
@@ -58,9 +94,9 @@ private:
     /// empty file on the same connection (pre-production policy: recreate
     /// from canonical schema instead of in-place migration).
     bool backupAndResetDatabase(const QString &databasePath, QString *errorOut);
-    bool reopenConnection(const QString &databasePath,
-                          const QString &connectionName,
-                          QString *errorOut);
+    bool openConnection(const QString &databasePath,
+                        const QString &connectionName,
+                        QString *errorOut);
 
     QSqlDatabase m_db;
     QString m_connectionName;

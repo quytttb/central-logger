@@ -174,7 +174,8 @@ void TestSensorMerger::invalidValueDoesNotAppearAsAReading()
     QCOMPARE(findRow(rows, 1)->value, QStringLiteral("—"));
     QCOMPARE(findRow(rows, 1)->displayStatus, QStringLiteral("UNKNOWN"));
     QCOMPARE(findRow(rows, 2)->value, QStringLiteral("0.0000"));
-    QVERIFY(findRow(rows, 2)->statusCode == QLatin1String("00"));
+    QCOMPARE(findRow(rows, 2)->displayStatus, QStringLiteral("00"));
+    QVERIFY(findRow(rows, 2)->valid);
 }
 
 void TestSensorMerger::analogValueUsesPerSensorDecimals()
@@ -227,7 +228,7 @@ void TestSensorMerger::mergeAnalogDiCatalogMatch()
     QCOMPARE(temp->unit, QStringLiteral("C"));
     QCOMPARE(temp->value, QStringLiteral("25.5000"));
     QCOMPARE(temp->displayStatus, QStringLiteral("00"));
-    QVERIFY(temp->statusCode == QLatin1String("00"));
+    QVERIFY(temp->valid);
 
     const auto *door = findRow(rows, 3);
     QVERIFY(door);
@@ -235,7 +236,7 @@ void TestSensorMerger::mergeAnalogDiCatalogMatch()
     QCOMPARE(door->value, QStringLiteral("ON"));
     QCOMPARE(door->displayStatus, QStringLiteral("00"));
     QVERIFY(door->unit.isEmpty());
-    QCOMPARE(door->timestamp, QStringLiteral("03:14:15"));
+    QVERIFY(door->valid);
 
     // Sorted ascending by edgeSensorId.
     QCOMPARE(rows[0].edgeSensorId, 1);
@@ -283,15 +284,33 @@ void TestSensorMerger::displayStatusStaleAndThreshold()
                     /*minT*/ 10.0, /*maxT*/ 50.0),
         makeCatalog(loggerId, 3, "ANALOG", QStringLiteral("Max"), QStringLiteral("C"),
                     /*minT*/ 0.0, /*maxT*/ 50.0),
-        makeCatalog(loggerId, 4, "ANALOG", QStringLiteral("Bad")),
+        makeCatalog(loggerId, 4, "ANALOG", QStringLiteral("MirrorOnly"), QStringLiteral("C"),
+                    /*minT*/ 10.0, /*maxT*/ 50.0),
     };
 
     auto snap = makeSnapshot(loggerId);
+    snap.header.mapVersion = 2;
+
+    auto belowMinWithAlarm = makeAnalog(2, 5.0f, QStringLiteral("00"));
+    belowMinWithAlarm.hasQuality = true;
+    belowMinWithAlarm.qualityValid = true;
+    belowMinWithAlarm.qualityAlarm = true;
+
+    auto aboveMaxWithAlarm = makeAnalog(3, 99.0f, QStringLiteral("01")); // Calibrating TT10 preserved!
+    aboveMaxWithAlarm.hasQuality = true;
+    aboveMaxWithAlarm.qualityValid = true;
+    aboveMaxWithAlarm.qualityAlarm = true;
+
+    auto aboveMaxWithoutEdgeBit = makeAnalog(4, 99.0f, QStringLiteral("00"));
+    aboveMaxWithoutEdgeBit.hasQuality = true;
+    aboveMaxWithoutEdgeBit.qualityValid = true;
+    aboveMaxWithoutEdgeBit.qualityAlarm = false; // Edge alarm bit OFF -> Central must NOT raise alarm
+
     snap.analogs = {
-        makeAnalog(1, 25.0f, QLatin1String("")),        // no data → empty chip
-        makeAnalog(2, 5.0f),                     // below min → "00" with alarmType=min
-        makeAnalog(3, 99.0f),                    // above max → "00" with alarmType=max
-        makeAnalog(4, 0.0f, QLatin1String("")),        // no data → empty chip
+        makeAnalog(1, 25.0f, QLatin1String("")), // no data -> UNKNOWN + placeholder
+        belowMinWithAlarm,
+        aboveMaxWithAlarm,
+        aboveMaxWithoutEdgeBit,
     };
 
     const auto rows = SensorMerger::buildRows(loggerId, snap, catalog);
@@ -299,11 +318,18 @@ void TestSensorMerger::displayStatusStaleAndThreshold()
 
     QCOMPARE(findRow(rows, 1)->displayStatus, QStringLiteral("UNKNOWN"));
     QCOMPARE(findRow(rows, 1)->value, QStringLiteral("—"));
+    QVERIFY(!findRow(rows, 1)->valid);
+
     QCOMPARE(findRow(rows, 2)->displayStatus, QStringLiteral("00"));
     QCOMPARE(findRow(rows, 2)->alarmType, QStringLiteral("min"));
-    QCOMPARE(findRow(rows, 3)->displayStatus, QStringLiteral("00"));
+
+    // Edge alarm bit sets alarmType without overwriting TT10 status "01"
+    QCOMPARE(findRow(rows, 3)->displayStatus, QStringLiteral("01"));
     QCOMPARE(findRow(rows, 3)->alarmType, QStringLiteral("max"));
-    QCOMPARE(findRow(rows, 4)->displayStatus, QStringLiteral("UNKNOWN"));
+
+    // Mirror threshold alone never raises alarm when edge alarm bit is false
+    QCOMPARE(findRow(rows, 4)->displayStatus, QStringLiteral("00"));
+    QVERIFY(findRow(rows, 4)->alarmType.isEmpty());
 }
 
 void TestSensorMerger::failedSnapshotEmpty()
@@ -364,9 +390,9 @@ void TestSensorMerger::wrongLoggerIdReturnsEmpty()
 
 void TestSensorMerger::alarmFlagWithoutThresholdYieldsGenericAlarm()
 {
-    // M-14: when the Modbus alarm bit is set but no threshold can determine
-    // the direction, displayStatus must be the generic "ALARM" label instead
-    // of incorrectly reporting "ALARM_MIN".
+    // When the edge alarm bit is set (`qualityAlarm = true`) and no mirrored
+    // threshold explains the direction, `alarmType` falls back to `"device"`
+    // while preserving the TT10 `displayStatus` untouched.
     constexpr qint64 loggerId = 5;
     QVector<LoggerSensor> catalog{
         makeCatalog(loggerId, 1, "ANALOG", QStringLiteral("Pressure"),
@@ -376,28 +402,41 @@ void TestSensorMerger::alarmFlagWithoutThresholdYieldsGenericAlarm()
     };
 
     auto snap = makeSnapshot(loggerId);
-    // sensor 1: alarm bit set, no thresholds → generic ALARM
-    // sensor 2: alarm bit set, value < max threshold (no violation) → generic ALARM
-    snap.analogs = {
-        makeAnalog(1, 25.0f, QLatin1String("02")),
-        makeAnalog(2, 50.0f, QLatin1String("02")),
-    };
+    snap.header.mapVersion = 2;
+
+    auto s1 = makeAnalog(1, 25.0f, QLatin1String("00"));
+    s1.hasQuality = true;
+    s1.qualityValid = true;
+    s1.qualityAlarm = true;
+
+    auto s2 = makeAnalog(2, 50.0f, QLatin1String("03"));
+    s2.hasQuality = true;
+    s2.qualityValid = true;
+    s2.qualityAlarm = true;
+
+    snap.analogs = { s1, s2 };
 
     const auto rows = SensorMerger::buildRows(loggerId, snap, catalog);
     QCOMPARE(rows.size(), 2);
-    QCOMPARE(findRow(rows, 1)->displayStatus, QStringLiteral("02"));
-    QCOMPARE(findRow(rows, 2)->displayStatus, QStringLiteral("02"));
+    QCOMPARE(findRow(rows, 1)->displayStatus, QStringLiteral("00"));
+    QCOMPARE(findRow(rows, 1)->alarmType, QStringLiteral("device"));
+    QCOMPARE(findRow(rows, 2)->displayStatus, QStringLiteral("03"));
+    QCOMPARE(findRow(rows, 2)->alarmType, QStringLiteral("device"));
 
-    // Threshold-direction checks still work when the value is clearly out of range.
+    // Direction explanation uses mirrored threshold when value breaches it.
     QVector<LoggerSensor> catalog2{
         makeCatalog(loggerId, 3, "ANALOG", QStringLiteral("Hot"),
                     QStringLiteral("C"), std::nullopt, /*maxT*/ 50.0),
     };
-    snap.analogs = { makeAnalog(3, 99.0f, QLatin1String("02")) };
+    auto s3 = makeAnalog(3, 99.0f, QLatin1String("00"));
+    s3.hasQuality = true;
+    s3.qualityValid = true;
+    s3.qualityAlarm = true;
+    snap.analogs = { s3 };
     const auto rows2 = SensorMerger::buildRows(loggerId, snap, catalog2);
     QCOMPARE(rows2.size(), 1);
-    QCOMPARE(rows2[0].displayStatus, QStringLiteral("02"));
-    QCOMPARE(rows2[0].alarmType, QStringLiteral("device"));
+    QCOMPARE(rows2[0].displayStatus, QStringLiteral("00"));
+    QCOMPARE(rows2[0].alarmType, QStringLiteral("max"));
 }
 
 void TestSensorMerger::thresholdBoundaryAtMinWithAlarmBit()
@@ -409,16 +448,27 @@ void TestSensorMerger::thresholdBoundaryAtMinWithAlarmBit()
     };
 
     auto snap = makeSnapshot(loggerId);
-    snap.analogs = { makeAnalog(1, 10.0f, QLatin1String("02")) };
+    snap.header.mapVersion = 2;
+
+    auto atMin = makeAnalog(1, 10.0f, QLatin1String("00"));
+    atMin.hasQuality = true;
+    atMin.qualityValid = true;
+    atMin.qualityAlarm = true;
+    snap.analogs = { atMin };
 
     const auto rows = SensorMerger::buildRows(loggerId, snap, catalog);
     QCOMPARE(rows.size(), 1);
-    QCOMPARE(rows[0].displayStatus, QStringLiteral("02"));
-    QCOMPARE(rows[0].alarmType, QStringLiteral("device"));
+    QCOMPARE(rows[0].displayStatus, QStringLiteral("00"));
+    QCOMPARE(rows[0].alarmType, QStringLiteral("min"));
 
-    snap.analogs = { makeAnalog(1, 60.0f, QLatin1String("02")) };
+    auto atMax = makeAnalog(1, 60.0f, QLatin1String("00"));
+    atMax.hasQuality = true;
+    atMax.qualityValid = true;
+    atMax.qualityAlarm = true;
+    snap.analogs = { atMax };
     const auto rowsMax = SensorMerger::buildRows(loggerId, snap, catalog);
-    QCOMPARE(rowsMax[0].alarmType, QStringLiteral("device"));
+    QCOMPARE(rowsMax[0].displayStatus, QStringLiteral("00"));
+    QCOMPARE(rowsMax[0].alarmType, QStringLiteral("max"));
 }
 
 void TestSensorMerger::rtuDisconnectedYieldsErr()

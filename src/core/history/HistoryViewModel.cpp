@@ -7,16 +7,12 @@
 #include "data/repositories/SensorReadingRepository.h"
 #include "network/workers/HistoryWriterWorker.h"
 #include "utils/AppConstants.h"
+#include "utils/CsvUtils.h"
 #include "utils/DbConstants.h"
 #include "utils/FormatConstants.h"
 #include "utils/UiConstants.h"
 
 #include <QDateTime>
-#include <QFile>
-#include <QSqlDatabase>
-#include <QSqlError>
-#include <QTextStream>
-#include <QThread>
 #include <QTimeZone>
 #include <QTimer>
 #include <QtConcurrent>
@@ -38,16 +34,6 @@ QVariantMap filterItem(qint64 id, const QString &name)
     return item;
 }
 
-QString csvEscape(const QString &s)
-{
-    if (s.contains(QLatin1Char(',')) || s.contains(QLatin1Char('"')) ||
-        s.contains(QLatin1Char('\n'))) {
-        return QStringLiteral("\"%1\"").arg(
-            QString(s).replace(QStringLiteral("\""), QStringLiteral("\"\"")));
-    }
-    return s;
-}
-
 struct HistorySearchParams
 {
     QString   dbPath;
@@ -61,62 +47,28 @@ struct HistorySearchParams
 HistorySearchResult executeHistorySearch(HistorySearchParams params)
 {
     HistorySearchResult result;
-
-    const QString connName = QStringLiteral("history_search_%1").arg(
-        reinterpret_cast<quintptr>(QThread::currentThreadId()));
-
-    QSqlDatabase db = QSqlDatabase::addDatabase(QLatin1String(CentralLogger::Data::Db::kSqliteDriver), connName);
-    db.setDatabaseName(params.dbPath);
-    if (!db.open()) {
-        result.error = db.lastError().text();
-        db = QSqlDatabase();
-        QSqlDatabase::removeDatabase(connName);
-        return result;
-    }
-
-    Data::Database::applyPerformancePragmas(db, nullptr);
-
-    {
-        Data::SensorReadingRepository repo(db);
-        result.totalCount = repo.countHistory(params.loggerId,
-                                              params.fromUtc,
-                                              params.toUtc,
-                                              params.sensorId,
-                                              &result.error);
-        if (!result.error.isEmpty()) {
-            db.close();
-            db = QSqlDatabase();
-            QSqlDatabase::removeDatabase(connName);
-            return result;
-        }
-        result.rows = repo.searchHistory(params.loggerId,
-                                         params.fromUtc,
-                                         params.toUtc,
-                                         params.sensorId,
-                                         params.limit,
-                                         &result.error);
-    }
-
-    db.close();
-    db = QSqlDatabase();
-    QSqlDatabase::removeDatabase(connName);
-    return result;
-}
-
-/// L-20 / M-7: single source for the configured display timezone (falls back
-/// to the process timezone when unset or invalid).
-QTimeZone configuredTimeZone()
-{
-    QTimeZone tz = QTimeZone::systemTimeZone();
-    if (auto *settings = SettingsController::instance()) {
-        if (!settings->systemTimezone().isEmpty()) {
-            const QTimeZone configured(settings->systemTimezone().toUtf8());
-            if (configured.isValid()) {
-                tz = configured;
+    Data::Database::withScopedConnection(
+        QStringLiteral("history_search"),
+        params.dbPath,
+        [&](QSqlDatabase &db) {
+            Data::SensorReadingRepository repo(db);
+            result.totalCount = repo.countHistory(params.loggerId,
+                                                  params.fromUtc,
+                                                  params.toUtc,
+                                                  params.sensorId,
+                                                  &result.error);
+            if (!result.error.isEmpty()) {
+                return;
             }
-        }
-    }
-    return tz;
+            result.rows = repo.searchHistory(params.loggerId,
+                                             params.fromUtc,
+                                             params.toUtc,
+                                             params.sensorId,
+                                             params.limit,
+                                             &result.error);
+        },
+        &result.error);
+    return result;
 }
 
 /// Worker: build the average CSV on a throw-away connection, then write it.
@@ -125,44 +77,28 @@ AverageExportJobResult executeAverageExport(const QString &dbPath,
                                             const QString &savePath)
 {
     AverageExportJobResult result;
-
-    const QString connName = QStringLiteral("avg_export_%1").arg(
-        reinterpret_cast<quintptr>(QThread::currentThreadId()));
-
-    QSqlDatabase db = QSqlDatabase::addDatabase(QLatin1String(CentralLogger::Data::Db::kSqliteDriver), connName);
-    db.setDatabaseName(dbPath);
-    if (!db.open()) {
-        result.error = db.lastError().text();
-        db = QSqlDatabase();
-        QSqlDatabase::removeDatabase(connName);
+    Core::AverageExportResult built;
+    QString openErr;
+    if (!Data::Database::withScopedConnection(
+            QStringLiteral("avg_export"),
+            dbPath,
+            [&](QSqlDatabase &db) {
+                Core::AverageExportService service(db);
+                built = service.build(params);
+            },
+            &openErr)) {
+        result.error = openErr;
         return result;
     }
-
-    Data::Database::applyPerformancePragmas(db, nullptr);
-
-    Core::AverageExportService service(db);
-    const Core::AverageExportResult built = service.build(params);
-
-    db.close();
-    db = QSqlDatabase();
-    QSqlDatabase::removeDatabase(connName);
 
     if (!built.error.isEmpty()) {
         result.error = built.error;
         return result;
     }
 
-    QFile file(savePath);
-    if (!file.open(QIODevice::WriteOnly | QIODevice::Text | QIODevice::Truncate)) {
-        result.error = QStringLiteral("Cannot open file: %1").arg(file.errorString());
+    if (!CentralLogger::Utils::writeUtf8BomFile(savePath, built.csv, &result.error)) {
         return result;
     }
-
-    QTextStream out(&file);
-    out.setEncoding(QStringConverter::Utf8);
-    out << "\xEF\xBB\xBF";
-    out << built.csv;
-    file.close();
 
     result.ok   = true;
     result.path = savePath;
@@ -259,18 +195,9 @@ void HistoryViewModel::search(const QString &fromDate, const QString &toDate, qi
         return;
     }
 
-    // M-7 fix: date boundaries must use the SAME timezone the chart uses
-    // (configured system_timezone), not the process-local OS timezone —
-    // otherwise the History search and the Dashboard chart disagree around
-    // the midnight boundary.
-    QTimeZone tz = QTimeZone::systemTimeZone();
-    if (auto *settings = SettingsController::instance()) {
-        if (!settings->systemTimezone().isEmpty()) {
-            const QTimeZone configured(settings->systemTimezone().toUtf8());
-            if (configured.isValid())
-                tz = configured;
-        }
-    }
+    // M-7 fix: date boundaries must use the configured system_timezone so
+    // History search and the Dashboard chart agree around midnight.
+    const QTimeZone tz = SettingsController::resolveTimeZone();
 
     const QDate fromDate2 = QDate::fromString(fromDate, QLatin1String(CentralLogger::Format::kDateDdMmYyyy));
     const QDate toDate2   = QDate::fromString(toDate,   QLatin1String(CentralLogger::Format::kDateDdMmYyyy));
@@ -278,7 +205,7 @@ void HistoryViewModel::search(const QString &fromDate, const QString &toDate, qi
         ? QDateTime(fromDate2, QTime(0, 0), tz).toUTC()
         : QDateTime();
     const QDateTime toDt = toDate2.isValid()
-        ? QDateTime(toDate2.addDays(1), QTime(0, 0), tz).addSecs(-1).toUTC()
+        ? QDateTime(toDate2.addDays(1), QTime(0, 0), tz).addMSecs(-1).toUTC()
         : QDateTime();
 
     if (!fromDt.isValid() || !toDt.isValid()) {
@@ -290,8 +217,14 @@ void HistoryViewModel::search(const QString &fromDate, const QString &toDate, qi
         return;
     }
 
+    startSearch(m_loggerId, sensorId, fromDt, toDt);
+}
+
+void HistoryViewModel::startSearch(qint64 loggerId, qint64 sensorId,
+                                   const QDateTime &fromDt, const QDateTime &toDt)
+{
     const bool wasShowLogger = showLoggerColumn();
-    m_searchLoggerId = m_loggerId;
+    m_searchLoggerId = loggerId;
     if (!m_searchedOnce) {
         m_searchedOnce = true;
         emit searchedOnceChanged();
@@ -304,13 +237,13 @@ void HistoryViewModel::search(const QString &fromDate, const QString &toDate, qi
 
     setError(QString());
     setLoading(true);
-    if (!sameQueryAsLast(m_loggerId, sensorId, fromDt, toDt))
+    if (!sameQueryAsLast(loggerId, sensorId, fromDt, toDt))
         m_model.clear();
-    rememberQuery(m_loggerId, sensorId, fromDt, toDt);
+    rememberQuery(loggerId, sensorId, fromDt, toDt);
 
     HistorySearchParams params;
     params.dbPath   = g_db->connection().databaseName();
-    params.loggerId = m_loggerId;
+    params.loggerId = loggerId;
     params.fromUtc  = fromDt;
     params.toUtc    = toDt;
     params.sensorId = sensorId;
@@ -362,6 +295,12 @@ void HistoryViewModel::refresh(const QString &fromDate, const QString &toDate, q
     g_historyWriter->flushPending();
 }
 
+void HistoryViewModel::refreshCurrent()
+{
+    if (!m_loading && m_hasLastQuery && g_db && g_db->isOpen())
+        startSearch(m_lastQueryLoggerId, m_lastQuerySensorId, m_lastQueryFromUtc, m_lastQueryToUtc);
+}
+
 void HistoryViewModel::onSearchCompleted()
 {
     if (m_activeSearchGeneration != m_searchGeneration) {
@@ -375,7 +314,7 @@ void HistoryViewModel::onSearchCompleted()
         return;
     }
 
-    m_model.setRows(result.rows);
+    m_model.mergeLatest(result.rows);
     const int displayed = result.rows.size();
     if (m_recordCount != result.totalCount) {
         m_recordCount = result.totalCount;
@@ -398,35 +337,31 @@ void HistoryViewModel::exportCsv(const QUrl &fileUrl)
         return;
     }
 
-    QFile file(path);
-    if (!file.open(QIODevice::WriteOnly | QIODevice::Text | QIODevice::Truncate)) {
-        emit exportFinished(false, tr("Cannot open file: %1").arg(file.errorString()));
+    const QTimeZone tz = SettingsController::resolveTimeZone();
+    QString writeErr;
+    if (!CentralLogger::Utils::writeUtf8BomFile(
+            path,
+            [&rows, &tz](QTextStream &out) {
+                out << "Time,Logger,Sensor,Unit,Value,Status\n";
+                for (const auto &r : rows) {
+                    out << CentralLogger::Utils::csvEscape(
+                               r.recordedAt.toTimeZone(tz).toString(
+                                   QLatin1String(CentralLogger::Format::kDateTimeDdMmYyyyHms)))
+                        << ',' << CentralLogger::Utils::csvEscape(r.loggerName)
+                        << ',' << CentralLogger::Utils::csvEscape(r.sensorName)
+                        << ',' << CentralLogger::Utils::csvEscape(r.unit)
+                        << ',' << CentralLogger::Utils::csvEscape(HistoryTableModel::valueText(r))
+                        << ',' << HistoryTableModel::statusText(r) << '\n';
+                }
+            },
+            &writeErr)) {
+        emit exportFinished(false, writeErr);
         return;
     }
-
-    QTextStream out(&file);
-    out.setEncoding(QStringConverter::Utf8);
-
-    out << "\xEF\xBB\xBF";
-    out << "Time,Logger,Sensor,Unit,Value,Status\n";
-
-    for (const auto &r : rows) {
-        out << csvEscape(r.recordedAt.toLocalTime()
-                              .toString(QLatin1String(CentralLogger::Format::kDateTimeDdMmYyyyHms))) << ','
-            << csvEscape(r.loggerName) << ','
-            << csvEscape(r.sensorName) << ','
-            << csvEscape(r.unit) << ','
-            << csvEscape(HistoryTableModel::valueText(r)) << ','
-            << HistoryTableModel::statusText(r) << '\n';
-    }
-
-    file.close();
     emit exportFinished(true, path);
 }
 
 void HistoryViewModel::exportAverageCsv(const QUrl &fileUrl,
-                                        bool shiftMode,
-                                        int shiftStartHour,
                                         const QString &fromDate,
                                         const QString &toDate)
 {
@@ -450,7 +385,7 @@ void HistoryViewModel::exportAverageCsv(const QUrl &fileUrl,
         return;
     }
 
-    const QTimeZone tz = configuredTimeZone();
+    const QTimeZone tz = SettingsController::resolveTimeZone();
     const QDate fromDay = QDate::fromString(fromDate, QLatin1String(CentralLogger::Format::kDateDdMmYyyy));
     const QDate toDay   = QDate::fromString(toDate,   QLatin1String(CentralLogger::Format::kDateDdMmYyyy));
     if (!fromDay.isValid() || !toDay.isValid()) {
@@ -465,9 +400,6 @@ void HistoryViewModel::exportAverageCsv(const QUrl &fileUrl,
     AverageExportParams params;
     params.loggerId      = m_loggerId;
     params.timeZone      = tz;
-    params.shiftStartHour = qBound(0, shiftStartHour, 23);
-    params.mode          = shiftMode ? AverageExportMode::Shift
-                                     : AverageExportMode::Hourly;
     params.fromUtc = QDateTime(fromDay, QTime(0, 0), tz).toUTC();
     params.toUtc   = QDateTime(toDay.addDays(1), QTime(0, 0), tz)
                          .addMSecs(-1)

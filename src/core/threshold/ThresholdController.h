@@ -4,7 +4,6 @@
 
 #include <QObject>
 #include <QString>
-#include <QVariantList>
 #include <QtQmlIntegration/qqmlintegration.h>
 
 class QJSEngine;
@@ -16,16 +15,9 @@ class Database;
 
 namespace CentralLogger::Core {
 
-class DashboardController;
-
-/// QML facade for the Thresholds screen (Set Threshold → full page).
-///
-/// Owns the logger picker list + the editable ThresholdTableModel and
-/// persists edits to `logger_sensor.min_threshold/max_threshold`. Thresholds
-/// are applied centrally: SensorMerger raises ALARM when a live value is
-/// <= min or >= max, and the Dashboard summary tints each sensor chart.
-///
-/// Registered as a QML singleton (`CentralLogger.Core.ThresholdController`).
+/// Displays the selected logger's mirrored thresholds from SQLite. The
+/// Settings form owns the GET that refreshes the mirror; this controller
+/// does not contact the logger or modify the catalog.
 class ThresholdController : public QObject
 {
     Q_OBJECT
@@ -33,65 +25,35 @@ class ThresholdController : public QObject
     QML_SINGLETON
 
     Q_PROPERTY(CentralLogger::Core::ThresholdTableModel *table READ table CONSTANT)
-    Q_PROPERTY(QVariantList loggerItems READ loggerItems NOTIFY loggerItemsChanged)
     Q_PROPERTY(qint64 selectedLoggerId READ selectedLoggerId
                    WRITE setSelectedLoggerId NOTIFY selectedLoggerChanged)
-    Q_PROPERTY(QString selectedLoggerName READ selectedLoggerName
-                   NOTIFY selectedLoggerChanged)
     Q_PROPERTY(QString lastError READ lastError NOTIFY lastErrorChanged)
-    Q_PROPERTY(bool saving READ saving NOTIFY savingChanged)
 
 public:
-    /// Parent required so QML cannot default-construct a second singleton.
     explicit ThresholdController(QObject *parent);
 
     ThresholdTableModel *table() { return &m_table; }
-    QVariantList loggerItems() const { return m_loggerItems; }
-    qint64       selectedLoggerId() const { return m_selectedLoggerId; }
-    QString      selectedLoggerName() const { return m_selectedLoggerName; }
-    QString      lastError() const { return m_lastError; }
-    bool         saving() const { return m_saving; }
+    qint64 selectedLoggerId() const { return m_selectedLoggerId; }
+    QString lastError() const { return m_lastError; }
 
     void setDatabase(Data::Database *db) { m_db = db; }
-    void setDashboardController(DashboardController *dashboard) { m_dashboard = dashboard; }
+    void setSelectedLoggerId(qint64 id);
+    void refresh();
 
-    static ThresholdController *instance();
+    Q_INVOKABLE void setFilterText(const QString &text);
+
     static void setInstance(ThresholdController *controller);
     static ThresholdController *create(QQmlEngine *, QJSEngine *);
 
-public slots:
-    /// Reloads the logger picker + rows for the selected logger.
-    void refresh();
-
-    void setSelectedLoggerId(qint64 id);
-    void setFilterText(const QString &text);
-
-    /// Restores every edited cell to the DB value.
-    void discardChanges();
-
-    /// Validates + writes changed rows in one transaction.
-    void save();
-
 signals:
-    void loggerItemsChanged();
     void selectedLoggerChanged();
     void lastErrorChanged();
-    void savingChanged();
-    void saveFinished(bool ok, QString message);
 
 private:
-    void setError(const QString &message);
-    void loadRows();
-    void updateSelectedLoggerName();
-
-    Data::Database       *m_db = nullptr;
-    DashboardController  *m_dashboard = nullptr;
-    ThresholdTableModel   m_table;
-    QVariantList          m_loggerItems;
-    qint64                m_selectedLoggerId = 0;
-    QString               m_selectedLoggerName;
-    QString               m_lastError;
-    bool                  m_saving = false;
+    Data::Database      *m_db = nullptr;
+    ThresholdTableModel  m_table;
+    qint64               m_selectedLoggerId = 0;
+    QString              m_lastError;
 };
 
 } // namespace CentralLogger::Core

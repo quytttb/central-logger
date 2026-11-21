@@ -2,6 +2,10 @@
 
 Base URL: `http://<host>:<api_port>/api/v1`
 
+> Từ 2026-11-21, **Central chỉ dùng phần đọc** của contract. Data Logger và
+> adapter OSG giữ nguyên hành vi v1 trên wire. `POST /config` bên dưới là
+> tham chiếu cho client khác, không phải đường gọi của Central.
+
 | Thuộc tính | Giá trị |
 |------------|---------|
 | API version | **v1** |
@@ -9,15 +13,15 @@ Base URL: `http://<host>:<api_port>/api/v1`
 | Content-Type | `application/json` (config); binary cho report |
 | Optimistic locking | `expected_revision` trên `POST /config` |
 
-**Phạm vi v1 (repo C++ mới):**
+**Phạm vi đọc của Central:**
 
 | REST | Vai trò |
 |------|---------|
-| `GET/POST /config` | Cấu hình trạm, **catalog sensor** (`sensor_type`, tên, ngưỡng), revision |
-| `GET /reports/latest` | Tải báo cáo (on demand) |
+| `GET /config` | Đọc cấu hình trạm, **catalog sensor** (`sensor_type`, tên, ngưỡng), revision |
+| `GET /reports/latest` | Endpoint tải báo cáo on demand của edge, không có nút trong UI hiện tại |
 | `GET /readings` | **Debug thủ công** — xem JSON gốc từ edge (1 lần / lần bấm); **không** feed bảng sensor live |
 
-**Live values (ANALOG + DI + DO):** chỉ [modbus-map-v1.md](modbus-map-v1.md) — FC03 (analog) + FC02 (DI) + FC01 (DO), cùng nhịp `poll_interval_s`. Xem [`thiet_ke_db.md`](../thiet_ke_db.md).
+**Live values (ANALOG + DI + DO):** chỉ đọc Modbus — FC03 (analog) + FC02 (DI) + FC01 (DO) khi có, cùng nhịp `central_poll_interval_s`. Xem [`thiet_ke_db.md`](../thiet_ke_db.md).
 
 ---
 
@@ -25,11 +29,13 @@ Base URL: `http://<host>:<api_port>/api/v1`
 
 | Column | Role |
 |--------|------|
-| `name`, `host`, `port`, `unit_id`, `poll_interval_s`, `timeout_s` | Modbus TCP client |
-| `api_port`, `api_token`, `last_revision` | REST client |
-| `enabled`, `note` | Operations |
+| `name`, `host`, `modbus_port`, `modbus_unit_id`, `central_poll_interval_s`, `timeout_s` | Tên hiển thị và kết nối của Central |
+| `api_port`, `api_token` | Kết nối REST của Central |
+| `last_revision` | Revision đọc gần nhất |
+| `enabled`, `note` | Giám sát và ghi chú cục bộ |
 
-`port` (Modbus) chỉ sửa ở cột **Central** trong Add/Edit.
+`Save` trong Settings chỉ lưu dữ liệu ở Central. `Reload config` chỉ cập nhật
+catalog/revision sau GET, không ghi đè các cài đặt trên.
 
 ---
 
@@ -37,45 +43,73 @@ Base URL: `http://<host>:<api_port>/api/v1`
 
 ### `GET /config`
 
-| REST key | Device form (Edit, online) |
+| REST key | Central sử dụng |
 |----------|----------------------------|
-| `station_code` | Station code |
-| `station_name` | Station name |
-| `poll_interval` | Device poll interval (**seconds**) |
-| `modbus_tcp_bind` | Modbus TCP bind |
-| `modbus_tcp_enabled` | Modbus TCP server enabled |
-| `modbus_tcp_unit_id` | Modbus TCP unit ID (edge) |
+| `station_code` | Gợi ý mã trạm khi Add |
+| `station_name` | Gợi ý tên hiển thị khi Add |
+| `poll_interval` | Chu kỳ thiết bị (giây), không dùng làm chu kỳ đọc Central |
+| `modbus_tcp_bind` | Modbus TCP bind tại edge, không sửa từ Central |
+| `modbus_tcp_enabled` | Trạng thái Modbus TCP server tại edge, không sửa từ Central |
+| `modbus_tcp_unit_id` | Gợi ý Unit ID cho kết nối Central khi Add |
 
-Response **phải** đủ để Central cập nhật `logger_sensor`: `sensor_id`, `sensor_type` (`ANALOG`|`DI`|`DO`), `name`, `unit`, ngưỡng (nếu edge trả về trong payload config/catalog).
+Response **phải** đủ để Central cập nhật `logger_sensor`: `sensor_id`, `sensor_type` (`ANALOG`|`DI`|`DO`), `name`, `unit`, `active`, và ngưỡng cảnh báo (nếu nguồn dữ liệu có). `revision` và danh sách `sensors[]` phải được đọc trong một snapshot nhất quán.
 
-**`decimals` (tùy chọn, ANALOG):** số chữ số thập phân hiển thị cho giá trị analog. Integer, range **0–6**, **default 4** khi vắng mặt. Central clamp vào [0,6], lưu `logger_sensor.decimals`, và dùng cho bảng sensor live (Detail), History, CSV export, và tooltip biểu đồ trending. DI/DO bỏ qua (hiển thị ON/OFF). Field này **additive**, backward-compatible: firmware cũ không gửi → Central dùng 4.
+**`thresholds_writable` (tùy chọn, boolean ở root hoặc trong `config`):**
+`true` khi firmware hỗ trợ ghi ngưỡng qua `POST /config` (`config.sensors[]`).
+Firmware cũ và adapter read-only có thể không gửi. Central bỏ qua cờ này;
+ngưỡng luôn chỉ đọc trong Central.
+
+**`min_threshold` / `max_threshold` (ANALOG):**
+- Thiết bị là nguồn sự thật duy nhất của ngưỡng cảnh báo (điều khiển relay DO và báo cáo TT10 tại edge).
+- `data-logger` hỗ trợ ghi ngưỡng luôn xuất `min_threshold` và `max_threshold` cho từng cảm biến `ANALOG`: số hữu hạn hoặc `null` khi xác nhận chưa đặt giới hạn.
+- Nguồn/adapter không cung cấp ngưỡng **bỏ hẳn key** (Central phân biệt vắng key = chưa biết giới hạn với `null` = đã xác nhận không đặt).
+
+**`decimals` (tùy chọn, ANALOG):** số chữ số thập phân hiển thị cho giá trị analog. Integer, range **0–6**, **default 4** khi vắng mặt. Central clamp vào [0,6], lưu `logger_sensor.decimals`, và dùng cho bảng/thẻ sensor live, History, CSV export, và tooltip biểu đồ trending. DI/DO bỏ qua (hiển thị ON/OFF). Field này **additive**, backward-compatible: firmware cũ không gửi → Central dùng 4.
 
 **Không có trong snapshot:** `rest_api_token` — [provision QR](provision-qr-v1.md).
 
 **Không gửi khi POST:** `logger_serial`, `cloud_enabled`, `cloud_endpoint` — edge trả **422** (`extra=forbid`).
 
-### `POST /config` — optimistic locking
+### `POST /config` — optimistic locking & patch ngưỡng
+
+**Edge API giữ nguyên; Central không gọi endpoint này.**
 
 ```json
 {
   "api_version": 1,
   "request_id": "central-<uuid>",
   "expected_revision": <int>,
-  "config": { ... }
+  "config": {
+    "station_name": "...",
+    "poll_interval": 10,
+    "sensors": [
+      { "sensor_id": 3, "min_threshold": 0, "max_threshold": 30 },
+      { "sensor_id": 4, "min_threshold": null, "max_threshold": 320 }
+    ]
+  }
 }
 ```
 
 | Field | Bắt buộc | Ghi chú |
 |-------|----------|---------|
 | `api_version` | Có | Phải `1` (khớp `/api/v1`) |
-| `request_id` | Có | Trace id từ Central (string, max 128) |
-| `expected_revision` | Có | Optimistic lock |
-| `config` | Có | Patch partial (root keys) hoặc `sensors[]` replace full |
+| `request_id` | Có | Trace id từ client (string, 1..128 ký tự) |
+| `expected_revision` | Có | Optimistic lock (số nguyên `>= 0`) |
+| `config` | Có | Patch partial app-config và/hoặc `sensors[]` (**patch ngưỡng**, không replace toàn bộ catalog) |
 
-| Kết quả | HTTP | Central |
+**Quy tắc `config.sensors[]` (chốt 2026-11-18):**
+1. Mỗi phần tử chỉ cho phép các khóa `sensor_id`, `min_threshold`, `max_threshold`; bắt buộc có `sensor_id` và ít nhất một trong hai khóa ngưỡng. Trùng `sensor_id` hoặc dư khóa khác (vd. `name`, `decimals`) → **422**.
+2. Giá trị ngưỡng chỉ nhận số hữu hạn hoặc `null` (`null` = xóa ngưỡng; vắng khóa = giữ nguyên giá trị hiện có trên thiết bị).
+3. `sensor_id` phải là cảm biến `ANALOG` đang `active` và tồn tại trên thiết bị; không tạo/xóa cảm biến hay sửa liên kết DO qua patch này. ID không hợp lệ → **422**, rollback toàn bộ transaction.
+4. Sau khi ghép với giá trị hiện tại trên thiết bị, nếu cả `min_threshold` và `max_threshold` đều có giá trị và `min_threshold >= max_threshold` → **422**, rollback.
+5. So khớp `expected_revision` bên trong transaction trước khi ghi (lệch → **409**). Ghi ngưỡng, tăng `config_revision` (+1) và ghi `audit_log` theo whitelist `{sensor_id, from, to}` trong **cùng một transaction**.
+6. Sau khi commit, edge tự nạp lại ngưỡng cho worker polling mà không cần khởi động lại ứng dụng.
+
+| Kết quả | HTTP | Ý nghĩa |
 |---------|------|---------|
-| Thành công | 2xx + `applied_revision` | Cập nhật `last_revision` |
-| Xung đột | **409** / **422** | UX: "Connect again, then save" |
+| Thành công | 2xx + `applied_revision` | Edge đã áp dụng patch |
+| Xung đột revision | **409** | `expected_revision` không khớp |
+| Sai dữ liệu / read-only | **422** | `detail`/`error` từ thiết bị hoặc adapter ("Adapter is read-only…") |
 
 ---
 
@@ -147,7 +181,7 @@ Payload **chỉ** phục vụ màn hình/log debug — không ghi `sensor_readin
 | Method | Path | Auth | Central v1 |
 |--------|------|------|------------|
 | GET | `/config` | Bearer | **Bắt buộc** — form + catalog |
-| POST | `/config` | Bearer | **Bắt buộc** — apply patch |
+| POST | `/config` | Bearer | **Không dùng** — giữ nguyên contract thiết bị |
 | GET | `/readings` | Bearer | **Debug** — 1 shot / lần bấm, raw JSON |
 | GET | `/reports/latest` | Bearer | On demand |
 
@@ -159,7 +193,6 @@ Payload **chỉ** phục vụ màn hình/log debug — không ghi `sensor_readin
 |-------------|----------------|
 | 401 + not configured | Device REST token empty — Scan QR on logger |
 | 401 + invalid bearer | Token mismatch — Scan QR again on device |
-| 409 / revision | Configuration changed on device. Connect again, then save. |
 
 Không log `api_token` — [provision-qr-v1.md](provision-qr-v1.md).
 
@@ -167,12 +200,10 @@ Không log `api_token` — [provision-qr-v1.md](provision-qr-v1.md).
 
 ## Central implementation checklist (C++)
 
-- [x] `RestConfigService`: `fetchConfig`, `applyConfig`, `probe`, `fetchReadingsDebug` (manual only).
-- [x] Config GET/POST + catalog upsert: **Add/Edit form only** (`saveLoggerFromForm`); Detail không fetch/apply config.
-- [x] Sau load config (Connect / Edit auto-fetch) → upsert `logger_sensor` on **Save**.
-- [ ] `SensorMerger`: Modbus snapshot + catalog DB — **không** nhánh `/readings`.
-- [ ] UI debug: nút → hiện JSON; không side-effect lên table model.
-- [ ] Unit test: `fetchReadingsDebug` không được gọi từ poll loop / `ModbusBridge`.
+- [x] `RestConfigService`: GET-only (`fetchConfig`, `probeConfig`, `fetchReadingsDebug`).
+- [x] Add nhập bản sao catalog/revision khi Save; Edit chỉ lưu cài đặt Central.
+- [x] Reload config trong Settings cập nhật bản sao bằng GET, không ghi thiết bị.
+- [x] `SensorMerger`: Modbus snapshot + catalog DB — **không** nhánh `/readings`.
 
 ---
 

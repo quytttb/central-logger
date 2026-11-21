@@ -5,14 +5,20 @@ add_central_logger_test(
 )
 
 add_central_logger_test(
+    NAME    test_modbus_service_reconnect
+    SOURCES test_modbus_service_reconnect.cpp
+    LIBS    network
+)
+
+add_central_logger_test(
     NAME    test_rest_config_parser
     SOURCES test_rest_config_parser.cpp
     LIBS    network
 )
 
 add_central_logger_test(
-    NAME    test_rest_config_service_report
-    SOURCES test_rest_config_service_report.cpp
+    NAME    test_rest_config_service
+    SOURCES test_rest_config_service.cpp
     LIBS    network
 )
 

@@ -4,11 +4,9 @@
 from __future__ import annotations
 
 import argparse
-import json
 import os
 import re
 import sys
-import time
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent.parent
@@ -96,34 +94,6 @@ def main() -> int:
             print("set requires version argument or VERSION env", file=sys.stderr)
             return 1
         write_version(version)
-        # #region agent log
-        try:
-            with open(
-                ROOT / ".cursor" / "debug-e498c9.log",
-                "a",
-                encoding="utf-8",
-            ) as _dbg:
-                _dbg.write(
-                    json.dumps(
-                        {
-                            "sessionId": "e498c9",
-                            "hypothesisId": "H1",
-                            "location": "bump_version.py:set",
-                            "message": "before success print",
-                            "data": {
-                                "version": version,
-                                "stdout_encoding": getattr(
-                                    sys.stdout, "encoding", None
-                                ),
-                            },
-                            "timestamp": int(time.time() * 1000),
-                        }
-                    )
-                    + "\n"
-                )
-        except OSError:
-            pass
-        # #endregion
         print(f"CMakeLists.txt -> VERSION {version}")
         return 0
     except (ValueError, RuntimeError) as exc:

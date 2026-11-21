@@ -30,7 +30,7 @@ public:
     /// rows deleted; -1 on error. Mirrors SensorReadingRepository::purgeOlderThan.
     int purgeOlderThan(const QDateTime &cutoffUtc,
                        QString *errorOut = nullptr,
-                       int chunkSize = Defaults::kVacuumChunkPages);
+                       int chunkSize = Defaults::kDefaultPurgeChunkSize);
 
     QVector<SystemEvent> listRecent(int limit = Defaults::kRecentEventsLimit,
                                     QString *errorOut = nullptr) const;

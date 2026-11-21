@@ -116,42 +116,14 @@ bool Database::open(const QString &connectionName,
         close();
     }
 
-    m_connectionName = connectionName;
-
-    if (databasePath != memoryPath()) {
-        if (!ensureParentDirectory(databasePath, errorOut)) {
-            return false;
-        }
+    if (!ensureParentDirectory(databasePath, errorOut)) {
+        return false;
     }
 
     const bool freshBefore = !QFileInfo::exists(databasePath)
                              || databasePath == memoryPath();
 
-    m_db = QSqlDatabase::addDatabase(QLatin1String(CentralLogger::Data::Db::kSqliteDriver), connectionName);
-    m_db.setDatabaseName(databasePath);
-    if (!m_db.open()) {
-        if (errorOut) {
-            *errorOut = QStringLiteral("Cannot open database '%1': %2")
-                            .arg(databasePath, m_db.lastError().text());
-        }
-        m_db = QSqlDatabase();
-        QSqlDatabase::removeDatabase(connectionName);
-        m_connectionName.clear();
-        return false;
-    }
-
-    QSqlQuery pragma(m_db);
-    if (!pragma.exec(QStringLiteral("PRAGMA foreign_keys = ON"))) {
-        if (errorOut) {
-            *errorOut = QStringLiteral("PRAGMA foreign_keys failed: %1")
-                            .arg(pragma.lastError().text());
-        }
-        close();
-        return false;
-    }
-
-    if (!ensureAutoVacuumIncremental(m_db, errorOut)) {
-        close();
+    if (!openConnection(databasePath, connectionName, errorOut)) {
         return false;
     }
 
@@ -195,14 +167,8 @@ bool Database::open(const QString &connectionName,
             close();
             return false;
         }
-        if (!applyPerformancePragmas(m_db, errorOut)) {
-            close();
-            return false;
-        }
-        return true;
     }
 
-    // Existing DB already at the current schema version.
     if (!applyPerformancePragmas(m_db, errorOut)) {
         close();
         return false;
@@ -224,6 +190,9 @@ void Database::close()
 
 bool Database::ensureParentDirectory(const QString &databasePath, QString *errorOut)
 {
+    if (databasePath == memoryPath()) {
+        return true;
+    }
     const QFileInfo info(databasePath);
     const QDir parent = info.absoluteDir();
     if (parent.exists()) {
@@ -278,7 +247,7 @@ bool Database::backupAndResetDatabase(const QString &databasePath, QString *erro
 
     if (databasePath == memoryPath() || databasePath.isEmpty()) {
         close();
-        return reopenConnection(databasePath, connName, errorOut);
+        return openConnection(databasePath, connName, errorOut);
     }
 
     // Checkpoint the WAL into the main file so the .bak copy is self-contained.
@@ -305,21 +274,22 @@ bool Database::backupAndResetDatabase(const QString &databasePath, QString *erro
         QFile::remove(databasePath + suffix);
     }
 
-    return reopenConnection(databasePath, connName, errorOut);
+    return openConnection(databasePath, connName, errorOut);
 }
 
-bool Database::reopenConnection(const QString &databasePath,
-                                const QString &connectionName,
-                                QString *errorOut)
+bool Database::openConnection(const QString &databasePath,
+                              const QString &connectionName,
+                              QString *errorOut)
 {
     m_connectionName = connectionName;
     m_db = QSqlDatabase::addDatabase(QLatin1String(CentralLogger::Data::Db::kSqliteDriver), connectionName);
     m_db.setDatabaseName(databasePath);
     if (!m_db.open()) {
         if (errorOut) {
-            *errorOut = QStringLiteral("Cannot reopen database '%1': %2")
+            *errorOut = QStringLiteral("Cannot open database '%1': %2")
                             .arg(databasePath, m_db.lastError().text());
         }
+        close();
         return false;
     }
     QSqlQuery pragma(m_db);
@@ -328,9 +298,14 @@ bool Database::reopenConnection(const QString &databasePath,
             *errorOut = QStringLiteral("PRAGMA foreign_keys failed: %1")
                             .arg(pragma.lastError().text());
         }
+        close();
         return false;
     }
-    return ensureAutoVacuumIncremental(m_db, errorOut);
+    if (!ensureAutoVacuumIncremental(m_db, errorOut)) {
+        close();
+        return false;
+    }
+    return true;
 }
 
 bool Database::applyPerformancePragmas(QSqlDatabase db, QString *errorOut)
@@ -395,9 +370,6 @@ bool Database::applyInitialSchema(QString *errorOut)
             *errorOut = QStringLiteral("Schema commit failed: %1").arg(m_db.lastError().text());
         }
         m_db.rollback();
-        return false;
-    }
-    if (!applyPerformancePragmas(m_db, errorOut)) {
         return false;
     }
     if (!query.exec(QStringLiteral("PRAGMA user_version = %1").arg(kSchemaVersion))) {

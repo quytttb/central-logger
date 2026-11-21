@@ -32,21 +32,21 @@ SQLite (Database connection, main)      ModbusService → QModbusTcpClient[*]
   `removeLogger` push the current set of enabled loggers to the worker via
   `ModbusService::syncLoggers(QVector<LoggerRuntimeConfig>)`.
 
-## REST (Task 5)
+## Read-only REST
 
 | File | Role |
 |------|------|
-| [`rest/RestConfigParser.h`](rest/RestConfigParser.h) | Header-only parser for `GET /config` (`revision`, `sensors[]`), `POST /config` apply result (`applied_revision`), `formatRestError(httpStatus, body)` per [`docs/contracts/rest-config-contract-v1.md`](../../docs/contracts/rest-config-contract-v1.md). Also `prettyJson` for the debug dialog. |
-| [`rest/RestConfigService.{h,cpp}`](rest/RestConfigService.h) | `QObject` on the main thread, owns one `QNetworkAccessManager`. Issues `GET/POST /api/v1/config` and the **one-shot** `GET /api/v1/readings` for the debug dialog. Bearer header from `LoggerInfo.apiToken`; per-`(loggerId, endpoint)` in-flight guard to coalesce double clicks. |
+| [`rest/RestConfigParser.h`](rest/RestConfigParser.h) | Parses GET config, sensor catalog and thresholds per [`docs/contracts/rest-config-contract-v1.md`](../../docs/contracts/rest-config-contract-v1.md). Formats HTTP errors and raw JSON diagnostics. |
+| [`rest/RestConfigService.{h,cpp}`](rest/RestConfigService.h) | Main-thread GET-only client. Reads `/api/v1/config` with the supplied or saved Bearer token and offers one-shot `/api/v1/readings` for diagnostics. |
 
-### Rules (contract D1–D7)
+### Rules
 
-- `/readings` is **never** called from `ModbusBridge`, `ModbusService`, or any timer — only `LoggerDetailViewModel::fetchReadingsDebug()` triggered by a user click.
-- Live values stay Modbus-only; catalog metadata (`sensor_type`, `name`, `unit`, thresholds) lands via `SensorCatalogRepository::upsert` on **Save** from `LoggerFormDialog` (`saveLoggerFromForm`).
-- Config GET/POST is **not** on Logger Detail — only `fetchReadingsDebug` and report download there.
+- `/readings` is **never** called from `ModbusBridge`, `ModbusService`, timers, or UI — `RestConfigService::fetchReadingsDebug()` is kept strictly for C++ developer diagnostics (`qInfo` logging).
+- Live values stay Modbus-only (FC03, FC02 and FC01 when applicable). Central never sends Modbus writes.
+- `LoggerFormController` reads config on Add or Reload in `Settings > Loggers`. Save touches only SQLite; Edit makes no REST request. Thresholds are a local copy regardless of what write capability the edge advertises.
 
 ### Wiring
 
-`main.cpp` constructs one `RestConfigService`, sets the DB, and registers it on
-`DashboardController` (form Connect / Save) and `LoggerDetailViewModel` (debug
-readings + report only).
+`main.cpp` constructs one `RestConfigService`, sets the DB, and hands it to
+`LoggerFormController`. `ThresholdController` only reads the SQLite mirror
+and refreshes it for display after a successful Reload.

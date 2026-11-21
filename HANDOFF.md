@@ -7,7 +7,8 @@
 
 ## Repo này là gì
 
-Ứng dụng desktop **quản lý tập trung Data Logger** qua Modbus TCP (FC03 + FC02 + FC01) + REST config API.  
+Ứng dụng desktop **giám sát tập trung logger, chỉ đọc từ thiết bị** qua Modbus TCP (FC03 + FC02 + FC01) + REST config API.
+
 Stack: **Qt 6 + C++ + QML + CMake** — greenfield, **không** port source/tests Python.
 
 ## Source of truth (đọc theo thứ tự)
@@ -50,7 +51,7 @@ Toàn bộ deliverable **Phase 1** (khảo sát app PySide6 `central-logger-app`
 - **Không** logic nghiệp vụ trong QML `.js`
 - **Module QML:** `CentralLogger.Core` — `qt_add_qml_module`
 - **Modbus poll:** FC03 (header + analog) → FC02 (DI) → FC01 (DO) — [`modbus-map-v1.md`](docs/contracts/modbus-map-v1.md)
-- **REST:** `GET/POST /config`, reports; `/readings` **chỉ debug** (1 lần bấm, xem JSON gốc — không feed UI live)
+- **REST:** `GET /config` khi Add/Reload trong Settings; `/readings` **chỉ debug** (không feed UI live). Central không gửi `POST /config`.
 - **DB:** SQLite qua **`QSqlDatabase` / `QSQLITE`** (`Qt6::Sql`) — [`docs/thiet_ke_db.md`](docs/thiet_ke_db.md), ADR [`docs/adr/0001-db.md`](docs/adr/0001-db.md)
 - **Platform:** Linux + Windows
 
@@ -78,6 +79,9 @@ Toàn bộ deliverable **Phase 1** (khảo sát app PySide6 `central-logger-app`
 | **Catalog thiếu `sensor_type`** | [`rest-config-contract-v1.md`](docs/contracts/rest-config-contract-v1.md) | `GET /config` sau add logger |
 
 ## Trạng thái repo
+
+> Các mục Task bên dưới là lịch sử triển khai. Đường ghi từ Task 5 và Task 23
+> đã bị gỡ theo chính sách [Central chỉ đọc](docs/plan/central-read-only.md).
 
 - **Task 1 (data layer):** SQLite schema + repositories cho `logger_info` / `logger_sensor` / `sensor_reading` / `system_event` / `app_settings`; test `test_database_repositories`.
 - **Task 2 (app shell):** Module `CentralLogger.Core` (`AppState`, `SettingsController`) + `CentralLogger.Components` (navigation rail, top bar, page header) + `CentralLogger.App` shell, Material light/dark theme.
@@ -112,7 +116,7 @@ Toàn bộ deliverable **Phase 1** (khảo sát app PySide6 `central-logger-app`
   - `Q_PROPERTY` live state: `online`, `polling`, `anyAlarm`, `rtuConnected` (đọc từ `LoggerListModel`, `liveStateChanged`).
   - REST Task 5 giữ nguyên (`rawConfig`, fetch/apply/debug). Test `test_logger_detail_view_model` (+ live state, `rtuConnected` role).
 - **Task 9 (Logger Detail UI — badges + sensor table / FE-009, FE-011):**
-  - [`LoggerDetailView.qml`](src/app/qml/views/LoggerDetailView.qml): hàng chip `StatusChip` (Online, Polling, RTU, Alarm); cột Status bảng sensor qua `SensorStatusColumn`; theme `OperationalStatus` + `AttachDiType`; C++ `AttachDiTypeHelper`.
+  - `LoggerDetailView.qml` (đã xoá ở refactor 2026-11-18): hàng chip `StatusChip` (Online, Polling, RTU, Alarm); cột Status bảng sensor qua `SensorStatusColumn`; theme `OperationalStatus` + `AttachDiType`; C++ `AttachDiTypeHelper`.
   - Giữ toolbar REST Task 5 + dialog readings debug + pane `rawConfig` (RAM, thu nhỏ phía dưới).
   - `LoggerListModel`: role `rtuConnected` (HR1 bit1); `updateLoggerRow(..., rtuConnected)` từ `snapshot.header.isRtuConnected()`.
   - Manual gợi ý: logger online → bảng đổi theo poll; Fetch config → cập nhật name/unit/type catalog (metadata), không merge `/readings` vào bảng live.
@@ -173,15 +177,57 @@ Toàn bộ deliverable **Phase 1** (khảo sát app PySide6 `central-logger-app`
 
 Theo checklist [`task_4_modbus_poll`](#) §8 + [`07-manual-test-with-hardware.md`](docs/THAM_KHAO_REPO_CU/phase1/07-manual-test-with-hardware.md): add logger với host/port khớp firmware v1, quan sát `status=online`, `sensor_reading` có float + 0/1 cho DI/DO, tắt edge → `offline`. Build/`ctest` không phụ thuộc bước này.
 
-## Prompt cho Cursor Agent
+## Central chỉ đọc (2026-11-21)
 
-File raw text (copy đủ): [`docs/plan/agent-prompt.txt`](docs/plan/agent-prompt.txt)
+`Settings > Loggers`: **Add** đọc config trước khi lưu vào Central; **Edit**
+lưu cài đặt Central kể cả khi logger offline. **Reload config** chỉ đọc catalog
+và revision rồi yêu cầu poll mới. Ngưỡng chỉ xem, kể cả khi thiết bị hỗ trợ ghi.
+Không đổi firmware Data Logger, adapter OSG, wire contract hay schema SQLite.
+
+[Plan](docs/plan/central-read-only.md) · [TODO](docs/plan/central-read-only-todo.md) ·
+[Walkthrough](docs/walkthrough/central-read-only.md).
+
+## Đợt UI/UX polish (2026-11-20, archive)
+
+Đã triển khai đủ 5 mục và kiểm thử Qt 6.11.1 offscreen: Central 28/28,
+kit 1/1. Còn nghiệm thu rút/cắm mạng với logger vật lý và kiểm tra trực quan
+trên máy triển khai.
+
+| File | Vai trò |
+|------|---------|
+| [`docs/archive/plan/uiux-polish.md`](docs/archive/plan/uiux-polish.md) | Plan lịch sử (Phase A–G) |
+| [`docs/archive/plan/uiux-polish-todo.md`](docs/archive/plan/uiux-polish-todo.md) | Checklist và mục nghiệm thu còn mở |
+| [`docs/archive/walkthrough/uiux-polish.md`](docs/archive/walkthrough/uiux-polish.md) | Nhật ký thực thi |
+
+### Đã xong — Loggers `Data | Graph` + Settings > Loggers + ngưỡng từ thiết bị
+
+Refactor 2026-11-18 đã hoàn tất và archive. Mục sửa ngưỡng từ Central trong
+refactor này đã bị gỡ ngày 2026-11-21:
+
+| File | Vai trò |
+|------|---------|
+| [`docs/archive/plan/loggers-data-graph-refactor.md`](docs/archive/plan/loggers-data-graph-refactor.md) | Plan đã xong — Phase 0–6, thay đổi contract ngưỡng, kiến trúc đích |
+| [`docs/archive/plan/loggers-data-graph-todo.md`](docs/archive/plan/loggers-data-graph-todo.md) | Checklist theo phase |
+| [`docs/archive/walkthrough/loggers-data-graph.md`](docs/archive/walkthrough/loggers-data-graph.md) | Nhật ký thực thi |
+
+TT10/Modbus map v2 đã commit riêng (`f10e2d0` Central, `5d91023` Data Logger);
+kit dùng chung đã checkout commit `2080c2b` ở hai app (gitlink chưa commit theo yêu cầu).
+Đã hoàn tất Phase 2–6 trên cả `data-logger` và `central_logger`: REST patch ngưỡng
+(`config.sensors[]` + `thresholds_writable`), schema v8 (`app_settings.loggers_view_mode`),
+`LoggersView` (`Data | Graph`, giữ nhãn “Show graph”, `Cards`/`List`), `Settings > Loggers`
+(3 cột với switch `Enabled`, `Note` và `ThresholdEditor` khóa khi offline/read-only),
+xóa hẳn `LoggerDetailView`/`ThresholdsView`/`LoggerFormDialog` và UI report/debug.
+Build, `qmllint` và toàn bộ CTest hai repo đều xanh; còn đối chiếu trực quan màn kiosk 1024×600 / phần cứng thật khi cần.
+
+## Prompt lịch sử (đã hoàn thành)
+
+[`docs/archive/plan/tasks-6-24-agent-prompts.md`](docs/archive/plan/tasks-6-24-agent-prompts.md) — Tasks 6–24.
 
 Thứ tự implement gợi ý: **Task 1** DB → **2** shell QML → **3** logger CRUD → **4** Modbus → **5** REST → **6–9** sensor live (merge → model → VM → QML).
 
-**MVP Core — hoàn tất:** Tasks **1–17**, **19** (FE-001…FE-016 trừ FE-014; FE-004 = Task 17). **Task 18** (FE-017) dropped — cửa sổ OS chuẩn.
+**MVP Core — hoàn tất:** Tasks **1–17**, **19** (FE-001…FE-016 trừ FE-013/014; FE-004 = Task 17). **Task 18** (FE-017) không có tray; frameless đã làm.
 
-**Nice-to-have đã xong:** Tasks **20**, **22**, **23**, **24** (download report FE-021; probe trước Save FE-022; edit form + `stationCode` immutable + sensor catalog upsert & applyConfig on save FE-006; responsive detail FE-023 + navigation rail 80px).
+**Nice-to-have đã xong trong các task lịch sử:** **20**, **22**, **23**, **24**. Hiện tại probe chỉ dùng ở Add; Edit lưu cài đặt Central, `stationCode` không đổi.
 
 **Done / Đã xong (tóm tắt):** MVP ở trên + probe config (FE-022) + edit form complete (FE-006) + download report (FE-021) + responsive UI (FE-023).
 
@@ -198,6 +244,7 @@ Thứ tự implement gợi ý: **Task 1** DB → **2** shell QML → **3** logge
 
 | Mục | Lý do |
 |-----|--------|
+| FE-013 | Central không ghi ngược cấu hình hoặc điều khiển logger |
 | FE-014 | Live chỉ Modbus; `GET /readings` debug one-shot |
 | FE-017 / Task 18 | Frameless đã implement (2026-08); Close thoát app; không system tray |
 | FE-020 / Task 21 | Không decode QR trong app — copy-paste text provision |
@@ -206,21 +253,21 @@ Thứ tự implement gợi ý: **Task 1** DB → **2** shell QML → **3** logge
 
 **Next / Tiếp theo:** Manual Task 4 (edge/simulator) khi có hardware.
 
-**Dashboard summary + Average CSV (done 2026-11):**
-- **Dashboard `Detail`/`Summary` toggle** (`DashboardView.qml`): Summary = chart thời gian thực của **primary logger** (RAM `PollHistoryStore`, analog) + bảng "Other loggers" (mỗi logger một hàng, cột sensor analog động). Primary logger chọn ở **Settings** (`app_settings.primary_logger_id`, schema **v7**); chưa chọn → fallback logger online đầu tiên.
-- **History export menu:** "Export table CSV" (giữ nguyên), "Export hourly averages + 24h", "Export shift averages (8h)" — CSV layout chuẩn (header sensor + đơn vị, dòng giờ/ca, dòng trung bình cuối), chạy nền (`QtConcurrent` + connection riêng), chỉ tính reading `valid=1 AND stale=0`. Giờ bắt đầu ca chỉnh trực tiếp ở HistoryView (session-only).
+**Loggers > Graph và History CSV (2026-11-20):**
+- **Graph:** cửa sổ mặc định 5 phút; zoom 1 phút–7 ngày. Chỉ đọc analog; RAM tối đa 6 giờ/4.000 mẫu mỗi sensor, bù lịch sử từ SQLite nền nếu cần. Mặc định theo primary logger trong Settings; nếu chưa đặt, ưu tiên logger online đầu tiên. Logger đang vẽ không xuất hiện trong bảng "Other loggers".
+- **History export:** "Export table CSV" và "Export hourly averages + 24h". Export trung bình chạy nền qua SQLite connection riêng, chỉ tính `status_code = '00'`; giữ các nhãn CSV tiếng Việt.
 
-**UI modernization (done 2026-05):** [`docs/plan/ui-modernization-agent-prompts.md`](docs/plan/ui-modernization-agent-prompts.md) — **UI-M1** `Loader` navigation; **UI-M2** sensor `TableView` + `HorizontalHeaderView`; **UI-M3/M3b** loggers `QAbstractTableModel` (7 cột) + `headerData()`/`tr()` (không header `Pane` thủ công). Cột Status: `DisplayRole` + QML `display` = Online/Offline (C++ `tr()`).
+**UI modernization (done 2026-05):** [`docs/archive/plan/ui-modernization-agent-prompts.md`](docs/archive/plan/ui-modernization-agent-prompts.md) — **UI-M1** `Loader` navigation; **UI-M2** sensor `TableView` + `HorizontalHeaderView`; **UI-M3/M3b** loggers `QAbstractTableModel` (7 cột) + `headerData()`/`tr()` (không header `Pane` thủ công). Cột Status: `DisplayRole` + QML `display` = Online/Offline (C++ `tr()`).
 
 **M3 UI Migration (done 2026-05, pane parity 2026-05):** Material Design 3 on Qt Quick Controls Material — Teal primary + Indigo accent, no dynamic color.
 - **Theme:** `AppColors`, `AppTypography`, `AppTheme` layout + shape tokens (`cardRadius`, `chipRadius`, `listItemRadius`).
 - **Components:** `ElevatedPane`, `SectionHeader`, `AppButton` (single button for all actions — icon/text/both, `kind`, `iconOnly`, `controlSize`; replaced the old `IconToolButton`), `StatCard`, `TableHeaderCell`, `TableCellBackground`, `EmptyStatePlaceholder`, rail `NavItem` with `accentContainer` / `onAccentContainer`.
 - **Views:** All data views use `ElevatedPane` (Dashboard, Settings, Loggers, Logger Detail); Loggers search `Outlined`; section headers + typography tokens unified.
 - **Charts:** `ChartGraphsTheme` — plot + view background `surfaceContainerLow`; live on rail theme toggle.
-- **Docs:** [`docs/ui/material3-component-guidelines.md`](docs/ui/material3-component-guidelines.md) (includes manual QA checklist), walkthrough [`docs/report/2026-05-27_m3_ui_migration_walkthrough.md`](docs/report/2026-05-27_m3_ui_migration_walkthrough.md).
+- **Docs:** [`docs/ui/material3-component-guidelines.md`](docs/ui/material3-component-guidelines.md) (includes manual QA checklist), walkthrough [`docs/archive/report/2026-05-27_m3_ui_migration_walkthrough.md`](docs/archive/report/2026-05-27_m3_ui_migration_walkthrough.md).
 - Navigation: `Loader` + `currentView` (no `StackView`).
 
-**Shell PR2 + navigation rail:** `SplitView` + `ToolBar` top bar; rail = [`AppNavigationRail.qml`](src/components/AppNavigationRail.qml) (thay collapsible `AppSidebar`). `Qt6::Svg` cho logo brand.
+**Shell PR2 + navigation rail:** `SplitView` + `ToolBar` top bar; rail = [`AppNavigationRail.qml`](src/components/shell/AppNavigationRail.qml) (thay collapsible `AppSidebar`). `Qt6::Svg` cho logo brand.
 
 **Dropped / bỏ qua:**
 

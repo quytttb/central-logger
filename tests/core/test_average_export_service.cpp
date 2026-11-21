@@ -1,11 +1,13 @@
 #include "core/history/AverageExportService.h"
 #include "data/db/Database.h"
+#include "utils/CsvUtils.h"
 
+#include <QFile>
 #include <QSqlQuery>
+#include <QTemporaryDir>
 #include <QTest>
 #include <QTimeZone>
 
-using CentralLogger::Core::AverageExportMode;
 using CentralLogger::Core::AverageExportParams;
 using CentralLogger::Core::AverageExportResult;
 using CentralLogger::Core::AverageExportService;
@@ -78,7 +80,6 @@ private:
         p.timeZone = QTimeZone::UTC;
         p.fromUtc = QDateTime(QDate(2026, 11, 5), QTime(0, 0), QTimeZone::UTC);
         p.toUtc   = QDateTime(QDate(2026, 11, 5), QTime(23, 59, 59), QTimeZone::UTC);
-        p.mode = AverageExportMode::Hourly;
         return p;
     }
 
@@ -96,6 +97,38 @@ private slots:
     {
         QSqlQuery q(m_db.connection());
         q.exec(QStringLiteral("DELETE FROM sensor_reading"));
+    }
+
+    void writeUtf8BomFile_supportsStringsAndStreamCallbacks()
+    {
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        QString content = QStringLiteral("Giá trị,42\n");
+        const QString constContent = content;
+        const QByteArray expected = QByteArray::fromHex("efbbbf") + content.toUtf8();
+        QString error;
+
+        const auto verifyFile = [&](const QString &path) {
+            QFile file(path);
+            QVERIFY(file.open(QIODevice::ReadOnly));
+            QCOMPARE(file.readAll(), expected);
+        };
+
+        const QString mutablePath = dir.filePath(QStringLiteral("mutable.csv"));
+        QVERIFY2(CentralLogger::Utils::writeUtf8BomFile(mutablePath, content, &error),
+                 qPrintable(error));
+        verifyFile(mutablePath);
+
+        const QString constPath = dir.filePath(QStringLiteral("const.csv"));
+        QVERIFY2(CentralLogger::Utils::writeUtf8BomFile(constPath, constContent, &error),
+                 qPrintable(error));
+        verifyFile(constPath);
+
+        const QString callbackPath = dir.filePath(QStringLiteral("callback.csv"));
+        QVERIFY2(CentralLogger::Utils::writeUtf8BomFile(
+                     callbackPath, [&content](QTextStream &out) { out << content; }, &error),
+                 qPrintable(error));
+        verifyFile(callbackPath);
     }
 
     void hourlyAverage_matchesSampleLayout()
@@ -149,54 +182,6 @@ private slots:
         const QStringList lines = result.csv.split(QLatin1Char('\n'), Qt::SkipEmptyParts);
         const QString tenOclock = lineStartingWith(lines, QStringLiteral("10:00 05/11/2026,"));
         QCOMPARE(csvCellAt(tenOclock, 1), QStringLiteral("10.00"));
-    }
-
-    void shiftAverage_threeEightHourRows()
-    {
-        insertReading(1, 10.0, QStringLiteral("2026-11-05T10:00:00.000Z"));
-        insertReading(1, 20.0, QStringLiteral("2026-11-05T11:00:00.000Z"));
-
-        AverageExportParams p = hourlyParams();
-        p.mode = AverageExportMode::Shift;
-        p.shiftStartHour = 0;
-
-        AverageExportService svc(m_db.connection());
-        const AverageExportResult result = svc.build(p);
-
-        QVERIFY2(result.error.isEmpty(), qPrintable(result.error));
-        QCOMPARE(result.rowCount, 3);
-
-        const QStringList lines = result.csv.split(QLatin1Char('\n'), Qt::SkipEmptyParts);
-        const QString firstShift = lineStartingWith(lines, QStringLiteral("00:00 05/11/2026,"));
-        QVERIFY(!firstShift.isEmpty());
-        QCOMPARE(csvCellAt(firstShift, 1), QString()); // 00-08 empty
-        const QString secondShift = lineStartingWith(lines, QStringLiteral("08:00 05/11/2026,"));
-        QVERIFY(!secondShift.isEmpty());
-        QCOMPARE(csvCellAt(secondShift, 1), QStringLiteral("15.00")); // (10+20)/2
-        QVERIFY(!lineStartingWith(lines, QStringLiteral("16:00 05/11/2026,")).isEmpty());
-    }
-
-    void shiftAverage_respectsStartHour()
-    {
-        insertReading(1, 10.0, QStringLiteral("2026-11-05T00:00:00.000Z"));
-
-        AverageExportParams p = hourlyParams();
-        p.mode = AverageExportMode::Shift;
-        p.shiftStartHour = 6; // shifts: 22-06, 06-14, 14-22
-
-        AverageExportService svc(m_db.connection());
-        const AverageExportResult result = svc.build(p);
-
-        QVERIFY2(result.error.isEmpty(), qPrintable(result.error));
-        QCOMPARE(result.rowCount, 4); // 22:00 (04/11), 06:00, 14:00, 22:00
-
-        const QStringList lines = result.csv.split(QLatin1Char('\n'), Qt::SkipEmptyParts);
-        const QString firstShift = lineStartingWith(lines, QStringLiteral("22:00 04/11/2026,"));
-        QVERIFY(!firstShift.isEmpty());
-        QCOMPARE(csvCellAt(firstShift, 1), QStringLiteral("10.00"));
-        const QString secondShift = lineStartingWith(lines, QStringLiteral("06:00 05/11/2026,"));
-        QVERIFY(!secondShift.isEmpty());
-        QCOMPARE(csvCellAt(secondShift, 1), QString()); // 00:00 reading belongs to 22-06 shift
     }
 
     void noLogger_selected_returnsError()

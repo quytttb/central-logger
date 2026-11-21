@@ -36,12 +36,12 @@ nằm phẳng trên `AppColors.surface`.
 
 ## Components
 
-Chung từ kit (`import LoggerKit.Components`): `AppButton` (kind enum), `UiIcon`,
+Chung từ kit (`import LoggerKit.Components` / `import LoggerKit.Theme`): `AppButton` (kind enum), `ThemedTabButton`, `UiIcon`,
 `MaterialIcons`, `ElevatedPane`, `EmptyStatePlaceholder`, `TableContentStack`,
 `AppScrollBar`, `AppTableView`, `TableHeaderCell`, `TableCellBackground`,
 `AppNotifier`, `AppToastHost`, `MessageDetailDialog`, `DateField`, `DatePickerPopup`,
 `ChartGraphsTheme`, `ChartGraphsView`, `ChartLinePointMarker`, `StatusChip` (generic),
-`ClipboardService`.
+`SensorValueCard`, `IoColors`, `ClipboardService`.
 
 App-specific (`import CentralLogger.Components`):
 
@@ -50,8 +50,11 @@ App-specific (`import CentralLogger.Components`):
 | `shell/` | `NavItem`, `AppNavigationRail`, `AppTopBar`, `RailCircleButton`, `ThemeToggle`, `WindowControls` |
 | `layout/` | `StatCard`, `SectionHeader`, `InlineBanner`, `AlertDialog`, `FormNotice` |
 | `status/` | `SensorStatusChip` (domain wrapper trên kit `StatusChip`: OperationalStatus + AttachDiType), `SensorStatusColumn` |
-| `chart/` | `ChartTimeSeriesPanel` (bind `timezoneId` từ `SettingsController.systemTimezone`), `ChartHoverTooltip` |
-| `logger/` | `LoggerFormDialog`, `RecentEventListItem` |
+| `chart/` | `ChartTimeSeriesPanel` (bind `timezoneId` từ `SettingsController.systemTimezone`), `ChartHoverTooltip`, `SensorMiniChart` |
+| `logger/` | `LoggerLiveSection`, `LiveSensorListTable`, `RecentEventListItem` |
+| `settings/` | `SettingsGeneralPane`, `LoggersSettingsPane`, `SensorThresholdsPane` |
+
+Điều hướng chính trên rail gồm 4 đích: `Dashboard` · `Loggers` (`Data | Graph`, nhớ `Cards`/`List` qua `app_settings.loggers_view_mode`) · `History` · `Settings` (`General | Loggers`).
 
 Domain singletons (`CentralLogger.Theme`): `OperationalStatus`, `AttachDiType`.
 
@@ -59,25 +62,24 @@ Domain singletons (`CentralLogger.Theme`): `OperationalStatus`, `AttachDiType`.
 
 | Context | Toast | Form inline | Recent events |
 |---------|-------|-------------|---------------|
-| Report download **OK** | Yes — `"success"`, tap **Copy path** (`ClipboardService`) | — | Info row |
-| Report download **fail** | Yes — `"error"`, tap → detail dialog (`contextId` = loggerId) | — | Warning row |
-| Config push **fail** | Yes — `"error"` + `contextId` | — | Warning row |
+| Reload config | Toast success/error | `InlineBanner` khi lỗi | Info row khi OK |
 | Settings save OK/fail | Toast success/error | — | — |
-| Form Save fail / Connect fail/OK | **No** | `FormNotice` | — |
+| Form Save fail / Connect fail/OK | Toast khi Save OK | `FormNotice` | Info row (khi Save OK) |
 
 - `AppNotifier.show(summary, semantic, options)` — `options: { detailText, detailTitle,
   contextId, copyPath, durationMs }`. `contextId` thay cho `loggerId` cũ (generic).
 - `MessageDetailDialog` (kit): đặt 1 lần trong `Main.qml`, set
-  `contextActionText: qsTr("Open logger")` + `onContextActionRequested: id => selectLogger(id)`.
+  `contextActionText: qsTr("Open logger")` + `onContextActionRequested: id => openLoggerGraph(id)`.
 - Không hiện toast khi `AppNotifier.suppressed` (modal dialogs tự set).
+- Report download & `/readings` debug không có UI người dùng (chỉ giữ hàm C++ chẩn đoán ngầm cho dev).
 
 ## Recent events click policy
 
 | `eventType` | Action |
 |-------------|--------|
-| `Online`, `Offline`, `Info` (audit) | `loggerId > 0` → Logger Detail |
+| `Online`, `Offline`, `Info` (audit) | `loggerId > 0` → mở `Loggers > Graph` của logger đó (`openLoggerGraph(loggerId)`) |
 | Message bắt đầu `Report saved:` | **Copy path** vào clipboard (không navigate) |
-| `Warning`, `Error`, `Alarm` | `MessageDetailDialog` (+ "Open logger" nếu `loggerId > 0`) |
+| `Warning`, `Error`, `Alarm` | `MessageDetailDialog` (+ "Open logger" mở `Loggers > Graph` nếu `loggerId > 0`) |
 
 ## Charts (`QtGraphs`)
 
@@ -89,9 +91,9 @@ Series colors từ `AppColors.graphSeriesColors` (light/dark reactive).
 
 Toggle theme từ rail `ThemeToggle`:
 
-- [ ] **Dashboard** — StatCards, panes, chart plot background khớp pane
-- [ ] **Loggers** — table trong elevated card, Outlined search, Add Logger primary CTA
-- [ ] **Logger Detail** — panes, SensorStatusChip (operational + attach-DI), wide/narrow 950px
-- [ ] **Settings** — elevated form pane, Outlined inputs
-- [ ] **LoggerFormDialog** — rounded dialog, Outlined fields
-- [ ] **Rail** — NavItem pill active dùng accent container tokens
+- [ ] **Dashboard** — 3 `StatCard`, biểu đồ `Traffic Readings`, `Recent events` (click mở `Loggers > Graph`)
+- [ ] **Loggers > Data** — toggle `Cards`/`List` (nhớ qua lần mở app), `LoggerLiveSection` (`SensorValueCard` 4 cột × 2 hàng cho 8 analog, mờ + `—` khi offline), `LiveSensorListTable`
+- [ ] **Loggers > Graph** — bộ chọn `"Show graph"`, lưới `SensorMiniChart`, bảng `"Other loggers"`
+- [ ] **Settings > General** — elevated form pane, Outlined inputs, Diagnostics copy log path
+- [ ] **Settings > Loggers** — bố cục 3 cột hoặc xếp dọc khi hẹp, form Central sửa được khi offline, `SensorThresholdsPane` luôn chỉ xem, Reload không ghi đè tên/chu kỳ Central
+- [ ] **Rail** — 4 đích, `NavItem` pill active dùng accent container tokens

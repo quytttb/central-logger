@@ -32,8 +32,6 @@ public:
                        QString *errorOut = nullptr,
                        int chunkSize = Defaults::kDefaultPurgeChunkSize);
 
-    static constexpr int kDefaultPurgeChunkSize = Defaults::kDefaultPurgeChunkSize;
-
     /// Convenience helper for tests / status panels.
     int countForSensor(qint64 sensorId, QString *errorOut = nullptr) const;
 

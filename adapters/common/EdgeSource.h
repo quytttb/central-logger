@@ -25,6 +25,8 @@ struct AnalogPoint
     // Empty means unknown; never infer TT10 device status from quality flags.
     QString statusCode;
     std::optional<int> decimals;
+    std::optional<double> minThreshold;
+    std::optional<double> maxThreshold;
 };
 
 struct EdgeSnapshot

@@ -32,14 +32,20 @@ QVariant LoggerListModel::data(const QModelIndex &index, int role) const
     // Column-specific display value for TableView cells and HorizontalHeaderView.
     if (role == Qt::DisplayRole || role == Qt::EditRole) {
         switch (index.column()) {
-        case NameColumn:        return row.info.name;
-        case HostColumn:        return row.info.host;
-        case ModbusPortColumn:  return row.info.modbusPort;
-        case SensorCountColumn: return row.sensorCount;
-        case StatusColumn:      return row.info.status == CentralLogger::Sensor::kLoggerOnline
-                                        ? tr("Online") : tr("Offline");
-        case ActionsColumn:     return QString{};
-        default:                return {};
+        case NameColumn:    return row.info.name;
+        case StationColumn: return row.info.stationCode;
+        case HostColumn:    return row.info.host;
+        case PortsColumn:   return QStringLiteral("%1 / %2")
+                                .arg(row.info.modbusPort)
+                                .arg(row.info.apiPort);
+        case EnabledColumn: return row.info.enabled ? tr("On") : tr("Off");
+        case StatusColumn:
+            if (!row.info.enabled) {
+                return tr("Disabled");
+            }
+            return row.info.status == CentralLogger::Sensor::kLoggerOnline
+                       ? tr("Online") : tr("Offline");
+        default:            return {};
         }
     }
 
@@ -53,14 +59,14 @@ QVariant LoggerListModel::data(const QModelIndex &index, int role) const
     case NameRole:         return row.info.name;
     case HostRole:         return row.info.host;
     case ModbusPortRole:   return row.info.modbusPort;
-    case ModbusUnitIdRole: return row.info.modbusUnitId;
     case ApiPortRole:      return row.info.apiPort;
     case StatusRole:       return row.info.status;
     case SensorCountRole:  return row.sensorCount;
-    case OnlineRole:       return row.info.status == CentralLogger::Sensor::kLoggerOnline;
-    case PollingRole:      return live.polling;
-    case AnyAlarmRole:     return live.anyAlarm;
-    case RtuConnectedRole: return live.rtuConnected;
+    case OnlineRole:       return row.info.enabled
+                               && row.info.status == CentralLogger::Sensor::kLoggerOnline;
+    case PollingRole:      return row.info.enabled && live.polling;
+    case AnyAlarmRole:     return row.info.enabled && live.anyAlarm;
+    case EnabledRole:      return row.info.enabled;
     default:               return {};
     }
 }
@@ -71,13 +77,13 @@ QVariant LoggerListModel::headerData(int section, Qt::Orientation orientation, i
         return {};
     }
     switch (section) {
-    case NameColumn:        return tr("Name");
-    case HostColumn:        return tr("Host");
-    case ModbusPortColumn:  return tr("Modbus");
-    case SensorCountColumn: return tr("Sensors");
-    case StatusColumn:      return tr("Status");
-    case ActionsColumn:     return tr("Actions");
-    default:                return {};
+    case NameColumn:    return tr("Name");
+    case StationColumn: return tr("Station");
+    case HostColumn:    return tr("Host");
+    case PortsColumn:   return tr("Modbus / API");
+    case EnabledColumn: return tr("Enabled");
+    case StatusColumn:  return tr("Status");
+    default:            return {};
     }
 }
 
@@ -91,14 +97,13 @@ QHash<int, QByteArray> LoggerListModel::roleNames() const
         { NameRole,         CentralLogger::Ui::kRoleName },
         { HostRole,         CentralLogger::Ui::kRoleHost },
         { ModbusPortRole,   CentralLogger::Ui::kRoleModbusPort },
-        { ModbusUnitIdRole, CentralLogger::Ui::kRoleModbusUnitId },
         { ApiPortRole,      CentralLogger::Ui::kRoleApiPort },
         { StatusRole,       CentralLogger::Ui::kRoleStatus },
         { SensorCountRole,  CentralLogger::Ui::kRoleSensorCount },
         { OnlineRole,       CentralLogger::Ui::kRoleOnline },
         { PollingRole,      CentralLogger::Ui::kRolePolling },
         { AnyAlarmRole,     CentralLogger::Ui::kRoleAnyAlarm },
-        { RtuConnectedRole, CentralLogger::Ui::kRoleRtuConnected },
+        { EnabledRole,      CentralLogger::Ui::kRoleLoggerEnabled },
     };
 }
 
@@ -140,8 +145,7 @@ void LoggerListModel::updateLoggerRow(qint64 loggerId,
                                       const QString &status,
                                       int sensorCount,
                                       bool polling,
-                                      bool anyAlarm,
-                                      bool rtuConnected)
+                                      bool anyAlarm)
 {
     const int row = indexOfLogger(loggerId);
     if (row < 0) return;
@@ -157,7 +161,6 @@ void LoggerListModel::updateLoggerRow(qint64 loggerId,
     }
     if (live.polling != polling)           { live.polling      = polling;      changed = true; }
     if (live.anyAlarm != anyAlarm)         { live.anyAlarm     = anyAlarm;     changed = true; }
-    if (live.rtuConnected != rtuConnected) { live.rtuConnected = rtuConnected; changed = true; }
 
     if (changed) {
         // Span the full row so every TableView column cell is refreshed.
@@ -168,7 +171,6 @@ void LoggerListModel::updateLoggerRow(qint64 loggerId,
         emit dataChanged(topLeft, bottomRight, {
             Qt::DisplayRole,
             StatusRole, SensorCountRole, OnlineRole, PollingRole, AnyAlarmRole,
-            RtuConnectedRole,
         });
     }
 }

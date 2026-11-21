@@ -25,6 +25,7 @@ set(DATA_REPOSITORY_FILES
     repositories/SensorReadingRepository.h
     repositories/SettingsRepository.cpp
     repositories/SettingsRepository.h
+    repositories/SqlHelper.h
 )
 
 qt_add_library(data STATIC

@@ -21,34 +21,26 @@ ModbusBridge::ModbusBridge(QObject *parent)
 {
 }
 
-void ModbusBridge::setConnection(QSqlDatabase db)
-{
-    m_standaloneConn = std::move(db);
-    m_db             = nullptr;
-}
-
 void ModbusBridge::start()
 {
     // Audit H-A: when the bridge lives on its own thread, open a dedicated
     // connection here (QSqlDatabase handles are thread-bound).
-    if (m_standaloneConn.isValid() || m_db || !m_databasePath.isEmpty()) {
-        if (!m_databasePath.isEmpty() && !m_standaloneConn.isValid() && !m_db) {
-            const QString connName =
-                QStringLiteral("modbus_live_%1")
-                    .arg(reinterpret_cast<quintptr>(QThread::currentThreadId()));
-            m_dedicatedConn = QSqlDatabase::addDatabase(QLatin1String(CentralLogger::Data::Db::kSqliteDriver), connName);
-            m_dedicatedConn.setDatabaseName(m_databasePath);
-            if (!m_dedicatedConn.open()) {
-                qWarning() << "ModbusBridge: cannot open dedicated connection:"
-                           << m_dedicatedConn.lastError().text();
-                m_dedicatedConn = QSqlDatabase();
-                QSqlDatabase::removeDatabase(connName);
-                return;
-            }
-            QString pragmaErr;
-            if (!Data::Database::applyPerformancePragmas(m_dedicatedConn, &pragmaErr)) {
-                qWarning() << "ModbusBridge: performance pragmas failed:" << pragmaErr;
-            }
+    if (!m_databasePath.isEmpty()) {
+        const QString connName =
+            QStringLiteral("modbus_live_%1")
+                .arg(reinterpret_cast<quintptr>(QThread::currentThreadId()));
+        m_dedicatedConn = QSqlDatabase::addDatabase(QLatin1String(CentralLogger::Data::Db::kSqliteDriver), connName);
+        m_dedicatedConn.setDatabaseName(m_databasePath);
+        if (!m_dedicatedConn.open()) {
+            qWarning() << "ModbusBridge: cannot open dedicated connection:"
+                       << m_dedicatedConn.lastError().text();
+            m_dedicatedConn = QSqlDatabase();
+            QSqlDatabase::removeDatabase(connName);
+            return;
+        }
+        QString pragmaErr;
+        if (!Data::Database::applyPerformancePragmas(m_dedicatedConn, &pragmaErr)) {
+            qWarning() << "ModbusBridge: performance pragmas failed:" << pragmaErr;
         }
     }
 }
@@ -103,25 +95,19 @@ ModbusBridge::CatalogCacheEntry &ModbusBridge::catalogCacheFor(qint64 loggerId,
     return *m_catalogCache.insert(loggerId, std::move(entry));
 }
 
-QSqlDatabase ModbusBridge::sqlConnection() const
-{
-    if (m_dedicatedConn.isValid() && m_dedicatedConn.isOpen()) {
-        return m_dedicatedConn;
-    }
-    if (m_db && m_db->isOpen()) {
-        return m_db->connection();
-    }
-    return m_standaloneConn;
-}
-
 void ModbusBridge::applyLiveSnapshot(const PollSnapshot &snapshot)
 {
-    QSqlDatabase db = sqlConnection();
+    QSqlDatabase db = m_dedicatedConn;
     if (!db.isValid() || !db.isOpen()) {
         return;
     }
 
     Data::LoggerRepository        loggers(db);
+    const auto loggerInfo = loggers.findById(snapshot.loggerId);
+    if (!loggerInfo || !loggerInfo->enabled) {
+        return;
+    }
+
     Data::SensorCatalogRepository catalog(db);
 
     const QDateTime now = snapshot.measuredAt.isValid()
@@ -212,6 +198,12 @@ QVector<Data::SensorReading> ModbusBridge::buildReadings(const PollSnapshot &sna
         return batch;
     }
 
+    Data::LoggerRepository loggers(db);
+    const auto loggerInfo = loggers.findById(snapshot.loggerId);
+    if (!loggerInfo || !loggerInfo->enabled) {
+        return batch;
+    }
+
     Data::SensorCatalogRepository catalog(db);
 
     const QDateTime now = snapshot.measuredAt.isValid()
@@ -289,28 +281,21 @@ QVector<Data::SensorReading> ModbusBridge::buildReadings(const PollSnapshot &sna
                         sample.statusCode);
     }
 
-    // The catalog list is used only for DI/DO bit mapping; cache it too so
-    // we avoid the per-snapshot SELECT on the writer thread.
-    const auto catalogRows = catalog.listByLoggerId(snapshot.loggerId);
-    for (const auto &sensor : catalogRows) {
-        if (!sensor.active || sensor.id <= 0) {
+    for (auto it = cache.diIds.constBegin(); it != cache.diIds.constEnd(); ++it) {
+        const int bit = it.key();
+        if (bit < 0 || bit >= snapshot.diBits.size()) {
             continue;
         }
-        if (sensor.sensorType == CentralLogger::Sensor::kTypeDi) {
-            const int bit = sensor.edgeSensorId;
-            if (bit < 0 || bit >= snapshot.diBits.size()) {
-                continue;
-            }
-            appendIfChanged(sensor.id, snapshot.diBits.at(bit) ? 1.0 : 0.0,
-                            QLatin1String("00"));
-        } else if (sensor.sensorType == CentralLogger::Sensor::kTypeDo) {
-            const int bit = sensor.edgeSensorId;
-            if (bit < 0 || bit >= snapshot.doBits.size()) {
-                continue;
-            }
-            appendIfChanged(sensor.id, snapshot.doBits.at(bit) ? 1.0 : 0.0,
-                            QLatin1String("00"));
+        appendIfChanged(it.value(), snapshot.diBits.at(bit) ? 1.0 : 0.0,
+                        QLatin1String(CentralLogger::Sensor::kStatusOk));
+    }
+    for (auto it = cache.doIds.constBegin(); it != cache.doIds.constEnd(); ++it) {
+        const int bit = it.key();
+        if (bit < 0 || bit >= snapshot.doBits.size()) {
+            continue;
         }
+        appendIfChanged(it.value(), snapshot.doBits.at(bit) ? 1.0 : 0.0,
+                        QLatin1String(CentralLogger::Sensor::kStatusOk));
     }
 
     return batch;
